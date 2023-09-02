@@ -31,16 +31,7 @@
 
 import struct
 
-try:
-    from .hvaclib import HVAC, GenPluginObject, bit_reverse
-except:
-
-    class HVAC(object):
-        def available_functions(self):
-            return {}
-
-        def build_ircode(self):
-            return self._build_ircode()
+from .hvaclib import HVAC, GenPluginObject, bit_reverse
 
 
 class Panasonic(HVAC):
@@ -235,18 +226,18 @@ class Panasonic(HVAC):
         else:
             return b"\x00"
 
-    def set_clear(self, mode="off"):
-        if "clear" not in self.xtra_capabilities:
+    def set_cleaning(self, mode="off"):
+        if "cleaning" not in self.xtra_capabilities:
             return
-        if mode not in self.xtra_capabilities["clear"]:
+        if mode not in self.xtra_capabilities["cleaning"]:
             return
         # This is a toggling value AFAIK
-        if self.status["clear"] != mode:
-            self.to_set["clear"] = mode
+        if self.status["cleaning"] != mode:
+            self.to_set["cleaning"] = mode
 
-    def code_clear(self):
+    def code_cleaning(self):
         frames = []
-        if "clear" in self.to_set:
+        if "cleaning" in self.to_set:
             frames += [self.FHEADER + self.F1BODY]
             frames += [self.FODOUR]
         return frames
@@ -290,7 +281,7 @@ class Panasonic(HVAC):
 
     def _build_ircode(self):
         frames = []
-        frames += self.code_clear()
+        frames += self.code_cleaning()
         frames += self.code_economy()
         frames += self.build_code()
         idx = 0
@@ -314,7 +305,7 @@ class PanaCassette(Panasonic):
             "purifier": ["off", "on"],
         }
         # For functions that require their own frames
-        self.xtra_capabilities = {"economy": ["off", "on"], "clear": ["off", "on"]}
+        self.xtra_capabilities = {"economy": ["off", "on"], "cleaning": ["off", "on"]}
         self.status = {
             "mode": "off",
             "temperature": 25,
@@ -322,7 +313,7 @@ class PanaCassette(Panasonic):
             "swing": "auto",
             "purifier": "off",
             "economy": "off",
-            "clear": "off",
+            "cleaning": "off",
         }
 
 
@@ -330,7 +321,7 @@ class PluginObject(GenPluginObject):
     MODELS = {"generic": Panasonic, "4 way cassette": PanaCassette}
 
     def __init__(self):
-        self.brand = "Panasonic"
+        self.brand = "panasonic"
 
 
 def main():
@@ -422,7 +413,7 @@ def main():
     device.set_fan(opts.fan)
     device.set_swing(opts.swing)
     device.set_purifier(opts.nanoex)
-    device.set_clear(opts.odour)
+    device.set_cleaning(opts.odour)
     device.set_economy(opts.economy)
     device.set_mode(opts.mode)
 
@@ -439,7 +430,7 @@ def main():
         if opts.base64:
             print("{}".format(str(base64.b64encode(bframe), "ascii")))
         else:
-            print("{}".format(bframe))
+            print("{}".format(bframe.hex()))
     else:
         for f in frames:
             print(" ".join(["%02x" % x for x in f]))

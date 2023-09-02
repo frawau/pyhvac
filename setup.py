@@ -2,10 +2,10 @@
 
 from setuptools import setup, find_packages
 
-with open("pyhvac/version.py") as f:
+with open("pyhvac/__init__.py") as f:
     exec(f.read())
 
-ith open("README.md", "r") as fh:
+with open("README", "r") as fh:
     long_description = fh.read()
 
 setup(
@@ -17,9 +17,7 @@ setup(
     description="Python liberary/Utility to generate A/C IR signals",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    install_requires=[
-        "hashlib",
-    ],
+    install_requires=[],
     # See https://pypi.python.org/pypi?%3Aaction=list_classifiers
     classifiers=[
         # Pick your license as you wish (should match "license" above)
@@ -36,10 +34,10 @@ setup(
     entry_points={
         "console_scripts": [
             "gaccode = pyhvac.__main__:main",
-            "gcpanasonic = pyhvac.plugin.panasonic:main",
-            "gcdaikin = pyhvac.plugin.daikin:main",
-            "gclg = pyhvac.plugin.lg:main",
-            "gcsharp = pyhvac.plugin.sharp:main",
+            "gcpanasonic = pyhvac.plugins.panasonic:main",
+            "gcdaikin = pyhvac.plugins.daikin:main",
+            "gclg = pyhvac.plugins.lg:main",
+            "gcsharp = pyhvac.plugins.sharp:main",
         ],
     },
     packages=["pyhvac", "pyhvac.plugins"],

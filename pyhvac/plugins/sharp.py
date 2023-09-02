@@ -234,7 +234,7 @@ class Sharp(HVAC):
                     b6mode = mode
             else:
                 b5val = 0x31
-                b6mode = mode
+                b6mode = mode if mode != "off" else "cool"
         else:
             # Caller should not send option if off
             if option == "on":
@@ -309,7 +309,7 @@ class Sharp(HVAC):
         else:
             # We are off, so xtra_capabilities should also be off
             for x in self.xtra_capabilities:
-                selt.to_set[x] = "off"
+                self.to_set[x] = "off"
         idx = 0
         for x in frames:
             frames[idx] += self.crc(x)
@@ -483,7 +483,7 @@ class PluginObject(GenPluginObject):
     MODELS = {"generic": Sharp, "j-tech": JTech}
 
     def __init__(self):
-        self.brand = "Sharp"
+        self.brand = "sharp"
 
 
 def main():
@@ -623,7 +623,7 @@ def main():
         if opts.base64:
             print("{}".format(str(base64.b64encode(bframe), "ascii")))
         else:
-            print("{}".format(bframe))
+            print("{}".format(bframe.hex()))
     else:
         for f in frames:
             print(" ".join([hex(x) for x in f]))

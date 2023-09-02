@@ -473,7 +473,7 @@ class PluginObject(GenPluginObject):
     MODELS = {"generic": LG, "inverter v": InverterV, "dual inverter": DualInverter}
 
     def __init__(self):
-        self.brand = "LG"
+        self.brand = "lg"
 
 
 def main():
@@ -595,7 +595,7 @@ def main():
         if opts.base64:
             print("{}".format(str(base64.b64encode(bframe), "ascii")))
         else:
-            print("{}".format(bframe))
+            print("{}".format(bframe.hex()))
     else:
         for f in frames:
             print(" ".join([hex(x) for x in f]))

@@ -3,13 +3,14 @@
 import argparse
 import base64
 import importlib
+import sys
 from pathlib import Path
 
 
 def main():
 
     # Let's get the plugins
-    dir_path = Path(__file__) / "plugins"
+    dir_path = Path(__file__).parent / "plugins"
     plugs = {}
     for filename in dir_path.iterdir():
         if filename.name == "hvaclib.py":
@@ -22,7 +23,7 @@ def main():
     parser = argparse.ArgumentParser(description="Decode LIRC IR code into frames.")
     # version="%prog " + __version__ + "/" + bl.__version__)
     parser.add_argument(
-        "-M", "--manufacturer", type=str, default=None, help="Specify the"
+        "-c", "--manufacturer", type=str.lower, default=None, help="Specify the A/C brand."
     )
     parser.add_argument(
         "-M",
@@ -44,7 +45,7 @@ def main():
     parser.add_argument(
         "-m",
         "--mode",
-        choices=["cool", "dry", "fan", "off"],
+        choices=["auto", "cool", "dry", "fan", "off"],
         default="cool",
         help="Mode to set. (default 'cool').",
     )
@@ -76,7 +77,7 @@ def main():
         help="Particulate filter mode",
     )
     parser.add_argument(
-        "-o", "--clear", action="store_true", default=False, help="Odour filter mode"
+        "-o", "--clean", action="store_true", default=False, help="Odour filter mode"
     )
     parser.add_argument(
         "-l",
@@ -106,18 +107,26 @@ def main():
         parser.error("Error: " + str(e))
 
     if opts.list:
-        print(f"Available modelas are: {PluginObject().MODELS.keys()}")
+        lofm={}
+        for m in plugs:
+            lofm[m] = [x for x in plugs[m].MODELS.keys()]
+        print(f"Available models are: {lofm}")
+        sys.exit(0)
 
-    device = PluginObject().factory(opts.model)
+    if opts.manufacturer in plugs:
+        device = plugs[opts.manufacturer].factory(opts.model)
+    else:
+        print(f"Error: Manufacturer {opts.manufacturer} is not supported.")
+        sys.exit(2)
 
     frames = []
-    device.set_temperature(opts.temp)
-    device.set_fan(opts.fan)
-    device.set_swing(opts.swing)
-    device.set_powerfull((opts.powerfull and "on") or "off")
-    device.set_purifier((opts.filter and "on") or "off")
-    device.set_odourwash((opts.clear and "on") or "off")
-    device.set_economy(opts.economy)
+    device.set_value("set_temperature",opts.temp)
+    device.set_value("set_fan",opts.fan)
+    device.set_value("set_swing",opts.swing)
+    device.set_value("set_powerfull",(opts.powerfull and "on") or "off")
+    device.set_value("set_purifier",(opts.filter and "on") or "off")
+    device.set_value("set_cleaning",(opts.clean and "on") or "off")
+    device.set_value("set_economy",opts.economy)
     device.set_mode(opts.mode)
 
     frames = device.build_ircode()
@@ -133,7 +142,7 @@ def main():
         if opts.base64:
             print("{}".format(str(base64.b64encode(bframe), "ascii")))
         else:
-            print("{}".format(bframe))
+            print("{}".format(bframe.hex()))
     else:
         for f in frames:
             print(" ".join([hex(x) for x in f]))

@@ -267,7 +267,7 @@ class PluginObject(GenPluginObject):
     MODELS = {"generic": Daikin, "smash 2": Smash2}
 
     def __init__(self):
-        self.brand = "Daikin"
+        self.brand = "daikin"
 
 
 def main():
@@ -366,7 +366,7 @@ def main():
         if opts.base64:
             print("{}".format(str(base64.b64encode(bframe), "ascii")))
         else:
-            print("{}".format(bframe))
+            print("{}".format(bframe.hex()))
     else:
         for f in frames:
             print(" ".join([hex(x) for x in f]))

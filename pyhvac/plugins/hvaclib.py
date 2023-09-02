@@ -29,6 +29,8 @@
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
 ##
 
+import struct
+
 from hashlib import blake2b
 
 
@@ -94,6 +96,8 @@ class HVAC(object):
         # for f in frames:
         # print(["0x%02x"%x for x in f])
         return frames
+
+
 
     def to_lirc(self, frames):
         """Transform a list of frames into a LIRC compatible list of pulse timing pairs"""

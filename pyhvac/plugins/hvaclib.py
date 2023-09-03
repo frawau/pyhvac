@@ -59,10 +59,12 @@ class HVAC(object):
         self.temperature_step = 1.0
 
         self.to_set = {}
-        # Specify wether the bits order has to be swapped
+        # Specify whether the bits order has to be swapped
         self.is_msb = False
-        # Names of 'functions' used by this object
-        self.functions = []
+
+    @property
+    def all_capabilities(self):
+        return self.capabilities | self.xtra_capabilities
 
     def get_timing(self):
         return {
@@ -97,10 +99,8 @@ class HVAC(object):
         # print(["0x%02x"%x for x in f])
         return frames
 
-
-
     def to_lirc(self, frames):
-        """Transform a list of frames into a LIRC compatible list of pulse timing pairs"""
+        """Transform a list of frames into a LIRC compatible list of pulse timing pairs."""
         lircframe = []
         for frame in frames:
             lircframe += self.STARTFRAME
@@ -116,9 +116,10 @@ class HVAC(object):
             lircframe += self.ENDFRAME
         return lircframe
 
-    def to_broadlink(self, pulses):
+    def to_broadlink(self, frames):
+        """Transform a list of frames to a Broadlink compatible byte string."""
+        pulses = [int(x) for x in self.to_lirc(frames)]
         array = bytearray()
-
         for pulse in pulses:
             pulse = round(pulse * 269 / 8192)  # 32.84ms units
 
@@ -149,7 +150,10 @@ class GenPluginObject(object):
     def __init__(self):
         self.brand = "Unknown"
 
-    def factory(self, model):
+    def get_device(self, model):
         if model not in self.MODELS:
             return self.MODELS["generic"]()
         return self.MODELS[model]()
+
+    def all_models(self, dev):
+        return [k for k, v in self.MODELS.items() if type(dev) is v]

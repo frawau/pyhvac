@@ -31,6 +31,7 @@ import struct
 
 from .hvaclib import HVAC, GenPluginObject, bit_reverse
 
+
 class Daikin(HVAC):
     """Generic Daikin HVAC object. It must have, at the very minimum
     "mode" and "temperature" capabilities"""
@@ -337,7 +338,7 @@ def main():
     if opts.list:
         print(f"Available modelas are: {PluginObject().MODELS.keys()}")
 
-    device = PluginObject().factory(opts.model)
+    device = PluginObject().get_device(opts.model)
 
     frames = []
     device.set_temperature(opts.temp)
@@ -354,8 +355,7 @@ def main():
             print("\t".join(["%d" % x for x in lircf[:6]]))
             lircf = lircf[6:]
     elif opts.broadlink or opts.base64:
-        lircf = device.to_lirc(frames)
-        bframe = device.to_broadlink([int(x) for x in lircf])
+        bframe = device.to_broadlink(frames)
         if opts.base64:
             print("{}".format(str(base64.b64encode(bframe), "ascii")))
         else:

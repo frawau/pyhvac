@@ -23,7 +23,11 @@ def main():
     parser = argparse.ArgumentParser(description="Decode LIRC IR code into frames.")
     # version="%prog " + __version__ + "/" + bl.__version__)
     parser.add_argument(
-        "-c", "--manufacturer", type=str.lower, default=None, help="Specify the A/C brand."
+        "-c",
+        "--manufacturer",
+        type=str.lower,
+        default=None,
+        help="Specify the A/C brand.",
     )
     parser.add_argument(
         "-M",
@@ -107,26 +111,26 @@ def main():
         parser.error("Error: " + str(e))
 
     if opts.list:
-        lofm={}
+        lofm = {}
         for m in plugs:
             lofm[m] = [x for x in plugs[m].MODELS.keys()]
         print(f"Available models are: {lofm}")
         sys.exit(0)
 
     if opts.manufacturer in plugs:
-        device = plugs[opts.manufacturer].factory(opts.model)
+        device = plugs[opts.manufacturer].get_device(opts.model)
     else:
         print(f"Error: Manufacturer {opts.manufacturer} is not supported.")
         sys.exit(2)
 
     frames = []
-    device.set_value("set_temperature",opts.temp)
-    device.set_value("set_fan",opts.fan)
-    device.set_value("set_swing",opts.swing)
-    device.set_value("set_powerfull",(opts.powerfull and "on") or "off")
-    device.set_value("set_purifier",(opts.filter and "on") or "off")
-    device.set_value("set_cleaning",(opts.clean and "on") or "off")
-    device.set_value("set_economy",opts.economy)
+    device.set_value("set_temperature", opts.temp)
+    device.set_value("set_fan", opts.fan)
+    device.set_value("set_swing", opts.swing)
+    device.set_value("set_powerfull", (opts.powerfull and "on") or "off")
+    device.set_value("set_purifier", (opts.filter and "on") or "off")
+    device.set_value("set_cleaning", (opts.clean and "on") or "off")
+    device.set_value("set_economy", opts.economy)
     device.set_mode(opts.mode)
 
     frames = device.build_ircode()
@@ -137,8 +141,7 @@ def main():
             print("\t".join(["%d" % x for x in lircf[:6]]))
             lircf = lircf[6:]
     elif opts.broadlink or opts.base64:
-        lircf = device.to_lirc(frames)
-        bframe = device.to_broadlink([int(x) for x in lircf])
+        bframe = device.to_broadlink(frames)
         if opts.base64:
             print("{}".format(str(base64.b64encode(bframe), "ascii")))
         else:

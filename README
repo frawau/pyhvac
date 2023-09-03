@@ -38,7 +38,7 @@ Each plugin file must have a
 
        PluginObject
 
-class that must have a "factory" method to generate HVAC objects, a 'brand' attribute
+class that must have a "get_device" method to return HVAC objects, a 'brand' attribute
 and a 'models' attribute containing a dictionary matching models to objects. Note that brand and models MUST BE lowercased.
 
 Each HVAC object describes a specific way of generating codes for IR transmission.

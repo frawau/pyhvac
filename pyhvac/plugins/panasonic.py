@@ -62,7 +62,6 @@ class Panasonic(HVAC):
         # Specify wether the bits order has to be swapped
         self.is_msb = False
         self.base_temp = 16
-        self.functions = []
 
     def set_temperature(self, temp):
         if temp < self.capabilities["temperature"][0]:
@@ -407,7 +406,7 @@ def main():
     if opts.list:
         print(f"Available models are: {[x for x in PluginObject().MODELS.keys()]}")
 
-    device = PluginObject().factory(opts.model)
+    device = PluginObject().get_device(opts.model)
     frames = []
     device.set_temperature(opts.temp)
     device.set_fan(opts.fan)
@@ -425,8 +424,7 @@ def main():
             print("\t".join(["%d" % x for x in lircf[:6]]))
             lircf = lircf[6:]
     elif opts.broadlink or opts.base64:
-        lircf = device.to_lirc(frames)
-        bframe = device.to_broadlink([int(x) for x in lircf])
+        bframe = device.to_broadlink(frames)
         if opts.base64:
             print("{}".format(str(base64.b64encode(bframe), "ascii")))
         else:

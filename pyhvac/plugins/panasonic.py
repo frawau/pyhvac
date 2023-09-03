@@ -405,16 +405,16 @@ def main():
         parser.error("Error: " + str(e))
 
     if opts.list:
-        print(f"Available modelas are: {PluginObject().MODELS.keys()}")
+        print(f"Available models are: {[x for x in PluginObject().MODELS.keys()]}")
 
     device = PluginObject().factory(opts.model)
     frames = []
     device.set_temperature(opts.temp)
     device.set_fan(opts.fan)
     device.set_swing(opts.swing)
-    device.set_purifier(opts.nanoex)
-    device.set_cleaning(opts.odour)
-    device.set_economy(opts.economy)
+    device.set_purifier((opts.nanoex and "on") or "off")
+    device.set_cleaning((opts.odour and "on") or "off")
+    device.set_economy((opts.economy and "on") or "off")
     device.set_mode(opts.mode)
 
     frames = device.build_ircode()

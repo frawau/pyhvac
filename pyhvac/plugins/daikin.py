@@ -31,13 +31,6 @@ import struct
 
 from .hvaclib import HVAC, GenPluginObject, bit_reverse
 
-STARTFRAME = [3500, 1750]
-ENDFRAME = [435, 10000]
-MARK = 435
-SPACE0 = 435
-SPACE1 = 1300
-
-
 class Daikin(HVAC):
     """Generic Daikin HVAC object. It must have, at the very minimum
     "mode" and "temperature" capabilities"""

@@ -56,7 +56,7 @@ def main():
     parser.add_argument(
         "-f",
         "--fan",
-        choices=["auto", "highest", "high", "middle", "low", "lowest"],
+        choices=["auto", "highest", "high", "medium", "low", "lowest"],
         default="auto",
         help="Fan mode. (default 'auto').",
     )

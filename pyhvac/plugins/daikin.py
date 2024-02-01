@@ -80,7 +80,7 @@ class Daikin(HVAC):
         self.to_set["fan"] = mode
 
     def code_fan(self):
-        """mode is one of auto, lowest, low, middle, high, highest"""
+        """mode is one of auto, lowest, low, medium, high, highest"""
         if "fan" in self.to_set:
             mode = self.to_set["fan"]
         else:
@@ -88,7 +88,7 @@ class Daikin(HVAC):
                 mode = self.status["fan"]
             else:
                 mode = "auto"
-        rank = ["lowest", "low", "middle", "high", "highest"]
+        rank = ["lowest", "low", "medium", "high", "highest"]
         if mode not in rank:
             mode = "auto"  # Just in case
         mask = bytearray(b"\x00" * 18)
@@ -121,21 +121,21 @@ class Daikin(HVAC):
             mask[8] = 0x00
         return mask, False
 
-    def set_powerfull(self, mode="off"):
-        # print("\n\nDaikin set powerfull {}\n\n".format(mode))
-        if "powerfull" not in self.capabilities:
+    def set_powerful(self, mode="off"):
+        # print("\n\nDaikin set powerful {}\n\n".format(mode))
+        if "powerful" not in self.capabilities:
             return
-        if mode not in self.capabilities["powerfull"]:
+        if mode not in self.capabilities["powerful"]:
             return
-        self.to_set["powerfull"] = mode
+        self.to_set["powerful"] = mode
 
-    def code_powerfull(self):
+    def code_powerful(self):
 
-        if "powerfull" in self.to_set:
-            mode = self.to_set["powerfull"]
+        if "powerful" in self.to_set:
+            mode = self.to_set["powerful"]
         else:
-            if "powerfull" in self.capabilities:
-                mode = self.status["powerfull"]
+            if "powerful" in self.capabilities:
+                mode = self.status["powerful"]
             else:
                 mode = False
 
@@ -207,7 +207,7 @@ class Daikin(HVAC):
             self.code_temperature,
             self.code_fan,
             self.code_swing,
-            self.code_powerfull,
+            self.code_powerful,
             self.code_mode,
         ]:
             mask, replace = f()
@@ -244,16 +244,16 @@ class Smash2(Daikin):
         self.capabilities = {
             "mode": ["off", "cool", "fan", "dry"],
             "temperature": [x for x in range(18, 32)],
-            "fan": ["auto", "highest", "high", "middle", "low", "lowest"],
+            "fan": ["auto", "highest", "high", "medium", "low", "lowest"],
             "swing": ["off", "on"],
-            "powerfull": ["off", "on"],
+            "powerful": ["off", "on"],
         }
         self.status = {
             "mode": "off",
             "temperature": 25,
             "fan": "auto",
             "swing": "off",
-            "powerfull": "off",
+            "powerful": "off",
         }
 
 
@@ -298,7 +298,7 @@ def main():
     parser.add_argument(
         "-f",
         "--fan",
-        choices=["auto", "highest", "high", "middle", "low", "lowest"],
+        choices=["auto", "highest", "high", "medium", "low", "lowest"],
         default="auto",
         help="Fan mode. (default 'auto').",
     )
@@ -306,7 +306,7 @@ def main():
         "-s", "--swing", action="store_true", default=False, help="Set swing"
     )
     parser.add_argument(
-        "-p", "--powerfull", action="store_true", default=False, help="Set powerfull"
+        "-p", "--powerful", action="store_true", default=False, help="Set powerful"
     )
     parser.add_argument(
         "-l",
@@ -344,7 +344,7 @@ def main():
     device.set_temperature(opts.temp)
     device.set_fan(opts.fan)
     device.set_swing(opts.swing)
-    device.set_powerfull(opts.powerfull)
+    device.set_powerful(opts.powerful)
     device.set_mode(opts.mode)
 
     frames = device.build_ircode()

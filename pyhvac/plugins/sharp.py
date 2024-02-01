@@ -75,7 +75,10 @@ class Sharp(HVAC):
             elif self.status["mode"] != "cool":
                 temp = 17
             else:
-                temp = self.status["temperature"]
+                if "mode" in self.to_set and self.to_set["mode"] != "cool":
+                    temp = 17
+                else:
+                    temp = self.status["temperature"]
         else:
             temp = self.status["temperature"]
         mask = bytearray(b"\x00" * len(self.FBODY))
@@ -91,7 +94,7 @@ class Sharp(HVAC):
             self.to_set["fan"] = mode
 
     def code_fan(self):
-        """mode is one of auto, lowest, low, middle, high, highest"""
+        """mode is one of auto, lowest, low, medium, high, highest"""
         if "mode" in self.to_set and self.to_set["mode"] == "dry":
             mode = "auto"
             self.to_set["fan"] = mode
@@ -106,7 +109,7 @@ class Sharp(HVAC):
                     mode = self.status["fan"]
                 else:
                     mode = None
-        rank = ["auto", "low", "lowest", "middle", "high", "highest"]
+        rank = ["auto", "low", "lowest", "medium", "high", "highest"]
         mask = bytearray(b"\x00" * len(self.FBODY))
         if mode:
             fval = (rank.index(mode) + 2) << 4
@@ -130,7 +133,7 @@ class Sharp(HVAC):
             else:
                 mode = False
 
-        rank = ["auto", "ceiling", "90", "60", "45", "30" "swing"]
+        rank = ["auto", "ceiling", "90°", "60°", "45°", "30°" "swing"]
         if mode not in rank:
             mode = "auto"  # Just in case
         mask = bytearray(b"\x00" * len(self.FBODY))
@@ -138,25 +141,25 @@ class Sharp(HVAC):
         mask[8] = fval
         return mask, False
 
-    def set_powerfull(self, mode="off"):
-        # print("\n\nSharp set powerfull {}\n\n".format(mode))
-        if "powerfull" not in self.status:
+    def set_powerful(self, mode="off"):
+        # print("\n\nSharp set powerful {}\n\n".format(mode))
+        if "powerful" not in self.status:
             return
 
-        if "powerfull" in self.capabilities:
+        if "powerful" in self.capabilities:
             checkwith = self.capabilities
-        elif "powerfull" in self.xtra_capabilities:
+        elif "powerful" in self.xtra_capabilities:
             checkwith = self.xtra_capabilities
-        # print("Setting powerfull as {} from {}".format(mode,checkwith))
-        if mode not in checkwith["powerfull"]:
+        # print("Setting powerful as {} from {}".format(mode,checkwith))
+        if mode not in checkwith["powerful"]:
             return
-        if self.status["powerfull"] != mode:
-            self.to_set["powerfull"] = mode
+        if self.status["powerful"] != mode:
+            self.to_set["powerful"] = mode
 
-    def code_powerfull(self, toggle=False):
+    def code_powerful(self, toggle=False):
         b10code = 0x00
         if toggle:
-            if "powerfull" in self.to_set:
+            if "powerful" in self.to_set:
                 b10code = 0x01
 
         mask = bytearray(b"\x00" * len(self.FBODY))
@@ -344,8 +347,8 @@ class JTech(Sharp):
         self.capabilities = {
             "mode": ["off", "auto", "cool", "dry"],
             "temperature": [x for x in range(14, 30)],
-            "fan": ["auto", "highest", "middle", "low", "lowest"],
-            "swing": ["auto", "ceiling", "90", "60", "45", "30", "swing"],
+            "fan": ["auto", "highest", "medium", "low", "lowest"],
+            "swing": ["auto", "ceiling", "90°", "60°", "45°", "30°", "swing"],
             "hswing": ["left", "middle", "right", "swing"],
             "target": [
                 "off",
@@ -358,7 +361,7 @@ class JTech(Sharp):
             ],
             "purifier": ["off", "on"],
         }
-        self.xtra_capabilities = {"powerfull": ["off", "on"], "economy": ["off", "on"]}
+        self.xtra_capabilities = {"powerful": ["off", "on"], "economy": ["off", "on"]}
         self.status = {
             "mode": "off",
             "temperature": 25,
@@ -368,7 +371,7 @@ class JTech(Sharp):
             "target": "off",
             "purifier": "off",
             "economy": "off",
-            "powerfull": "off",
+            "powerful": "off",
         }
         self.temperature_step = 0.5
 
@@ -403,7 +406,7 @@ class JTech(Sharp):
             b8val = (["", "middle", "left", "right"] + 11 * [""] + ["swing"]).index(
                 hsmode
             ) << 4
-            b8val += 8 + ["auto", "ceiling", "90", "60", "45", "30", "swing"].index(
+            b8val += 8 + ["auto", "ceiling", "90°", "60°", "45°", "30°", "swing"].index(
                 smode
             )
             b9val = 0x0
@@ -520,7 +523,7 @@ def main():
     parser.add_argument(
         "-f",
         "--fan",
-        choices=["auto", "highest", "high", "middle", "low", "lowest"],
+        choices=["auto", "highest", "high", "medium", "low", "lowest"],
         default="auto",
         help="Fan mode. (default 'auto').",
     )
@@ -529,7 +532,7 @@ def main():
     swinggroup.add_argument(
         "-s",
         "--swing",
-        choices=["auto", "ceiling", "90", "60", "45", "30", "swing"],
+        choices=["auto", "ceiling", "90°", "60°", "45°", "30°", "swing"],
         default="auto",
         help="Set swing",
     )
@@ -556,7 +559,7 @@ def main():
         help="Set spot",
     )
     parser.add_argument(
-        "-p", "--powerfull", action="store_true", default=False, help="Set super jet"
+        "-p", "--powerful", action="store_true", default=False, help="Set super jet"
     )
     parser.add_argument(
         "-P",
@@ -606,7 +609,7 @@ def main():
     device.set_hswing(opts.hswing)
     device.set_target(opts.spot)
     device.set_purifier((opts.plasma and "on") or "off")
-    device.set_powerfull((opts.powerfull and "on") or "off")
+    device.set_powerful((opts.powerful and "on") or "off")
     device.set_economy((opts.economy and "on") or "off")
     device.set_mode(opts.mode)
 

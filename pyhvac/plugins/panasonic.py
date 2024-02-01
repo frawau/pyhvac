@@ -165,13 +165,13 @@ class Panasonic(HVAC):
             return b"\x70"
         elif mode == "auto low":
             return b"\xb0"
-        elif mode == "90":
+        elif mode == "90°":
             return b"\x80"
-        elif mode == "60":
+        elif mode == "60°":
             return b"\x40"
-        elif mode == "45":
+        elif mode == "45°":
             return b"\xc0"
-        elif mode == "30":
+        elif mode == "30°":
             return b"\x20"
         elif mode == "15":
             return b"\xa0"
@@ -300,7 +300,7 @@ class PanaCassette(Panasonic):
             "mode": ["off", "auto", "cool", "fan", "dry"],
             "temperature": [x for x in range(16, 32)],
             "fan": ["auto", "highest", "medium", "lowest"],
-            "swing": ["auto", "auto high", "auto low", "90", "60", "45", "30"],
+            "swing": ["auto", "auto high", "auto low", "90°", "60°", "45°", "30°"],
             "purifier": ["off", "on"],
         }
         # For functions that require their own frames
@@ -356,14 +356,14 @@ def main():
     parser.add_argument(
         "-f",
         "--fan",
-        choices=["auto", "high", "middle", "low"],
+        choices=["auto", "high", "medium", "low"],
         default="auto",
-        help="Fan, one of 'auto', 'high', 'middle' or 'low'. (default 'auto').",
+        help="Fan, one of 'auto', 'high', 'medium' or 'low'. (default 'auto').",
     )
     parser.add_argument(
         "-s",
         "--swing",
-        choices=["auto", "auto high", "auto low", "90", "60", "45", "30"],
+        choices=["auto", "auto high", "auto low", "90°", "60°", "45°", "30°"],
         default="auto",
         help="Swing, one of 'auto','auto high','auto low', '90', '60', '45', '30'. (default 'auto').",
     )

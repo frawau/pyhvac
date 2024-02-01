@@ -117,7 +117,7 @@ class LG(HVAC):
             self.to_set["fan"] = mode
 
     def code_fan(self):
-        """mode is one of auto, lowest, low, middle, high, highest"""
+        """mode is one of auto, lowest, low, medium, high, highest"""
         if "fan" in self.to_set:
             fmode = self.to_set["fan"]
         else:
@@ -128,7 +128,7 @@ class LG(HVAC):
         rank = {
             "lowest": 0x0,
             "low": 0x09,
-            "middle": 0x02,
+            "medium": 0x02,
             "high": 0x0A,
             "highest": 0x04,
             "auto": 0x05,
@@ -163,17 +163,17 @@ class LG(HVAC):
                 return bytearray(b"\x88\x13\x14")
             elif mode == "off":
                 return bytearray(b"\x88\x13\x15")
-            elif mode == "0":
+            elif mode == "0°":
                 return bytearray(b"\x88\x13\x04")
-            elif mode == "15":
+            elif mode == "15°":
                 return bytearray(b"\x88\x13\x05")
-            elif mode == "30":
+            elif mode == "30°":
                 return bytearray(b"\x88\x13\x06")
-            elif mode == "45":
+            elif mode == "45°":
                 return bytearray(b"\x88\x13\x07")
-            elif mode == "60":
+            elif mode == "60°":
                 return bytearray(b"\x88\x13\x08")
-            elif mode == "90":
+            elif mode == "90°":
                 return bytearray(b"\x88\x13\x09")
 
         return bytearray()
@@ -210,19 +210,19 @@ class LG(HVAC):
                 return bytearray(b"\x88\x13\x11")
         return bytearray()
 
-    def set_powerfull(self, mode="off"):
-        # print("\n\nLG set powerfull {}\n\n".format(mode))
-        if "powerfull" not in self.xtra_capabilities:
+    def set_powerful(self, mode="off"):
+        # print("\n\nLG set powerful {}\n\n".format(mode))
+        if "powerful" not in self.xtra_capabilities:
             return
-        if mode not in self.xtra_capabilities["powerfull"]:
+        if mode not in self.xtra_capabilities["powerful"]:
             return
-        if self.status["powerfull"] != mode:
-            self.to_set["powerfull"] = mode
+        if self.status["powerful"] != mode:
+            self.to_set["powerful"] = mode
 
-    def code_powerfull(self):
+    def code_powerful(self):
 
-        if "powerfull" in self.to_set:
-            mode = self.to_set["powerfull"]
+        if "powerful" in self.to_set:
+            mode = self.to_set["powerful"]
             if mode == "on":
                 return bytearray(b"\x88\x10\x08")
             # Off... send the "normal" code
@@ -405,11 +405,11 @@ class InverterV(LG):
             "mode": ["off", "auto", "cool", "fan", "dry"],
             "temperature": [x for x in range(16, 30)],
             "auto_bias": ["-2", "-1", "default", "+1", "+2"],
-            "fan": ["auto", "highest", "high", "middle", "low", "lowest"],
+            "fan": ["auto", "highest", "high", "medium", "low", "lowest"],
         }
         self.xtra_capabilities = {
-            "swing": ["off", "swing", "90", "0"],
-            "powerfull": ["off", "on"],
+            "swing": ["off", "swing", "90°", "0°"],
+            "powerful": ["off", "on"],
             "cleaning": ["off", "on"],
             "economy": ["off", "80", "60", "40"],
         }
@@ -419,7 +419,7 @@ class InverterV(LG):
             "fan": "auto",
             "swing": "off",
             "auto_bias": "default",
-            "powerfull": "off",
+            "powerful": "off",
             "cleaning": "off",
             "economy": "off",
         }
@@ -433,10 +433,10 @@ class DualInverter(LG):
             "mode": ["off", "auto", "cool", "fan", "dry"],
             "temperature": [x for x in range(16, 30)],
             "auto_bias": ["-2", "-1", "default", "+1", "+2"],
-            "fan": ["auto", "highest", "high", "middle", "low", "lowest"],
+            "fan": ["auto", "highest", "high", "medium", "low", "lowest"],
         }
         self.xtra_capabilities = {
-            "swing": ["off", "swing", "90", "60", "45", "30", "15", "0"],
+            "swing": ["off", "swing", "90°", "60°", "45°", "30°", "15°", "0°"],
             "hswing": [
                 "off",
                 "swing",
@@ -448,7 +448,7 @@ class DualInverter(LG):
                 "swing left",
                 "swing right",
             ],
-            "powerfull": ["off", "on"],
+            "powerful": ["off", "on"],
             "purifier": ["off", "on"],
             "cleaning": ["off", "on"],
             "economy": ["off", "80", "60", "40"],
@@ -460,7 +460,7 @@ class DualInverter(LG):
             "fan": "auto",
             "swing": "off",
             "auto_bias": "default",
-            "powerfull": "off",
+            "powerful": "off",
             "purifier": "off",
             "cleaning": "off",
             "economy": "off",
@@ -510,14 +510,14 @@ def main():
     parser.add_argument(
         "-f",
         "--fan",
-        choices=["auto", "highest", "high", "middle", "low", "lowest"],
+        choices=["auto", "highest", "high", "medium", "low", "lowest"],
         default="auto",
         help="Fan mode. (default 'auto').",
     )
     parser.add_argument(
         "-s",
         "--swing",
-        choices=["off", "swing", "90", "0"],
+        choices=["off", "swing", "90°", "0°"],
         default="off",
         help="Swing mode. (default 'off').",
     )
@@ -539,7 +539,7 @@ def main():
         "-P", "--purifier", action="store_true", default=False, help="Set plasma"
     )
     parser.add_argument(
-        "-p", "--powerfull", action="store_true", default=False, help="Set powerfull"
+        "-p", "--powerful", action="store_true", default=False, help="Set powerful"
     )
     parser.add_argument(
         "-l",
@@ -576,7 +576,7 @@ def main():
     device.set_temperature(opts.temp)
     device.set_fan(opts.fan)
     device.set_swing(opts.swing)
-    device.set_powerfull((opts.powerfull and "on") or "off")
+    device.set_powerful((opts.powerful and "on") or "off")
     device.set_auto_bias(opts.bias)
     device.set_economy(opts.economy)
     device.set_purifier((opts.purifier and "on") or "off")

@@ -41,4 +41,5 @@ setup(
         ],
     },
     packages=["pyhvac", "pyhvac.plugins"],
+    package_data={"pyhvac": ["_irhvac.so"]},
 )

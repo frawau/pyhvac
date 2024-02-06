@@ -28,7 +28,7 @@
 
 import struct
 
-from .hvaclib import HVAC, GenPluginObject
+from .hvaclib import HVAC, PulseBased, GenPluginObject
 
 
 class LG(HVAC):
@@ -468,9 +468,120 @@ class DualInverter(LG):
         }
 
 
+class LGv1(PulseBased):
+
+    STARTFRAME = [8500, 4250]
+    ENDFRAME = [400, 39750]
+    MARK = [400]  # MARK0 is MARK[0], MARK1 is MARK[-1]
+    SPACE = [430, 1260]  # ditto
+
+    def __init__(self):
+        super().__init__("LG", variant=irhvac.GE6711AR2853M)
+        self.capabilities = {
+            "mode": ["off", "auto", "cool", "fan", "dry", "heat"],
+            "temperature": [16, 25],
+            "fan": ["auto", "high", "medium", "low", "lowest"],
+            "swing": ["off", "auto", "90°", "60°", "45°", "30°", "0°"],
+            "hswing": ["off", "on"],
+            "light": ["off", "on"],
+        }
+
+
+class LGv2(PulseBased):
+
+    STARTFRAME = [8500, 4250]
+    ENDFRAME = [400, 39750]
+    MARK = [400]  # MARK0 is MARK[0], MARK1 is MARK[-1]
+    SPACE = [430, 1260]  # ditto
+
+    def __init__(self):
+        super().__init__("LG", variant=irhvac.LG6711A20083V)
+        self.capabilities = {
+            "mode": ["off", "auto", "cool", "fan", "dry", "heat"],
+            "temperature": [16, 25],
+            "fan": ["auto", "high", "medium", "low", "lowest"],
+            "swing": ["off", "on"],
+            "hswing": ["off", "on"],
+            "light": ["off", "on"],
+        }
+
+
+class LG2v1(PulseBased):
+
+    STARTFRAME = [3200, 9900]
+    ENDFRAME = [400, 39750]
+    MARK = [480]  # MARK0 is MARK[0], MARK1 is MARK[-1]
+    SPACE = [430, 1260]  # ditto
+
+    def __init__(self):
+        super().__init__("LG2", variant=irhvac.AKB75215403)
+        self.capabilities = {
+            "mode": ["off", "auto", "cool", "fan", "dry", "heat"],
+            "temperature": [16, 25],
+            "fan": ["auto", "highest", "high", "medium", "low", "lowest"],
+            "swing": ["off", "auto", "90°", "60°", "45°", "30°", "0°"],
+            "hswing": ["off", "on"],
+            "light": ["off", "on"],
+        }
+
+
+class LG2v2(PulseBased):
+
+    STARTFRAME = [3200, 9900]
+    ENDFRAME = [400, 39750]
+    MARK = [480]  # MARK0 is MARK[0], MARK1 is MARK[-1]
+    SPACE = [430, 1260]  # ditto
+
+    def __init__(self):
+        super().__init__("LG2", variant=irhvac.AKB74955603)
+        self.capabilities = {
+            "mode": ["off", "auto", "cool", "fan", "dry", "heat"],
+            "temperature": [16, 25],
+            "fan": ["auto", "high", "medium", "low", "lowest"],
+            "swing": ["off", "auto", "90°", "60°", "45°", "30°", "0°"],
+            "hswing": ["off", "on"],
+            "light": ["off", "on"],
+        }
+
+
+class LG2v3(PulseBased):
+
+    STARTFRAME = [3200, 9900]
+    ENDFRAME = [400, 39750]
+    MARK = [480]  # MARK0 is MARK[0], MARK1 is MARK[-1]
+    SPACE = [430, 1260]  # ditto
+
+    def __init__(self):
+        super().__init__("LG2", variant=irhvac.AKB73757604)
+        self.capabilities = {
+            "mode": ["off", "auto", "cool", "fan", "dry", "heat"],
+            "temperature": [16, 25],
+            "fan": ["auto", "high", "medium", "low", "lowest"],
+            "swing": ["off", "auto", "90°", "60°", "45°", "30°", "0°"],
+            "hswing": ["off", "on"],
+            "light": ["off", "on"],
+        }
+
+
 class PluginObject(GenPluginObject):
 
-    MODELS = {"generic": LG, "inverter v": InverterV, "dual inverter": DualInverter}
+    MODELS = {
+        "generic": LG,
+        "inverter v": InverterV,
+        "dual inverter": DualInverter,
+        "6711A20083V  remote": LGv2,
+        "TS-H122ERM1  remote": LGv2,
+        "AKB74395308  remote": LG2v1,
+        "S4-W12JA3AA": LG2v1,
+        "AKB75215403  remote": LG2v1,
+        "AKB74955603  remote": LG2v2,
+        "A4UW30GFA2": LG2v2,
+        "AMNW09GSJA0": LG2v2,
+        "AMNW24GTPA1": LG2v3,
+        "AKB73757604  remote": LG2v3,
+        "AKB73315611  remote": LG2v2,
+        "MS05SQ NW0": LG2v2,
+    }
 
     def __init__(self):
         self.brand = "lg"

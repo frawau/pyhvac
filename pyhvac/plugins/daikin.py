@@ -29,10 +29,10 @@
 
 import struct
 
-from .hvaclib import HVAC, GenPluginObject, bit_reverse
+from .hvaclib import HVAC, PulseBased, GenPluginObject, bit_reverse
 
 
-class Daikin(HVAC):
+class Daikinth(HVAC):
     """Generic Daikin HVAC object. It must have, at the very minimum
     "mode" and "temperature" capabilities"""
 
@@ -237,7 +237,7 @@ class Daikin(HVAC):
         return bit_reverse(crc & 0xFF).to_bytes(1, "big")
 
 
-class Smash2(Daikin):
+class Smash2(Daikinth):
     def __init__(self):
         super().__init__()
         self.model = "Smash 2"
@@ -257,8 +257,205 @@ class Smash2(Daikin):
         }
 
 
+class Daikin(PulseBased):
+    STARTFRAME = [3650, 1623]
+    ENDFRAME = None
+    MARK = [428]  # MARK0 is MARK[0], MARK1 is MARK[-1]
+    SPACE = [428, 1280]  # ditto
+
+    def __init__(self):
+        super().__init__("DAIKIN")
+        self.capabilities = {
+            "mode": ["off", "auto", "dry", "cool", "heat", "fan"],
+            "temperature": [10, 32],
+            "fan": ["auto", "high", "medium", "low"],
+            "swing": ["off", "on"],
+            "hswing": ["off", "on"],
+            "economy": ["off", "on"],
+            "powerful": ["off", "on"],
+            "quiet": ["off", "on"],
+            "cleaning": ["off", "on"],
+        }
+        self.temperature_step = 0.5
+
+
+class Daikin2(PulseBased):
+    LEAD = [10024, 25180]
+    STARTFRAME = [3500, 1728]
+    ENDFRAME = None
+    MARK = [460]  # MARK0 is MARK[0], MARK1 is MARK[-1]
+    SPACE = [420, 1270]  # ditto
+
+    def __init__(self):
+        super().__init__("DAIKIN2")
+        self.capabilities = {
+            "mode": ["off", "auto", "dry", "cool", "heat", "fan"],
+            "temperature": [10, 32],
+            "fan": ["auto", "high", "medium", "low"],
+            "swing": ["off", "auto", "ceiling", "90°", "60°", "45°", "30°", "0°"],
+            "hswing": [
+                "off",
+                "far left",
+                "close left",
+                "middle",
+                "close right",
+                "far right",
+                "wide",
+            ],
+            "economy": ["off", "on"],
+            "economy": ["off", "on"],
+            "powerful": ["off", "on"],
+            "quiet": ["off", "on"],
+            "cleaning": ["off", "on"],
+            "purifier": ["off", "on"],
+        }
+
+
+class Daikin216(PulseBased):
+    STARTFRAME = [3440, 1750]
+    ENDFRAME = None
+    MARK = [420]  # MARK0 is MARK[0], MARK1 is MARK[-1]
+    SPACE = [450, 1300]  # ditto
+
+    def __init__(self):
+        super().__init__("DAIKIN216")
+        self.capabilities = {
+            "mode": ["off", "auto", "dry", "cool", "heat", "fan"],
+            "temperature": [10, 32],
+            "fan": ["auto", "high", "medium", "low"],
+            "swing": ["off", "on"],
+            "hswing": ["off", "on"],
+            "powerful": ["off", "on"],
+            "quiet": ["off", "on"],
+        }
+
+
+class Daikin160(PulseBased):
+    STARTFRAME = [5000, 2145]
+    ENDFRAME = None
+    MARK = [342]  # MARK0 is MARK[0], MARK1 is MARK[-1]
+    SPACE = [700, 1786]  # ditto
+
+    def __init__(self):
+        super().__init__("DAIKIN160")
+        self.capabilities = {
+            "mode": ["off", "auto", "dry", "cool", "heat", "fan"],
+            "temperature": [10, 32],
+            "fan": ["auto", "high", "medium", "low"],
+            "swing": ["off", "auto", "90°", "60°", "45°", "30°", "0°"],
+        }
+
+
+class Daikin176(PulseBased):
+    STARTFRAME = [5070, 2140]
+    ENDFRAME = None
+    MARK = [370]  # MARK0 is MARK[0], MARK1 is MARK[-1]
+    SPACE = [710, 1780]  # ditto
+
+    def __init__(self):
+        super().__init__("DAIKIN176")
+        self.capabilities = {
+            "mode": ["off", "auto", "dry", "cool", "heat", "fan"],
+            "temperature": [10, 32],
+            "fan": ["high", "low"],
+            "hswing": ["off", "on"],
+        }
+
+
+class Daikin128(PulseBased):
+    LEAD = [9800, 9800]
+    STARTFRAME = [4600, 2500]
+    ENDFRAME = [4600, 20300]
+    MARK = [350]  # MARK0 is MARK[0], MARK1 is MARK[-1]
+    SPACE = [382, 954]  # ditto
+
+    def __init__(self):
+        super().__init__("DAIKIN128")
+        self.capabilities = {
+            "mode": ["off", "auto", "dry", "cool", "heat", "fan"],
+            "temperature": [16, 30],
+            "fan": ["auto", "highest", "high", "medium", "low", "lowest"],
+            "swing": ["off", "on"],
+            "economy": ["off", "on"],
+        }
+
+
+class Daikin152(PulseBased):
+    STARTFRAME = [3492, 1718]
+    ENDFRAME = None
+    MARK = [433]  # MARK0 is MARK[0], MARK1 is MARK[-1]
+    SPACE = [433, 1529]  # ditto
+
+    def __init__(self):
+        super().__init__("DAIKIN152")
+        self.capabilities = {
+            "mode": ["off", "auto", "dry", "cool", "heat", "fan"],
+            "temperature": [10, 32],
+            "fan": ["auto", "high", "medium", "low"],
+            "swing": ["off", "on"],
+            "economy": ["off", "on"],
+            "powerful": ["off", "on"],
+            "quiet": ["off", "on"],
+        }
+
+
+class Daikin64(PulseBased):
+    STARTFRAME = [4920, 2230]
+    ENDFRAME = None
+    MARK = [298]  # MARK0 is MARK[0], MARK1 is MARK[-1]
+    SPACE = [780, 1850]  # ditto
+
+    def __init__(self):
+        super().__init__("DAIKIN64")
+        self.capabilities = {
+            "mode": ["off", "dry", "cool", "heat", "fan"],
+            "temperature": [16, 30],
+            "fan": ["auto", "highest", "high", "medium", "low", "lowest"],
+            "swing": ["off", "on"],
+        }
+
+
 class PluginObject(GenPluginObject):
-    MODELS = {"generic": Daikin, "smash 2": Smash2}
+    MODELS = {
+        "generic": Daikinth,
+        "smash 2": Smash2,  # Daikin
+        "ARC433 remote": Daikin,
+        "ARC477A1 remote": Daikin2,
+        "FTXZ25NV1B": Daikin2,
+        "FTXZ35NV1B": Daikin2,
+        "FTXZ50NV1B": Daikin2,
+        "ARC433B69 remote": Daikin216,
+        "ARC423A5 remote": Daikin160,
+        "FTE12HV2S": Daikin160,
+        "BRC4C153 remote": Daikin176,
+        "FFQ35B8V1B": Daikin176,
+        "BRC4C151 remote": Daikin176,
+        "17 Series FTXB09AXVJU": Daikin128,
+        "17 Series FTXB12AXVJU": Daikin128,
+        "17 Series FTXB24AXVJU": Daikin128,
+        "BRC52B63 remote": Daikin128,
+        "ARC480A5 remote": Daikin152,
+        "FFN-C/FCN-F Series": Daikin64,
+        "DGS01 remote": Daikin64,
+        "M Series": Daikin,
+        "FTXM-M": Daikin,
+        "ARC466A12 remote": Daikin,
+        "ARC466A33 remote": Daikin,
+        "FTWX35AXV1": Daikin64,
+        "ARC484A4 remote": Daikin216,
+        "FTQ60TV16U2": Daikin216,
+        # "BRC4M150W16 remote": Daikin200,
+        # "FTXM20R5V1B": Daikin312,
+        # "ARC466A67 remote": Daikin312,
+        "Daikin": Daikin,
+        "Daikin2": Daikin2,
+        "Daikin64": Daikin64,
+        "Daikin128": Daikin128,
+        "Daikin152": Daikin152,
+        "Daikin160": Daikin160,
+        "Daikin176": Daikin176,
+        "Daikin216": Daikin216,
+    }
 
     def __init__(self):
         self.brand = "daikin"

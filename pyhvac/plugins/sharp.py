@@ -28,7 +28,8 @@
 
 import struct
 
-from .hvaclib import HVAC, GenPluginObject
+from .hvaclib import HVAC, PulseBased, GenPluginObject
+from .kelvinator import Kelvinator
 
 
 class Sharp(HVAC):
@@ -482,8 +483,87 @@ class JTech(Sharp):
         return mask, True
 
 
+class SharpA907(PulseBased):
+
+    STARTFRAME = [3800, 1900]
+    MARK = [470]  # MARK0 is MARK[0], MARK1 is MARK[-1]
+    SPACE = [500, 1500]  # ditto
+
+    def __init__(self):
+        super().__init__("SHARP_AC", variant=irhvac.A907)
+        self.capabilities = {
+            "mode": ["off", "auto", "cool", "dry", "heat"],
+            "temperature": [15, 30],
+            "fan": ["auto", "high", "medium", "low"],
+            "swing": ["off", "90°", "45°", "30°"],
+            "cleaning": ["off", "on"],
+            "powerful": ["off", "on"],
+            "economy": ["off", "on"],
+            "purifier": ["off", "on"],
+        }
+
+
+class SharpA903(PulseBased):
+
+    STARTFRAME = [3800, 1900]
+    MARK = [470]  # MARK0 is MARK[0], MARK1 is MARK[-1]
+    SPACE = [500, 1500]  # ditto
+
+    def __init__(self):
+        super().__init__("SHARP_AC", variant=irhvac.A903)
+        self.capabilities = {
+            "mode": ["off", "auto", "cool", "dry", "fan"],
+            "temperature": [15, 30],
+            "fan": ["auto", "high", "medium", "low"],
+            "swing": ["off", "90°", "45°", "30°"],
+            "cleaning": ["off", "on"],
+            "powerful": ["off", "on"],
+            "light": ["off", "on"],
+            "purifier": ["off", "on"],
+        }
+
+
+class SharpA705(PulseBased):
+
+    STARTFRAME = [3800, 1900]
+    MARK = [470]  # MARK0 is MARK[0], MARK1 is MARK[-1]
+    SPACE = [500, 1500]  # ditto
+
+    def __init__(self):
+        super().__init__("SHARP_AC", variant=irhvac.A705)
+        self.capabilities = {
+            "mode": ["off", "cool", "dry", "fan"],
+            "temperature": [15, 30],
+            "fan": ["auto", "high", "medium", "low"],
+            "swing": ["off", "90°", "45°", "30°"],
+            "cleaning": ["off", "on"],
+            "powerful": ["off", "on"],
+            "light": ["off", "on"],
+            "purifier": ["off", "on"],
+        }
+
+
 class PluginObject(GenPluginObject):
-    MODELS = {"generic": Sharp, "j-tech": JTech}
+    MODELS = {
+        "generic": Sharp,
+        "j-tech": JTech,
+        "YB1FA remote": Kelvinator,
+        "A5VEY": Kelvinator,
+        "Sharp AY-ZP40KR": SharpA907,
+        "AH-AxSAY": SharpA907,
+        "CRMC-A907 JBEZ remote": SharpA907,
+        "CRMC-A950 JBEZ": SharpA907,
+        "AH-PR13-GL": SharpA903,
+        "CRMC-A903JBEZ remote": SharpA903,
+        "AH-XP10NRY": SharpA903,
+        "CRMC-820 JBEZ remote": SharpA903,
+        "CRMC-A705 JBEZ remote": SharpA705,
+        "AH-A12REVP-1": SharpA903,
+        "CRMC-A863 JBEZ remote": SharpA903,
+        "generic A907": SharpA907,
+        "generic A903": SharpA903,
+        "generic A705": SharpA705,
+    }
 
     def __init__(self):
         self.brand = "sharp"

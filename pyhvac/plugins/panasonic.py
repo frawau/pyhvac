@@ -31,7 +31,7 @@
 
 import struct
 
-from .hvaclib import HVAC, GenPluginObject, bit_reverse
+from .hvaclib import HVAC, PulseBased, GenPluginObject, bit_reverse
 
 
 class Panasonic(HVAC):
@@ -316,8 +316,172 @@ class PanaCassette(Panasonic):
         }
 
 
+class PanasonicLke(PulseBased):
+
+    STARTFRAME = [3456, 1728]
+    ENDFRAME = None
+    MARK = [432]  # MARK0 is MARK[0], MARK1 is MARK[-1]
+    SPACE = [432, 1296]  # ditto
+
+    def __init__(self):
+        super().__init__("PANASONIC_AC", variant=irhvac.kPanasonicLke)
+        self.capabilities = {
+            "mode": ["off", "auto", "cool", "dry", "heat", "fan"],
+            "temperature": [16, 30],
+            "fan": ["auto", "highest", "high", "medium", "low", "lowest"],
+            "swing": ["auto", "90°", "60°", "45°", "30°", "0°"],
+            "hswing": ["off", "on"],
+            "quiet": ["off", "on"],
+            "powerful": ["off", "on"],
+        }
+
+
+class PanasonicNke(PulseBased):
+
+    STARTFRAME = [3456, 1728]
+    ENDFRAME = None
+    MARK = [432]  # MARK0 is MARK[0], MARK1 is MARK[-1]
+    SPACE = [432, 1296]  # ditto
+
+    def __init__(self):
+        super().__init__("PANASONIC_AC", variant=irhvac.kPanasonicNke)
+        self.capabilities = {
+            "mode": ["off", "auto", "cool", "dry", "heat", "fan"],
+            "temperature": [16, 30],
+            "fan": ["auto", "highest", "high", "medium", "low", "lowest"],
+            "swing": ["auto", "90°", "60°", "45°", "30°", "0°"],
+            "hswing": ["off", "on"],
+            "quiet": ["off", "on"],
+            "powerful": ["off", "on"],
+        }
+
+
+class PanasonicDke(PulseBased):
+
+    STARTFRAME = [3456, 1728]
+    ENDFRAME = None
+    MARK = [432]  # MARK0 is MARK[0], MARK1 is MARK[-1]
+    SPACE = [432, 1296]  # ditto
+
+    def __init__(self):
+        super().__init__("PANASONIC_AC", variant=irhvac.kPanasonicDke)
+        self.capabilities = {
+            "mode": ["off", "auto", "cool", "dry", "heat", "fan"],
+            "temperature": [16, 30],
+            "fan": ["auto", "highest", "high", "medium", "low", "lowest"],
+            "swing": ["auto", "90°", "60°", "45°", "30°", "0°"],
+            "hswing": ["auto", "far right", "right", "middle", "left", "far left"],
+            "quiet": ["off", "on"],
+            "powerful": ["off", "on"],
+            "purifier": ["off", "on"],
+        }
+
+
+class PanasonicJke(PulseBased):
+
+    STARTFRAME = [3456, 1728]
+    ENDFRAME = None
+    MARK = [432]  # MARK0 is MARK[0], MARK1 is MARK[-1]
+    SPACE = [432, 1296]  # ditto
+
+    def __init__(self):
+        super().__init__("PANASONIC_AC", variant=irhvac.kPanasonicJke)
+        self.capabilities = {
+            "mode": ["off", "auto", "cool", "dry", "heat", "fan"],
+            "temperature": [16, 30],
+            "fan": ["auto", "highest", "high", "medium", "low", "lowest"],
+            "swing": ["auto", "90°", "60°", "45°", "30°", "0°"],
+            "quiet": ["off", "on"],
+            "powerful": ["off", "on"],
+        }
+
+
+class PanasonicCkp(PulseBased):
+
+    STARTFRAME = [3456, 1728]
+    ENDFRAME = None
+    MARK = [432]  # MARK0 is MARK[0], MARK1 is MARK[-1]
+    SPACE = [432, 1296]  # ditto
+
+    def __init__(self):
+        super().__init__("PANASONIC_AC", variant=irhvac.kPanasonicCkp)
+        self.capabilities = {
+            "mode": ["off", "auto", "cool", "dry", "heat", "fan"],
+            "temperature": [16, 30],
+            "fan": ["auto", "highest", "high", "medium", "low", "lowest"],
+            "swing": ["auto", "90°", "60°", "45°", "30°", "0°"],
+            "quiet": ["off", "on"],
+            "powerful": ["off", "on"],
+        }
+
+
+class PanasonicRkr(PulseBased):
+
+    STARTFRAME = [3456, 1728]
+    ENDFRAME = None
+    MARK = [432]  # MARK0 is MARK[0], MARK1 is MARK[-1]
+    SPACE = [432, 1296]  # ditto
+
+    def __init__(self):
+        super().__init__("PANASONIC_AC", variant=irhvac.kPanasonicRkr)
+        self.capabilities = {
+            "mode": ["off", "auto", "cool", "dry", "heat", "fan"],
+            "temperature": [16, 30],
+            "fan": ["auto", "highest", "high", "medium", "low", "lowest"],
+            "swing": ["auto", "90°", "60°", "45°", "30°", "0°"],
+            "hswing": ["auto", "far right", "right", "middle", "left", "far left"],
+            "quiet": ["off", "on"],
+            "powerful": ["off", "on"],
+        }
+
+
+class Panasonic32(PulseBased):
+
+    STARTFRAME = [3543, 3450]
+    ENDFRAME = [920, 13946]
+    MARK = [920]  # MARK0 is MARK[0], MARK1 is MARK[-1]
+    SPACE = [828, 2575]  # ditto
+
+    def __init__(self):
+        super().__init__("PANASONIC_AC32")
+        self.capabilities = {
+            "mode": ["off", "auto", "cool", "dry", "heat", "fan"],
+            "temperature": [16, 30],
+            "fan": ["auto", "highest", "high", "medium", "low", "lowest"],
+            "swing": ["auto", "90°", "60°", "45°", "30°", "0°"],
+            "hswing": ["off", "on"],
+        }
+
+
 class PluginObject(GenPluginObject):
-    MODELS = {"generic": Panasonic, "4 way cassette": PanaCassette}
+    MODELS = {
+        "generic": Panasonic,
+        "4 way cassette": PanaCassette,
+        "Panasonic NKE series": PanasonicNke,
+        "Panasonic DKE series": PanasonicDke,
+        "Panasonic DKW series": PanasonicDke,
+        "Panasonic PKR series": PanasonicDke,
+        "Panasonic JKE series": PanasonicJke,
+        "Panasonic CKP series": PanasonicCkp,
+        "Panasonic RKR series": PanasonicRkr,
+        "Panasonic CS-ME10CKPG": PanasonicCkp,
+        "Panasonic CS-ME12CKPG": PanasonicCkp,
+        "Panasonic CS-ME14CKPG": PanasonicCkp,
+        "Panasonic CS-E7PKR": PanasonicDke,
+        "Panasonic CS-Z9RKR": PanasonicRkr,
+        "Panasonic CS-Z24RKR": PanasonicRkr,
+        "Panasonic CS-YW9MKD": PanasonicJke,
+        "Panasonic CS-E12QKEW": PanasonicDke,
+        "Panasonic A75C2311remote": PanasonicCkp,
+        "Panasonic A75C2616-1remote": PanasonicDke,
+        "Panasonic A75C3704remote": PanasonicDke,
+        "Panasonic PN1122Vremote": PanasonicDke,
+        "Panasonic A75C3747remote": PanasonicJke,
+        "Panasonic CS-E9CKP series": Panasonic32,
+        "Panasonic A75C2295remote": Panasonic32,
+        "Panasonic A75C4762remote": PanasonicRkr,
+        "generic 32": Panasonic32,
+    }
 
     def __init__(self):
         self.brand = "panasonic"

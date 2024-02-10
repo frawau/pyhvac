@@ -28,6 +28,7 @@
 # Description of the various ": Greev1, devices supported. Can be a remote control name
 
 from .hvaclib import PulseBased, GenPluginObject
+from ..irhvac import kVoltasUnknown, kVoltas122LZF
 
 
 class Voltas(PulseBased):
@@ -36,7 +37,7 @@ class Voltas(PulseBased):
     SPACE = [480, 1535]  # ditto
 
     def __init__(self):
-        super().__init__("VOLTAS", variant=irhvac.kVoltasUnknown)
+        super().__init__("VOLTAS", variant=kVoltasUnknown)
         self.capabilities = {
             "mode": ["cool", "dry", "fan", "heat"],
             "temperature": [16, 30],
@@ -56,7 +57,7 @@ class Voltasv2(PulseBased):
     SPACE = [480, 1535]  # ditto
 
     def __init__(self):
-        super().__init__("VOLTAS", variant=irhvac.kVoltas122LZF)
+        super().__init__("VOLTAS", variant=kVoltas122LZF)
         self.capabilities = {
             "mode": ["cool", "dry", "fan", "heat"],
             "temperature": [16, 30],

@@ -28,6 +28,7 @@
 # Description of the various ": Greev1, devices supported. Can be a remote control name
 
 from .hvaclib import PulseBased, GenPluginObject
+from ..irhvac import SAC_WREM2, SAC_WREM3
 
 
 class Argo(PulseBased):
@@ -38,7 +39,7 @@ class Argo(PulseBased):
     SPACE = [900, 2200]  # ditto
 
     def __init__(self):
-        super().__init__("ARGO", variant=irhvac.SAC_WREM2)
+        super().__init__("ARGO", variant=SAC_WREM2)
         self.capabilities = {
             "mode": ["off", "auto", "cool", "fan", "dry", "heat"],
             "temperature": [16, 25],
@@ -57,7 +58,7 @@ class Argo2(PulseBased):
     SPACE = [900, 2200]  # ditto
 
     def __init__(self):
-        super().__init__("ARGO", variant=irhvac.SAC_WREM3)
+        super().__init__("ARGO", variant=SAC_WREM3)
         self.capabilities = {
             "mode": ["off", "auto", "cool", "fan", "dry", "heat"],
             "temperature": [16, 25],

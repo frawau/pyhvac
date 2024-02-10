@@ -28,6 +28,7 @@
 # Description of the various ": Greev1, devices supported. Can be a remote control name
 
 from .hvaclib import PulseBased, GenPluginObject
+from ..irhvac import V9014557_A, V9014557_B
 
 
 class Haier(PulseBased):
@@ -57,7 +58,7 @@ class Haier176A(PulseBased):
     SPACE = [650, 1650]  # ditto
 
     def __init__(self):
-        super().__init__("HAIER_AC176", variant=irhvac.V9014557_A)
+        super().__init__("HAIER_AC176", variant=V9014557_A)
         self.capabilities = {
             "mode": ["off", "auto", "cool", "dry", "heat", "fan"],
             "temperature": [16, 30],
@@ -79,7 +80,7 @@ class Haier176B(PulseBased):
     SPACE = [650, 1650]  # ditto
 
     def __init__(self):
-        super().__init__("HAIER_AC176", variant=irhvac.V9014557_B)
+        super().__init__("HAIER_AC176", variant=V9014557_B)
         self.capabilities = {
             "mode": ["off", "auto", "cool", "dry", "heat", "fan"],
             "temperature": [16, 30],
@@ -101,7 +102,7 @@ class HaierYRW02A(PulseBased):
     SPACE = [650, 1650]  # ditto
 
     def __init__(self):
-        super().__init__("HAIER_AC_YRW02", variant=irhvac.V9014557_A)
+        super().__init__("HAIER_AC_YRW02", variant=V9014557_A)
         self.capabilities = {
             "mode": ["off", "auto", "cool", "dry", "heat", "fan"],
             "temperature": [16, 30],
@@ -123,7 +124,7 @@ class HaierYRW02B(PulseBased):
     SPACE = [650, 1650]  # ditto
 
     def __init__(self):
-        super().__init__("HAIER_AC_YRW02", variant=irhvac.V9014557_B)
+        super().__init__("HAIER_AC_YRW02", variant=V9014557_B)
         self.capabilities = {
             "mode": ["off", "auto", "cool", "dry", "heat", "fan"],
             "temperature": [16, 30],

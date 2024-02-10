@@ -28,6 +28,7 @@
 # Description of the various ": Greev1, devices supported. Can be a remote control name
 
 from .hvaclib import PulseBased, GenPluginObject
+from ..irhvac import R_LT0541_HTA_A, R_LT0541_HTA_B
 
 
 class Hitachi(PulseBased):
@@ -56,7 +57,7 @@ class Hitachi1A(PulseBased):
     SPACE = [372, 1208]  # ditto
 
     def __init__(self):
-        super().__init__("HITACHI_AC1", variant=irhvac.R_LT0541_HTA_A)
+        super().__init__("HITACHI_AC1", variant=R_LT0541_HTA_A)
         self.capabilities = {
             "mode": ["off", "auto", "heat", "cool", "dry", "fan"],
             "temperature": [16, 32],
@@ -75,7 +76,7 @@ class Hitachi1B(PulseBased):
     SPACE = [372, 1208]  # ditto
 
     def __init__(self):
-        super().__init__("HITACHI_AC1", variant=irhvac.R_LT0541_HTA_B)
+        super().__init__("HITACHI_AC1", variant=R_LT0541_HTA_B)
         self.capabilities = {
             "mode": ["off", "auto", "heat", "cool", "dry", "fan"],
             "temperature": [16, 32],

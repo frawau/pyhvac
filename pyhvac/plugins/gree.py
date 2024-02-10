@@ -29,6 +29,7 @@
 
 from .hvaclib import PulseBased, GenPluginObject
 from .kelvinator import Kelvinator
+from ..irhvac import YAW1F, YBOFB, YX1FSF
 
 
 class Greev1(PulseBased):
@@ -39,7 +40,7 @@ class Greev1(PulseBased):
     SPACE = [540, 1600]  # ditto
 
     def __init__(self):
-        super().__init__("GREE", variant=irhvac.YAW1F)
+        super().__init__("GREE", variant=YAW1F)
         self.capabilities = {
             "mode": ["off", "auto", "cool", "dry", "fan", "heat"],
             "temperature": [16, 30],
@@ -68,7 +69,7 @@ class Greev2(PulseBased):
     SPACE = [540, 1600]  # ditto
 
     def __init__(self):
-        super().__init__("GREE", variant=irhvac.YBOFB)
+        super().__init__("GREE", variant=YBOFB)
         self.capabilities = {
             "mode": ["off", "auto", "cool", "dry", "fan", "heat"],
             "temperature": [16, 30],
@@ -98,7 +99,7 @@ class Greev3(PulseBased):
     SPACE = [540, 1600]  # ditto
 
     def __init__(self):
-        super().__init__("GREE", variant=irhvac.YX1FSF)
+        super().__init__("GREE", variant=YX1FSF)
         self.capabilities = {
             "mode": ["off", "auto", "cool", "dry", "fan", "heat"],
             "temperature": [16, 30],

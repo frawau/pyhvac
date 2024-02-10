@@ -29,6 +29,7 @@
 import struct
 
 from .hvaclib import HVAC, PulseBased, GenPluginObject
+from ..irhvac import GE6711AR2853M, LG6711A20083V, AKB75215403, AKB74955603, AKB73757604
 
 
 class LG(HVAC):
@@ -476,7 +477,7 @@ class LGv1(PulseBased):
     SPACE = [430, 1260]  # ditto
 
     def __init__(self):
-        super().__init__("LG", variant=irhvac.GE6711AR2853M)
+        super().__init__("LG", variant=GE6711AR2853M)
         self.capabilities = {
             "mode": ["off", "auto", "cool", "fan", "dry", "heat"],
             "temperature": [16, 25],
@@ -495,7 +496,7 @@ class LGv2(PulseBased):
     SPACE = [430, 1260]  # ditto
 
     def __init__(self):
-        super().__init__("LG", variant=irhvac.LG6711A20083V)
+        super().__init__("LG", variant=LG6711A20083V)
         self.capabilities = {
             "mode": ["off", "auto", "cool", "fan", "dry", "heat"],
             "temperature": [16, 25],
@@ -514,7 +515,7 @@ class LG2v1(PulseBased):
     SPACE = [430, 1260]  # ditto
 
     def __init__(self):
-        super().__init__("LG2", variant=irhvac.AKB75215403)
+        super().__init__("LG2", variant=AKB75215403)
         self.capabilities = {
             "mode": ["off", "auto", "cool", "fan", "dry", "heat"],
             "temperature": [16, 25],
@@ -533,7 +534,7 @@ class LG2v2(PulseBased):
     SPACE = [430, 1260]  # ditto
 
     def __init__(self):
-        super().__init__("LG2", variant=irhvac.AKB74955603)
+        super().__init__("LG2", variant=AKB74955603)
         self.capabilities = {
             "mode": ["off", "auto", "cool", "fan", "dry", "heat"],
             "temperature": [16, 25],
@@ -552,7 +553,7 @@ class LG2v3(PulseBased):
     SPACE = [430, 1260]  # ditto
 
     def __init__(self):
-        super().__init__("LG2", variant=irhvac.AKB73757604)
+        super().__init__("LG2", variant=AKB73757604)
         self.capabilities = {
             "mode": ["off", "auto", "cool", "fan", "dry", "heat"],
             "temperature": [16, 25],

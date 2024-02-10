@@ -28,6 +28,7 @@
 # Description of the various ": Greev1, devices supported. Can be a remote control name
 
 from .hvaclib import PulseBased, GenPluginObject
+from ..irhvac import ARRAH2E, ARDB1, ARREB1E, ARJW2, ARRY4, ARREW4E
 
 
 class Fujitsuv1(PulseBased):
@@ -38,7 +39,7 @@ class Fujitsuv1(PulseBased):
     SPACE = [390, 1182]  # ditto
 
     def __init__(self):
-        super().__init__("FUJITSU_AC", variant=irhvac.ARRAH2E)
+        super().__init__("FUJITSU_AC", variant=ARRAH2E)
         self.capabilities = {
             "mode": ["off", "auto", "cool", "dry", "fan", "heat"],
             "temperature": [16, 30],
@@ -57,7 +58,7 @@ class Fujitsuv2(PulseBased):
     SPACE = [390, 1182]  # ditto
 
     def __init__(self):
-        super().__init__("FUJITSU_AC", variant=irhvac.ARDB1)
+        super().__init__("FUJITSU_AC", variant=ARDB1)
         self.capabilities = {
             "mode": ["off", "auto", "cool", "dry", "fan", "heat"],
             "temperature": [16, 30],
@@ -75,7 +76,7 @@ class Fujitsuv3(PulseBased):
     SPACE = [390, 1182]  # ditto
 
     def __init__(self):
-        super().__init__("FUJITSU_AC", variant=irhvac.ARREB1E)
+        super().__init__("FUJITSU_AC", variant=ARREB1E)
         self.capabilities = {
             "mode": ["off", "auto", "cool", "dry", "fan", "heat"],
             "temperature": [16, 30],
@@ -95,7 +96,7 @@ class Fujitsuv4(PulseBased):
     SPACE = [390, 1182]  # ditto
 
     def __init__(self):
-        super().__init__("FUJITSU_AC", variant=irhvac.ARJW2)
+        super().__init__("FUJITSU_AC", variant=ARJW2)
         self.capabilities = {
             "mode": ["off", "auto", "cool", "dry", "fan", "heat"],
             "temperature": [16, 30],
@@ -114,7 +115,7 @@ class Fujitsuv5(PulseBased):
     SPACE = [390, 1182]  # ditto
 
     def __init__(self):
-        super().__init__("FUJITSU_AC", variant=irhvac.ARRY4)
+        super().__init__("FUJITSU_AC", variant=ARRY4)
         self.capabilities = {
             "mode": ["off", "auto", "cool", "dry", "fan", "heat"],
             "temperature": [16, 30],
@@ -134,7 +135,7 @@ class Fujitsuv6(PulseBased):
     SPACE = [390, 1182]  # ditto
 
     def __init__(self):
-        super().__init__("FUJITSU_AC", variant=irhvac.ARREW4E)
+        super().__init__("FUJITSU_AC", variant=ARREW4E)
         self.capabilities = {
             "mode": ["off", "auto", "cool", "dry", "fan", "heat"],
             "temperature": [16, 30],

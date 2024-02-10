@@ -28,6 +28,7 @@
 # Description of the various ": Greev1, devices supported. Can be a remote control name
 
 from .hvaclib import PulseBased, GenPluginObject
+from ..irhvac import DG11J13A, DG11J191
 
 
 class Whirlpool(PulseBased):
@@ -36,7 +37,7 @@ class Whirlpool(PulseBased):
     SPACE = [480, 1535]  # ditto
 
     def __init__(self):
-        super().__init__("VHIRLPOOL_AC", variant=irhvac.DG11J13A)
+        super().__init__("VHIRLPOOL_AC", variant=DG11J13A)
         self.capabilities = {
             "mode": ["auto", "cool", "dry", "fan", "heat"],
             "temperature": [18, 32],
@@ -54,7 +55,7 @@ class Whirlpoolv2(PulseBased):
     SPACE = [480, 1535]  # ditto
 
     def __init__(self):
-        super().__init__("VHIRLPOOL_AC", variant=irhvac.DG11J191)
+        super().__init__("VHIRLPOOL_AC", variant=DG11J191)
         self.capabilities = {
             "mode": ["auto", "cool", "dry", "fan", "heat"],
             "temperature": [18, 32],

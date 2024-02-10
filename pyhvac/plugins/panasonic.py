@@ -32,6 +32,14 @@
 import struct
 
 from .hvaclib import HVAC, PulseBased, GenPluginObject, bit_reverse
+from ..irhvac import (
+    kPanasonicLke,
+    kPanasonicCkp,
+    kPanasonicDke,
+    kPanasonicJke,
+    kPanasonicNke,
+    kPanasonicRkr,
+)
 
 
 class Panasonic(HVAC):
@@ -324,7 +332,7 @@ class PanasonicLke(PulseBased):
     SPACE = [432, 1296]  # ditto
 
     def __init__(self):
-        super().__init__("PANASONIC_AC", variant=irhvac.kPanasonicLke)
+        super().__init__("PANASONIC_AC", variant=kPanasonicLke)
         self.capabilities = {
             "mode": ["off", "auto", "cool", "dry", "heat", "fan"],
             "temperature": [16, 30],
@@ -344,7 +352,7 @@ class PanasonicNke(PulseBased):
     SPACE = [432, 1296]  # ditto
 
     def __init__(self):
-        super().__init__("PANASONIC_AC", variant=irhvac.kPanasonicNke)
+        super().__init__("PANASONIC_AC", variant=kPanasonicNke)
         self.capabilities = {
             "mode": ["off", "auto", "cool", "dry", "heat", "fan"],
             "temperature": [16, 30],
@@ -364,7 +372,7 @@ class PanasonicDke(PulseBased):
     SPACE = [432, 1296]  # ditto
 
     def __init__(self):
-        super().__init__("PANASONIC_AC", variant=irhvac.kPanasonicDke)
+        super().__init__("PANASONIC_AC", variant=kPanasonicDke)
         self.capabilities = {
             "mode": ["off", "auto", "cool", "dry", "heat", "fan"],
             "temperature": [16, 30],
@@ -385,7 +393,7 @@ class PanasonicJke(PulseBased):
     SPACE = [432, 1296]  # ditto
 
     def __init__(self):
-        super().__init__("PANASONIC_AC", variant=irhvac.kPanasonicJke)
+        super().__init__("PANASONIC_AC", variant=kPanasonicJke)
         self.capabilities = {
             "mode": ["off", "auto", "cool", "dry", "heat", "fan"],
             "temperature": [16, 30],
@@ -404,7 +412,7 @@ class PanasonicCkp(PulseBased):
     SPACE = [432, 1296]  # ditto
 
     def __init__(self):
-        super().__init__("PANASONIC_AC", variant=irhvac.kPanasonicCkp)
+        super().__init__("PANASONIC_AC", variant=kPanasonicCkp)
         self.capabilities = {
             "mode": ["off", "auto", "cool", "dry", "heat", "fan"],
             "temperature": [16, 30],
@@ -423,7 +431,7 @@ class PanasonicRkr(PulseBased):
     SPACE = [432, 1296]  # ditto
 
     def __init__(self):
-        super().__init__("PANASONIC_AC", variant=irhvac.kPanasonicRkr)
+        super().__init__("PANASONIC_AC", variant=kPanasonicRkr)
         self.capabilities = {
             "mode": ["off", "auto", "cool", "dry", "heat", "fan"],
             "temperature": [16, 30],
@@ -457,29 +465,29 @@ class PluginObject(GenPluginObject):
     MODELS = {
         "generic": Panasonic,
         "4 way cassette": PanaCassette,
-        "Panasonic NKE series": PanasonicNke,
-        "Panasonic DKE series": PanasonicDke,
-        "Panasonic DKW series": PanasonicDke,
-        "Panasonic PKR series": PanasonicDke,
-        "Panasonic JKE series": PanasonicJke,
-        "Panasonic CKP series": PanasonicCkp,
-        "Panasonic RKR series": PanasonicRkr,
-        "Panasonic CS-ME10CKPG": PanasonicCkp,
-        "Panasonic CS-ME12CKPG": PanasonicCkp,
-        "Panasonic CS-ME14CKPG": PanasonicCkp,
-        "Panasonic CS-E7PKR": PanasonicDke,
-        "Panasonic CS-Z9RKR": PanasonicRkr,
-        "Panasonic CS-Z24RKR": PanasonicRkr,
-        "Panasonic CS-YW9MKD": PanasonicJke,
-        "Panasonic CS-E12QKEW": PanasonicDke,
-        "Panasonic A75C2311remote": PanasonicCkp,
-        "Panasonic A75C2616-1remote": PanasonicDke,
-        "Panasonic A75C3704remote": PanasonicDke,
-        "Panasonic PN1122Vremote": PanasonicDke,
-        "Panasonic A75C3747remote": PanasonicJke,
-        "Panasonic CS-E9CKP series": Panasonic32,
-        "Panasonic A75C2295remote": Panasonic32,
-        "Panasonic A75C4762remote": PanasonicRkr,
+        "NKE series": PanasonicNke,
+        "DKE series": PanasonicDke,
+        "DKW series": PanasonicDke,
+        "PKR series": PanasonicDke,
+        "JKE series": PanasonicJke,
+        "CKP series": PanasonicCkp,
+        "RKR series": PanasonicRkr,
+        "CS-ME10CKPG": PanasonicCkp,
+        "CS-ME12CKPG": PanasonicCkp,
+        "CS-ME14CKPG": PanasonicCkp,
+        "CS-E7PKR": PanasonicDke,
+        "CS-Z9RKR": PanasonicRkr,
+        "CS-Z24RKR": PanasonicRkr,
+        "CS-YW9MKD": PanasonicJke,
+        "CS-E12QKEW": PanasonicDke,
+        "A75C2311remote": PanasonicCkp,
+        "A75C2616-1remote": PanasonicDke,
+        "A75C3704remote": PanasonicDke,
+        "PN1122Vremote": PanasonicDke,
+        "A75C3747remote": PanasonicJke,
+        "CS-E9CKP series": Panasonic32,
+        "A75C2295remote": Panasonic32,
+        "A75C4762remote": PanasonicRkr,
         "generic 32": Panasonic32,
     }
 

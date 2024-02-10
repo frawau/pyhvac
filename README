@@ -11,6 +11,7 @@ This library uses code/work from:
  - Scott Kyle https://gist.github.com/appden/42d5272bf128125b019c45bc2ed3311f
  - mat_fr     https://www.instructables.com/id/Reverse-engineering-of-an-Air-Conditioning-control/
  - user two, mathieu, vincent https://www.analysir.com/blog/2014/12/27/reverse-engineering-panasonic-ac-infrared-protocol/
+ - all the people who contributed to https://github.com/crankyoldgit/IRremoteESP8266
 
 # Installation
 
@@ -26,7 +27,7 @@ We are on PyPi so
 
      can be used to generate codes. Use the -h option for help.
 
-     Note that the utilities cannot fully excersise all the capabilities of their respective plugin.
+     Note that the utilities cannot fully excercise all the capabilities of their respective plugin.
      For instance, the code for a Sharp A/C can depend on the state of the device. gcsharp does not keep track of the
      state of the device.
 
@@ -96,7 +97,7 @@ of function names occur. In most cases an AC unit will have the following
 
 Many other functions are possible, but still some canonization is recommended.
 
-For instance, many manufactures trademarked their air purifying techonlogy: nanoe, nanoex (Panasonic),
+For instance, many manufactures trademarked their air purifying technology: nanoe, nanoex (Panasonic),
 plasmacluster (Sharp), plasma (LG).... In this case it is recommended to use the name "purifier" for that functionm
 
 

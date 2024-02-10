@@ -28,6 +28,7 @@
 # Description of the various ": Greev1, devices supported. Can be a remote control name
 
 from .hvaclib import PulseBased, GenPluginObject
+from ..irhvac import TAC09CHSD, GZ055BE1
 
 
 class Tclv1(PulseBased):
@@ -37,7 +38,7 @@ class Tclv1(PulseBased):
     SPACE = [325, 1050]  # ditto
 
     def __init__(self):
-        super().__init__("TCL112AC", variant=irhvac.TAC09CHSD)
+        super().__init__("TCL112AC", variant=TAC09CHSD)
         self.capabilities = {
             "mode": ["off", "cool", "dry", "fan", "heat"],
             "temperature": [16, 31],
@@ -59,7 +60,7 @@ class Tclv2(PulseBased):
     SPACE = [325, 1050]  # ditto
 
     def __init__(self):
-        super().__init__("TCL112AC", variant=irhvac.GZ055BE1)
+        super().__init__("TCL112AC", variant=GZ055BE1)
         self.capabilities = {
             "mode": ["off", "cool", "dry", "fan", "heat"],
             "temperature": [16, 31],

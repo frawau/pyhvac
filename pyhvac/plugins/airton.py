@@ -58,7 +58,7 @@ class PluginObject(GenPluginObject):
         # Airton
         "SMVH09B-2A2A3NH": Airton,
         "RD1A1": Airton,
-        "generix": Airton,
+        "generic": Airton,
     }
 
     def __init__(self):

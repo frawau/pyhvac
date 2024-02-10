@@ -34,7 +34,7 @@ from .coolix import Coolix
 # Now the match between models and objects
 class PluginObject(GenPluginObject):
     MODELS = {
-        "Kaysun Casual CF": Midea,
+        "Casual CF": Midea,
         "Casual CF Alt": Coolix,
     }
 

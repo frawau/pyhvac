@@ -28,6 +28,7 @@
 # Description of the various ": Greev1, devices supported. Can be a remote control name
 
 from .hvaclib import PulseBased, GenPluginObject
+from ..irhvac import KKG9AC1, KKG29AC1
 
 
 class Miragev1(PulseBased):
@@ -38,7 +39,7 @@ class Miragev1(PulseBased):
     SPACE = [545, 1592]  # ditto
 
     def __init__(self):
-        super().__init__("MIRAGE", variant=irhvac.KKG9AC1)
+        super().__init__("MIRAGE", variant=KKG9AC1)
         self.capabilities = {
             "mode": ["off", "cool", "fan", "dry", "heat"],
             "temperature": [16, 32],
@@ -58,7 +59,7 @@ class Miragev2(PulseBased):
     SPACE = [545, 1592]  # ditto
 
     def __init__(self):
-        super().__init__("MIRAGE", variant=irhvac.KKG29AC1)
+        super().__init__("MIRAGE", variant=KKG29AC1)
         self.capabilities = {
             "mode": ["off", "cool", "fan", "dry", "heat"],
             "temperature": [16, 32],

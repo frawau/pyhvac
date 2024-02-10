@@ -30,6 +30,7 @@ import struct
 
 from .hvaclib import HVAC, PulseBased, GenPluginObject
 from .kelvinator import Kelvinator
+from ..irhvac import A907, A903, A705
 
 
 class Sharp(HVAC):
@@ -490,7 +491,7 @@ class SharpA907(PulseBased):
     SPACE = [500, 1500]  # ditto
 
     def __init__(self):
-        super().__init__("SHARP_AC", variant=irhvac.A907)
+        super().__init__("SHARP_AC", variant=A907)
         self.capabilities = {
             "mode": ["off", "auto", "cool", "dry", "heat"],
             "temperature": [15, 30],
@@ -510,7 +511,7 @@ class SharpA903(PulseBased):
     SPACE = [500, 1500]  # ditto
 
     def __init__(self):
-        super().__init__("SHARP_AC", variant=irhvac.A903)
+        super().__init__("SHARP_AC", variant=A903)
         self.capabilities = {
             "mode": ["off", "auto", "cool", "dry", "fan"],
             "temperature": [15, 30],
@@ -530,7 +531,7 @@ class SharpA705(PulseBased):
     SPACE = [500, 1500]  # ditto
 
     def __init__(self):
-        super().__init__("SHARP_AC", variant=irhvac.A705)
+        super().__init__("SHARP_AC", variant=A705)
         self.capabilities = {
             "mode": ["off", "cool", "dry", "fan"],
             "temperature": [15, 30],

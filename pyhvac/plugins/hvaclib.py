@@ -32,7 +32,7 @@
 import struct
 from .. import irhvac
 
-from hashlib import blake2b
+# from hashlib import blake2b
 
 
 def bit_reverse(i, n=8):

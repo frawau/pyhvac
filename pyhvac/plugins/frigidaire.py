@@ -33,7 +33,7 @@ from .electra import Electra
 # Now the match between models and objects
 class PluginObject(GenPluginObject):
     MODELS = {
-        "Frigidaire FGPC102AB1": Electra,
+        "FGPC102AB1": Electra,
     }
 
     def __init__(self):

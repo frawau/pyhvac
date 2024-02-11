@@ -64,13 +64,13 @@ class GitCloneAndBuild(Command):
                 raise Exception("Could not build library.")
             rf.rename(CPTOLOCATION / f)
         # Clean up
-        # for p in LIBDIR.iterdir():
-        #     if p.is_dir():
-        #         rmtree(p)
-        #     else:
-        #         p.unlink()
-        #
-        # LIBDIR.rmdir()
+        for p in LIBDIR.iterdir():
+            if p.is_dir():
+                rmtree(p)
+            else:
+                p.unlink()
+
+        LIBDIR.rmdir()
 
 
 setup(
@@ -90,8 +90,6 @@ setup(
         # Specify the Python versions you support here. In particular, ensure
         # that you indicate whether you support Python 2, Python 3 or both.
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.7",
-        "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",

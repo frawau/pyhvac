@@ -51,7 +51,9 @@ class GitCloneAndBuild(Command):
         global PYTHONDIR
         repo_url = "https://github.com/frawau/IRremoteESP8266"
 
-        subprocess.run(["git", "clone", repo_url, LIBDIR])
+        #TODO check if we nedd to do this
+        if not LIBDIR.exists():
+            subprocess.run(["git", "clone", repo_url, LIBDIR])
         subprocess.run(["make"], cwd=PYTHONDIR)
 
         for f in CPFILES:
@@ -59,14 +61,8 @@ class GitCloneAndBuild(Command):
             if not rf.exists():
                 raise Exception("Could not build library.")
             rf.rename(CPTOLOCATION / f)
-        # Clean up
-        for p in LIBDIR.iterdir():
-            if p.is_dir():
-                rmtree(p)
-            else:
-                p.unlink()
+        subprocess.run(["make", "distclean"], cwd=PYTHONDIR)
 
-        LIBDIR.rmdir()
 
 
 setup(

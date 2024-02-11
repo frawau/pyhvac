@@ -173,15 +173,15 @@ class Panasonic(HVAC):
             return b"\x70"
         elif mode == "auto low":
             return b"\xb0"
-        elif mode == "90°":
+        elif mode == "ceiling":
             return b"\x80"
-        elif mode == "60°":
+        elif mode == "90°":
             return b"\x40"
-        elif mode == "45°":
+        elif mode == "60°":
             return b"\xc0"
-        elif mode == "30°":
+        elif mode == "45°":
             return b"\x20"
-        elif mode == "15":
+        elif mode == "30°":
             return b"\xa0"
         else:
             # If we do not know....0

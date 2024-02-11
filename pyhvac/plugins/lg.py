@@ -166,15 +166,15 @@ class LG(HVAC):
                 return bytearray(b"\x88\x13\x15")
             elif mode == "0°":
                 return bytearray(b"\x88\x13\x04")
-            elif mode == "15°":
-                return bytearray(b"\x88\x13\x05")
             elif mode == "30°":
-                return bytearray(b"\x88\x13\x06")
+                return bytearray(b"\x88\x13\x05")
             elif mode == "45°":
-                return bytearray(b"\x88\x13\x07")
+                return bytearray(b"\x88\x13\x06")
             elif mode == "60°":
-                return bytearray(b"\x88\x13\x08")
+                return bytearray(b"\x88\x13\x07")
             elif mode == "90°":
+                return bytearray(b"\x88\x13\x08")
+            elif mode == "ceiling":
                 return bytearray(b"\x88\x13\x09")
 
         return bytearray()
@@ -437,7 +437,7 @@ class DualInverter(LG):
             "fan": ["auto", "highest", "high", "medium", "low", "lowest"],
         }
         self.xtra_capabilities = {
-            "swing": ["off", "swing", "90°", "60°", "45°", "30°", "15°", "0°"],
+            "swing": ["off", "swing", "ceiling", "90°", "60°", "45°", "30°", "0°"],
             "hswing": [
                 "off",
                 "swing",

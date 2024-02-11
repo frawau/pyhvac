@@ -45,7 +45,7 @@ class Greev1(PulseBased):
             "mode": ["off", "auto", "cool", "dry", "fan", "heat"],
             "temperature": [16, 30],
             "fan": ["auto", "high", "medium", "low"],
-            "swing": ["auto", "90°", "60°", "46", "30°", "0°"],
+            "swing": ["auto", "90°", "60°", "45°", "30°", "0°"],
             "hswing": [
                 "off",
                 "auto",
@@ -75,7 +75,7 @@ class Greev2(PulseBased):
             "temperature": [16, 30],
             "economy": ["off", "on"],
             "fan": ["auto", "high", "medium", "low"],
-            "swing": ["auto", "90°", "60°", "46", "30°", "0°"],
+            "swing": ["auto", "90°", "60°", "45°", "30°", "0°"],
             "hswing": [
                 "off",
                 "auto",
@@ -104,7 +104,7 @@ class Greev3(PulseBased):
             "mode": ["off", "auto", "cool", "dry", "fan", "heat"],
             "temperature": [16, 30],
             "fan": ["auto", "high", "medium", "low"],
-            "swing": ["auto", "90°", "60°", "46", "30°", "0°"],
+            "swing": ["auto", "90°", "60°", "45°", "30°", "0°"],
             "hswing": [
                 "off",
                 "auto",

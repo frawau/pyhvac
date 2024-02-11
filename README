@@ -4,6 +4,10 @@ THIS IS WORK IN PROGRESS
 
 LG is not tested. "auto" mode for Sharp J-Tech is flaky
 
+Although most of the devices associated with IRremoteESP8266 seems to produce reasonable
+output, this has, obviously, not been checked.
+
+
 pyhvac is a Python 3 library/utility to generate IR code for A/C device.
 
 
@@ -87,13 +91,12 @@ of function names occur. In most cases an AC unit will have the following
             It can be a switch on/off (values 'off' and 'on') or more complex
 
             auto  automatic (in many cases similar to the on/off switch function)
-            90    Horizontal orientation
-            75
-            60
-            45
-            30
-            15
-            0     Vertical orientation
+            ceiling up up up
+            90°    Horizontal orientation
+            60°
+            45°
+            30°
+            0°     Vertical orientation
 
 Many other functions are possible, but still some canonization is recommended.
 

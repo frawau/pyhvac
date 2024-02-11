@@ -49,15 +49,11 @@ class GitCloneAndBuild(Command):
         global LIBDIR
         global CPFILES
         global PYTHONDIR
-        # Replace with your actual repository URL
         repo_url = "https://github.com/frawau/IRremoteESP8266"
-        # Replace with your desired destination directory
 
         subprocess.run(["git", "clone", repo_url, LIBDIR])
-
-        # Replace with your build commands specific to make and swig
         subprocess.run(["make"], cwd=PYTHONDIR)
-        # Replace with your source and destination paths
+
         for f in CPFILES:
             rf = PYTHONDIR / f
             if not rf.exists():

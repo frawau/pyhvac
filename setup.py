@@ -34,30 +34,43 @@ class BuildPyCommand(build_py):
         build_py.run(self)
 
 
-def BuildSwig(withapt=False):
-    if withapt:
-        subprocess.run(["apt-get", "-y", "uninstall", "swig"])
-        subprocess.run(["apt-get", "-y", "install", "libpcre2-dev","python3-dev"])
-    else:
-        subprocess.run(["yum","-y", "remove", "swig"])
-        subprocess.run(["yum", "install", "-y", "pcre2-devel", "python3-devel"])
-
-    resu = subprocess.run(["/usr/local/bin/swig", "-version"], stdout=subprocess.PIPE)
+def BuildSwig():
     buildswig=True
+    resu = subprocess.run(["/usr/local/bin/swig", "-version"], stdout=subprocess.PIPE)
     for line in resu.stdout.decode().split("\n"):
-        if "3SWIG Version" in line:
+        if "SWIG Version" in line:
             x = [ y.strip() for y in line.split(" ") if y.strip() ]
             if x[-1] >= "4.2.0":
                 buildswig=False
                 break
     if buildswig:
+        haspkgmgr = False
+        if not haspkgmgr:
+            withme = subprocess.run(["which", "apt-get"], stdout=subprocess.PIPE, stderr = subprocess.DEVNULL).stdout.decode()
+            if withme:
+                haspkgmgr = True
+                subprocess.run(["apt-get", "-y", "uninstall", "swig"])
+                subprocess.run(["apt-get", "-y", "install", "libpcre2-dev","python3-dev"])
+        if not haspkgmgr:
+            withme = subprocess.run(["which", "yum"], stdout=subprocess.PIPE, stderr = subprocess.DEVNULL).stdout.decode()
+            if withme:
+                haspkgmgr = True
+                subprocess.run(["yum","-y", "remove", "swig"])
+                subprocess.run(["yum", "install", "-y", "pcre2-devel", "python3-devel"])
+        if not haspkgmgr:
+            withme = subprocess.run(["which", "apk"], stdout=subprocess.PIPE, stderr = subprocess.DEVNULL).stdout.decode()
+            if withme:
+                haspkgmgr = True
+                subprocess.run(["apk","del", "swig"])
+                subprocess.run(["apk", "add", "pcre2-devel", "python3-devel"])
+
         subprocess.run(["curl", "-L", "-o", "swig-4.2.0.tgz", "http://downloads.sourceforge.net/project/swig/swig/swig-4.2.0/swig-4.2.0.tar.gz"])
         subprocess.run(["tar", "xfz", "swig-4.2.0.tgz"])
         subprocess.run(["./configure"], cwd=BUILDIR / "swig-4.2.0")
         subprocess.run(["make"], cwd=BUILDIR / "swig-4.2.0")
         subprocess.run(["make","install"], cwd=BUILDIR / "swig-4.2.0")
         subprocess.run(["rm", "-rf", "swig-4.2.0*"])
-    subprocess.run(["/usr/local/bin/swig", "-version"])
+        subprocess.run(["/usr/local/bin/swig", "-version"])
 
     # resu = subprocess.run(["ls", "-al", "/usr/include/"], stdout=subprocess.PIPE)
     # libname=""

@@ -34,6 +34,47 @@ class BuildPyCommand(build_py):
         build_py.run(self)
 
 
+def BuildSwig(withapt=False):
+    if withapt:
+        subprocess.run(["apt-get", "-y", "uninstall", "swig"])
+        subprocess.run(["apt-get", "-y", "install", "libpcre2-dev","python3-dev"])
+    else:
+        subprocess.run(["yum","-y", "remove", "swig"])
+        subprocess.run(["yum", "install", "-y", "pcre2-devel", "python3-devel"])
+
+    resu = subprocess.run(["/usr/local/bin/swig", "-version"], stdout=subprocess.PIPE)
+    buildswig=True
+    for line in resu.stdout.decode().split("\n"):
+        if "3SWIG Version" in line:
+            x = [ y.strip() for y in line.split(" ") if y.strip() ]
+            if x[-1] >= "4.2.0":
+                buildswig=False
+                break
+    if buildswig:
+        subprocess.run(["curl", "-L", "-o", "swig-4.2.0.tgz", "http://downloads.sourceforge.net/project/swig/swig/swig-4.2.0/swig-4.2.0.tar.gz"])
+        subprocess.run(["tar", "xfz", "swig-4.2.0.tgz"])
+        subprocess.run(["./configure"], cwd=BUILDIR / "swig-4.2.0")
+        subprocess.run(["make"], cwd=BUILDIR / "swig-4.2.0")
+        subprocess.run(["make","install"], cwd=BUILDIR / "swig-4.2.0")
+        subprocess.run(["rm", "-rf", "swig-4.2.0*"])
+    subprocess.run(["/usr/local/bin/swig", "-version"])
+
+    # resu = subprocess.run(["ls", "-al", "/usr/include/"], stdout=subprocess.PIPE)
+    # libname=""
+    # for line in resu.stdout.decode().split("\n"):
+    #     if "python3" in line:
+    #         x = [ y.strip() for y in line.split(" ") if y.strip() ]
+    #         libname = x[-1]
+    #         break
+    # if libname:
+    #     subprocess.run(["mv", f"/usr/include/{libname}", "/usr/include/python"])
+    # else:
+    #     raise Exception("No python3 includes.")
+
+
+
+
+
 class GitCloneAndBuild(Command):
     """Custom command to clone a git repository and build the needed files."""
 
@@ -52,6 +93,7 @@ class GitCloneAndBuild(Command):
         repo_url = "https://github.com/frawau/IRremoteESP8266"
 
         #TODO check if we nedd to do this
+        BuildSwig()
         if not LIBDIR.exists():
             subprocess.run(["git", "clone", repo_url, LIBDIR])
         subprocess.run(["make"], cwd=PYTHONDIR)

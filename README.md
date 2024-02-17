@@ -394,7 +394,8 @@ With the inclusion of the library from IRremoteESP8266 there is a lot of support
   - A75C2295remote
   - A75C4762remote
   - generic 32
-- pioneer system: RYBO12GMFILCAD
+- pioneer system:
+  - RYBO12GMFILCAD
   - RUBO18GMFILCAD
   - WS012GMFI22HLD
   - WS018GMFI22HLD

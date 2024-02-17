@@ -1,7 +1,7 @@
 #! /usr/bin/env python3
 # -*- coding:utf-8 -*-
 #
-# Plugin to generate LG AC IR commands as done by the AXB74515402
+# Plugin to generate LG AC IR commands as done by the AXB74515402 and others
 #
 # Found the info about 4 bits somewhere on the  Internet...Can't find
 # it again. Apologies for not being able to thanks that person.
@@ -38,9 +38,8 @@ class LG(HVAC):
 
     STARTFRAME = [3100, 9850]
     ENDFRAME = [520, 12000]
-    MARK = 520
-    SPACE0 = 520
-    SPACE1 = 1530
+    MARK = [520]
+    SPACE = [520, 1530]
 
     def __init__(self):
         super().__init__()

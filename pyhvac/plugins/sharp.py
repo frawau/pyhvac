@@ -1,7 +1,7 @@
 #! /usr/bin/env python3
 # -*- coding:utf-8 -*-
 #
-# Plugin to generate Sharp AC IR commands as done by the CRMC-B028JBEZ
+# Plugin to generate Sharp AC IR commands as done by the CRMC-B028JBEZ and others
 #
 # This module  is in part based on the work/code from:
 #      ToniA      https://github.com/adafruit/Raw-IR-decoder-for-Arduino/pull/3/commits/887ed4204711c0b911571f3090b7fd066e93f006
@@ -39,9 +39,8 @@ class Sharp(HVAC):
 
     STARTFRAME = [3800, 1900]
     ENDFRAME = [435, 10000]
-    MARK = 435
-    SPACE0 = 435
-    SPACE1 = 1400
+    MARK = [435]
+    SPACE = [435, 1400]
 
     def __init__(self):
         super().__init__()
@@ -337,8 +336,7 @@ class Sharp(HVAC):
             "start frame": self.STARTFRAME,
             "end frame": self.ENDFRAME,
             "mark": self.MARK,
-            "space 0": self.SPACE0,
-            "space 1": self.SPACE1,
+            "space": self.SPACE,
         }
 
 

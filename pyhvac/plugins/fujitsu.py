@@ -1,10 +1,7 @@
 #! /usr/bin/env python3
 # -*- coding:utf-8 -*-
 #
-# Plugin to generate LG AC IR commands as done by the AXB74515402
-#
-# Found the info about 4 bits somewhere on the  Internet...Can't find
-# it again. Apologies for not being able to thanks that person.
+# Plugin to generate Fujitsu AC IR commands.
 #
 # Copyright (c) 2024 François Wautier
 #
@@ -24,8 +21,7 @@
 # AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
 # WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
-##
-# Description of the various ": Greev1, devices supported. Can be a remote control name
+#
 
 from .hvaclib import PulseBased, GenPluginObject
 from ..irhvac import ARRAH2E, ARDB1, ARREB1E, ARJW2, ARRY4, ARREW4E

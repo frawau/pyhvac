@@ -1,0 +1,15 @@
+/build
+/.idea
+/.kdev4
+/.vscode
+/dist.keep-me
+/pyhvac.egg-info
+/pyhvac-*.tar.gz
+/build
+/dist
+/deb_dist
+/__pycache__
+/*/__pycache__
+/*/*/__pycache__
+run.spec
+*.snap

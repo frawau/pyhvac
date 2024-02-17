@@ -1,10 +1,7 @@
 #! /usr/bin/env python3
 # -*- coding:utf-8 -*-
 #
-# Plugin to generate LG AC IR commands as done by the AXB74515402
-#
-# Found the info about 4 bits somewhere on the  Internet...Can't find
-# it again. Apologies for not being able to thanks that person.
+# Plugin to generate Bosch AC IR commands.
 #
 # Copyright (c) 2024 François Wautier
 #

@@ -1,7 +1,7 @@
 #! /usr/bin/env python3
 # -*- coding:utf-8 -*-
 #
-# Plugin to generate Daikin AC IR commands as done by the ARC480A44
+# Plugin to generate Daikin AC IR commands as done by the ARC480A44 and others
 #
 # This module  is in part based on the work/code from:
 #      Scott Kyle https://gist.github.com/appden/42d5272bf128125b019c45bc2ed3311f

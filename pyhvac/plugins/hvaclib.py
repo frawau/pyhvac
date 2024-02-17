@@ -1,7 +1,7 @@
 #! /usr/bin/env python3
 # -*- coding:utf-8 -*-
 #
-# Plugin to generate Panasonic AC IR commands
+# Plugin to generate various AC IR commands
 #
 # This module without the work/code from:
 #      Scott Kyle https://gist.github.com/appden/42d5272bf128125b019c45bc2ed3311f
@@ -32,8 +32,6 @@
 import struct
 from .. import irhvac
 
-# from hashlib import blake2b
-
 
 def bit_reverse(i, n=8):
     return int(format(i, "0%db" % n)[::-1], 2)
@@ -43,9 +41,8 @@ class HVAC(object):
     # 90% of hvac remotes use this timing
     STARTFRAME = [3500, 1750]
     ENDFRAME = [435, 10000]
-    MARK = 435
-    SPACE0 = 435
-    SPACE1 = 1300
+    MARK = [435]
+    SPACE = [435, 1300]
 
     def __init__(self):
         self.brand = "Generic"
@@ -72,8 +69,7 @@ class HVAC(object):
             "start frame": self.STARTFRAME,
             "end frame": self.ENDFRAME,
             "mark": self.MARK,
-            "space 0": self.SPACE0,
-            "space 1": self.SPACE1,
+            "space": self.SPACE,
         }
 
     def set_value(self, name, value):
@@ -108,11 +104,12 @@ class HVAC(object):
             for x in frame:
                 idx = 0x80
                 while idx:
-                    lircframe.append(self.MARK)
                     if x & idx:
-                        lircframe.append(self.SPACE1)
+                        lircframe.append(self.MARK[-1])
+                        lircframe.append(self.SPACE[-1])
                     else:
-                        lircframe.append(self.SPACE0)
+                        lircframe.append(self.MARK[0])
+                        lircframe.append(self.SPACE[0])
                     idx >>= 1
             lircframe += self.ENDFRAME
         return lircframe

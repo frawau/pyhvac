@@ -9,7 +9,7 @@
 #      user two, mathieu, vincent
 #                 https://www.analysir.com/blog/2014/12/27/reverse-engineering-panasonic-ac-infrared-protocol/
 #
-# Copyright (c) 2023 François Wautier
+# Copyright (c) 2024 François Wautier
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal

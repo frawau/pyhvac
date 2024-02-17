@@ -116,12 +116,13 @@ def main():
             lofm[m] = [x for x in plugs[m].MODELS.keys()]
         print("Available Brand/models are:")
         for b, l in sorted(lofm.items()):
-            allspaces = len(b) + 2
-            addme = " "
-            print(f"{b}:", end="")
-            for m in l:
-                print(f"{addme}{m}")
-                addme = " " * allspaces
+            if opts.manufacturer is None or opts.manufacturer == b:
+                allspaces = len(b) + 2
+                addme = " "
+                print(f"{b}:", end="")
+                for m in l:
+                    print(f"{addme}{m}")
+                    addme = " " * allspaces
         sys.exit(0)
 
     if opts.manufacturer in plugs:

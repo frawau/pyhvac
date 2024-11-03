@@ -202,16 +202,16 @@ class IRGHVAC(HVAC):
 
     def trans_swing(self, swing):
         trad = {
-            "auto": iregen.swingv_t_kAuto,
+            "auto": irhvac.swingv_t_kAuto,
             "auto high": irhvac.swingv_t_kHigh,
             "auto low": irhvac.swingv_t_kLow,
-            "ceiling": swingv_t_kHighest,
+            "ceiling": irhvac.swingv_t_kHighest,
             "90°": irhvac.swingv_t_kHigh,
             "60°": irhvac.swingv_t_kUpperMiddle,
             "45°": irhvac.swingv_t_kMiddle,
             "30°": irhvac.swingv_t_kLow,
             "0°": irhvac.swingv_t_kLowest,
-            "off": swingv_t_kOff,
+            "off": irhvac.swingv_t_kOff,
         }
 
         return trad[swing]

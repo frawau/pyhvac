@@ -360,7 +360,7 @@ class LG(HVAC):
         else:
             mode = self.status["mode"]
         if mode != "off":
-            print("Mode is {} from {}".format(mode, self.to_set))
+            # print("Mode is {} from {}".format(mode, self.to_set))
             for prop in self.xtra_capabilities:
                 # print("Looking at {} with {} and {}".format(prop,self.to_set,self.status))
                 if prop in self.to_set and self.to_set[prop] != self.status[prop]:
@@ -680,7 +680,7 @@ def main():
         parser.error("Error: " + str(e))
 
     if opts.list:
-        print(f"Available modelas are: {PluginObject().MODELS.keys()}")
+        print(f"Available models are: {PluginObject().MODELS.keys()}")
 
     device = PluginObject().get_device(opts.model)
     frames = []

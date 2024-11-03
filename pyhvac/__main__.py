@@ -132,13 +132,13 @@ def main():
         sys.exit(2)
 
     frames = []
-    device.set_value("set_temperature", opts.temp)
-    device.set_value("set_fan", opts.fan)
-    device.set_value("set_swing", opts.swing)
-    device.set_value("set_powerfull", (opts.powerfull and "on") or "off")
-    device.set_value("set_purifier", (opts.filter and "on") or "off")
-    device.set_value("set_cleaning", (opts.clean and "on") or "off")
-    device.set_value("set_economy", opts.economy)
+    device.set_value("temperature", opts.temp)
+    device.set_value("fan", opts.fan)
+    device.set_value("swing", opts.swing)
+    device.set_value("powerfull", (opts.powerfull and "on") or "off")
+    device.set_value("purifier", (opts.filter and "on") or "off")
+    device.set_value("cleaning", (opts.clean and "on") or "off")
+    device.set_value("economy", opts.economy)
     device.set_mode(opts.mode)
 
     frames = device.build_ircode()

@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 import subprocess
+import sys
 from pathlib import Path
 from setuptools import setup, find_packages, Command
 from setuptools.dist import Distribution
@@ -12,12 +13,24 @@ PYTHONDIR = LIBDIR / "python"
 CPFILES = ["irhvac.py", "_irhvac.so"]
 CPTOLOCATION = BUILDIR / "pyhvac"
 
+pure = None
+if "--pure" in sys.argv:
+    pure = True
+    sys.argv.remove("--pure")
+elif "--universal" in sys.argv:
+    pure = True
+elif "--abi" in sys.argv:
+    pure = False
+    sys.argv.remove("--abi")
 with open("pyhvac/__init__.py") as f:
     exec(f.read())
 
 with open("README.md", "r") as fh:
     long_description = fh.read()
 
+class ExtModules(list):
+    def __bool__(self):
+        return not pure
 
 class BinaryDistribution(Distribution):
     """Distribution which always forces a binary package with platform name"""
@@ -143,6 +156,8 @@ setup(
     packages=["pyhvac", "pyhvac.plugins"],
     package_data={"pyhvac": ["_irhvac.so"]},
     distclass=BinaryDistribution,
+    ext_modules=ExtModules(),
+    has_ext_modules=lambda: not pure,
     cmdclass={
         "clone_build": GitCloneAndBuild,
         "build_py": BuildPyCommand,

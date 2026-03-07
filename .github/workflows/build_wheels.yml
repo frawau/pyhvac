@@ -13,8 +13,7 @@ jobs:
       matrix:
         os:
           - ubuntu-latest   # Linux x86_64 + aarch64 via QEMU
-          - macos-13         # macOS Intel x86_64
-          - macos-14         # macOS Apple Silicon arm64
+          - macos-14         # macOS: builds both arm64 and x86_64 via cross-compilation
 
     steps:
       - uses: actions/checkout@v4

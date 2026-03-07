@@ -16,8 +16,3 @@ archs = ["x86_64", "aarch64"]
 manylinux-x86_64-image = "manylinux_2_28"
 manylinux-aarch64-image = "manylinux_2_28"
 
-[tool.cibuildwheel.macos]
-# Build arm64 natively + x86_64 via cross-compilation on Apple Silicon runner
-archs = ["arm64", "x86_64"]
-# macOS runners don't ship SWIG; install via PyPI pre-built binary
-before-build = "pip install swig"

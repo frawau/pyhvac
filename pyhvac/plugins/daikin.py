@@ -415,6 +415,31 @@ class Daikin64(PulseBased):
         }
 
 
+class Daikin312(PulseBased):
+    LEAD = [10024, 25180]
+    STARTFRAME = [3518, 1688]
+    ENDFRAME = None
+    MARK = [453]  # MARK0 is MARK[0], MARK1 is MARK[-1]
+    SPACE = [414, 1275]  # ditto
+
+    def __init__(self):
+        super().__init__("DAIKIN312")
+        self.capabilities = {
+            "mode": ["off", "auto", "dry", "cool", "heat", "fan"],
+            "temperature": [10, 32],
+            "fan": ["auto", "high", "medium", "low"],
+            "swing": ["off", "on"],
+            "hswing": ["off", "on"],
+            "quiet": ["off", "on"],
+            "powerful": ["off", "on"],
+            "light": ["off", "on"],
+            "economy": ["off", "on"],
+            "purifier": ["off", "on"],
+            "cleaning": ["off", "on"],
+        }
+        self.temperature_step = 0.5
+
+
 class PluginObject(GenPluginObject):
     MODELS = {
         "generic": Daikinth,
@@ -445,8 +470,8 @@ class PluginObject(GenPluginObject):
         "ARC484A4 remote": Daikin216,
         "FTQ60TV16U2": Daikin216,
         # "BRC4M150W16 remote": Daikin200,
-        # "FTXM20R5V1B": Daikin312,
-        # "ARC466A67 remote": Daikin312,
+        "FTXM20R5V1B": Daikin312,
+        "ARC466A67 remote": Daikin312,
         "Daikin": Daikin,
         "Daikin2": Daikin2,
         "Daikin64": Daikin64,
@@ -455,6 +480,7 @@ class PluginObject(GenPluginObject):
         "Daikin160": Daikin160,
         "Daikin176": Daikin176,
         "Daikin216": Daikin216,
+        "Daikin312": Daikin312,
     }
 
     def __init__(self):

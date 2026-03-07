@@ -685,11 +685,27 @@ def main():
     device.set_temperature(opts.temp)
     device.set_fan(opts.fan)
     device.set_swing(opts.swing)
-    device.set_hswing(opts.hswing)
-    device.set_target(opts.spot)
-    device.set_purifier((opts.plasma and "on") or "off")
-    device.set_powerful((opts.powerful and "on") or "off")
-    device.set_economy((opts.economy and "on") or "off")
+    try:
+        device.set_hswing(opts.hswing)
+    except:
+        pass
+    try:
+        device.set_target(opts.spot)
+    except:
+        pass
+    try:
+        device.set_purifier((opts.plasma and "on") or "off")
+    except:
+        pass
+    try:
+        device.set_powerful((opts.powerful and "on") or "off")
+    except:
+        pass
+    try:
+        device.set_economy((opts.economy and "on") or "off")
+    except:
+        pass
+
     device.set_mode(opts.mode)
 
     frames = device.build_ircode()

@@ -138,6 +138,8 @@ With the inclusion of the library from IRremoteESP8266 there is a lot of support
   - FTXM-M
   - ARC466A12 remote
   - ARC466A33 remote
+  - ARC466A67 remote
+  - FTXM20R5V1B
   - FTWX35AXV1
   - ARC484A4 remote
   - FTQ60TV16U2
@@ -149,6 +151,7 @@ With the inclusion of the library from IRremoteESP8266 there is a lot of support
   - Daikin160
   - Daikin176
   - Daikin216
+  - Daikin312
 - danby
   - DAC080BGUWDB
   - DAC100BGUWDB
@@ -171,6 +174,9 @@ With the inclusion of the library from IRremoteESP8266 there is a lot of support
   - generic
 - electrolux
   - YKR-H/531E
+- eurom
+  - Polar 16CH
+  - generic
 - frigidaire
   - FGPC102AB1
 - fujitsu

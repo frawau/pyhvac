@@ -6,6 +6,9 @@ build-backend = "setuptools.build_meta"
 # Build CPython 3.9–3.13; skip PyPy and 32-bit Windows
 build = "cp39-* cp310-* cp311-* cp312-* cp313-*"
 skip = "*-win32 *-musllinux* pp*"
+# Use pip-installed tools instead of downloading pinned .pyz files from GitHub
+# (avoids HTTP 429 rate-limit errors on macOS runners)
+dependency-versions = "latest"
 
 [tool.cibuildwheel.linux]
 archs = ["x86_64", "aarch64"]

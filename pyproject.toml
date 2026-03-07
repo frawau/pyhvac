@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [tool.cibuildwheel]
 # Build CPython 3.9–3.13; skip PyPy and 32-bit Windows
 build = "cp39-* cp310-* cp311-* cp312-* cp313-*"
-skip = "*-win32 *-musllinux* pp*"
+skip = "*-win32 pp*"
 # Use pip-installed tools instead of downloading pinned .pyz files from GitHub
 # (avoids HTTP 429 rate-limit errors on macOS runners)
 dependency-versions = "latest"
@@ -15,4 +15,6 @@ archs = ["x86_64", "aarch64"]
 # manylinux_2_28 (AlmaLinux 8) ships SWIG 4.4.1 — no extra install needed
 manylinux-x86_64-image = "manylinux_2_28"
 manylinux-aarch64-image = "manylinux_2_28"
+# musllinux (Alpine) needs SWIG; manylinux_2_28 already ships SWIG 4.4.1
+before-all = "if command -v apk > /dev/null 2>&1; then apk add --no-cache swig; fi"
 

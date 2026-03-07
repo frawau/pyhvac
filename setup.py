@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -109,7 +110,7 @@ class GitCloneAndBuild(Command):
         # TODO check if we nedd to do this
         if not LIBDIR.exists():
             subprocess.run(["git", "clone", repo_url, LIBDIR])
-        if Path("/.dockerenv").exists():
+        if Path("/.dockerenv").exists() and not os.environ.get("CIBUILDWHEEL"):
             PrepareSwig()
             subprocess.run(["make", "docker"], cwd=PYTHONDIR)
         else:

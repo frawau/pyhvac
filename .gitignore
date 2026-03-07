@@ -13,3 +13,4 @@
 /*/*/__pycache__
 run.spec
 *.snap
+/wheelhouse

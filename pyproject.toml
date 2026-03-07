@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=40.8.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.cibuildwheel]
+# Build CPython 3.9–3.13; skip PyPy and 32-bit Windows
+build = "cp39-* cp310-* cp311-* cp312-* cp313-*"
+skip = "*-win32 *-musllinux* pp*"
+
+[tool.cibuildwheel.linux]
+archs = ["x86_64", "aarch64"]
+# manylinux_2_28 (AlmaLinux 8) ships SWIG 4.4.1 — no extra install needed
+manylinux-x86_64-image = "manylinux_2_28"
+manylinux-aarch64-image = "manylinux_2_28"
+
+[tool.cibuildwheel.macos]
+# Each macOS runner builds for its native arch only (see workflow matrix)
+archs = ["auto"]
+# macOS runners don't ship SWIG; install via PyPI pre-built binary
+before-build = "pip install swig"

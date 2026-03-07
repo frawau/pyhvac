@@ -39,7 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'release'
     environment:
-      name: pypi
+      name: AutoPublish
       url: https://pypi.org/p/pyhvac
     permissions:
       id-token: write   # required for trusted publishing

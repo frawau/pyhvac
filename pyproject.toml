@@ -3,7 +3,7 @@ requires = ["setuptools>=40.8.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.cibuildwheel]
-# Build CPython 3.9–3.13; skip PyPy and 32-bit Windows
+# Build CPython 3.9–3.14; skip PyPy and 32-bit Windows
 build = "cp39-* cp310-* cp311-* cp312-* cp313-* cp314-*"
 skip = "*-win32 pp*"
 # Use pip-installed tools instead of downloading pinned .pyz files from GitHub

@@ -30,7 +30,15 @@
 ##
 
 import struct
-from .. import irhvac
+
+try:
+    from .. import irhvac
+except ImportError:
+    # The irhvac C extension is only needed by the IRGHVAC family of classes
+    # (which wrap the IRremoteESP8266 library).  Pure-Python plugins built on
+    # the base HVAC class work without it, so degrade gracefully here instead
+    # of breaking every plugin import when the extension is not compiled.
+    irhvac = None
 
 
 def bit_reverse(i, n=8):

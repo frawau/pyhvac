@@ -48,7 +48,7 @@ REFERENCES = [
     ("23 CB 26 01 64 04 E1 00 00 00 00 E0 00 3E", dict(mode="heat", temperature=18)),
     (
         "23 CB 26 01 79 04 63 00 00 00 00 E0 00 D5",
-        dict(mode="cool", temperature=26, eco="on"),
+        dict(mode="cool", temperature=26, energy_saver="on"),
     ),
     (
         "23 CB 26 01 79 04 03 00 00 00 00 E0 00 75",
@@ -61,6 +61,19 @@ REFERENCES = [
     (
         "23 CB 26 01 79 04 23 00 04 00 00 E0 00 99",
         dict(mode="cool", temperature=26, fan="fan2"),
+    ),
+    (
+        "23 CB 26 01 79 04 23 00 06 00 00 E0 00 9B",
+        dict(mode="cool", temperature=26, fan="fan4"),
+    ),
+    (
+        "23 CB 26 01 79 04 23 00 05 00 00 E0 00 9A",
+        dict(mode="cool", temperature=26, fan="fan5"),
+    ),
+    (
+        # The panel's "fan6" is the auto setting (enum 0).
+        "23 CB 26 01 79 04 23 00 00 00 00 E0 00 95",
+        dict(mode="cool", temperature=26, fan="auto"),
     ),
     (
         "23 CB 26 01 79 04 23 00 01 00 00 E0 00 96",
@@ -109,11 +122,29 @@ def test_frame_is_fourteen_bytes():
 
 @pytest.mark.parametrize(
     "celsius,expected_bcd",
-    [(16, 0x61), (18, 0x64), (24, 0x75), (25, 0x77), (26, 0x79)],
+    [
+        (16, 0x61),
+        (18, 0x64),
+        (24, 0x75),
+        (25, 0x77),
+        (26, 0x79),
+        # Half-degree steps reach degF values that whole degC cannot: 62, 76
+        # and 78 degF sit between the integer-degC setpoints.
+        (16.5, 0x62),
+        (24.5, 0x76),
+        (25.5, 0x78),
+    ],
 )
 def test_celsius_converted_to_fahrenheit_bcd(celsius, expected_bcd):
     # The API takes degC and BCD-encodes the nearest degF into byte 4.
     assert build(mode="cool", temperature=celsius)[4] == expected_bcd
+
+
+def test_half_degree_temperatures_are_advertised():
+    # The capability list exposes 0.5 degC resolution across 16-30 degC.
+    temps = Airspool().capabilities["temperature"]
+    assert 16.0 in temps and 30.0 in temps and 24.5 in temps
+    assert all(round(t * 2) == t * 2 for t in temps)  # all on the 0.5 grid
 
 
 def test_round_trip_pulse_to_bytes():

@@ -51,9 +51,10 @@ class Airspool(HVAC):
       byte 4   : setpoint temperature, BCD of the value in degF (75 -> 0x75).
                  The device is degF-native; the public API takes degC (the
                  library convention) and converts to the nearest degF.
-      byte 5   : flags  (0x04 power on, 0x40 turbo, 0x80 "SE" - unidentified)
+      byte 5   : flags  (0x04 power on, 0x40 turbo, 0x80 "SE" = Save Energy)
       byte 6   : low nibble = mode (1=heat, 2=dehumidify, 3=cool); 0x20 display,
-                 0x40 eco; heat carries the fixed 0xE0 high-bit signature
+                 0x40 energy-saver (the "energy saver speed control"); heat
+                 carries the fixed 0xE0 high-bit signature
       byte 7   : reserved (00)
       byte 8   : airflow bitfield (fan/sleep enum, vertical louver, turbo)
       byte 9-10: reserved (00)
@@ -73,10 +74,12 @@ class Airspool(HVAC):
     # Fixed skeleton, bytes 0..12 (the checksum, byte 13, is appended later).
     FBODY = b"\x23\xcb\x26\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00"
 
-    # Airflow enum (byte 8, bits 0-2).  NOTE: this is a non-monotonic lookup
-    # table, NOT a "speed = N" scale.  Values 5-6 are UNKNOWN.
-    #   0 = auto, 1 = sleep, 2 = fan1, 3 = fan3, 4 = fan2
-    FAN_ENUM = {"auto": 0, "fan1": 2, "fan2": 4, "fan3": 3}
+    # Airflow enum (byte 8, bits 0-2).  Non-monotonic lookup table, NOT a
+    # "speed = N" scale.  Decoded from the fan1..fan6 panel captures; the
+    # panel's "fan6" is the auto setting (enum 0, also the power-on default):
+    #   0 = auto, 1 = sleep, 2 = fan1, 3 = fan3, 4 = fan2, 5 = fan5, 6 = fan4
+    # (value 7 is unused / unobserved.)
+    FAN_ENUM = {"auto": 0, "fan1": 2, "fan2": 4, "fan3": 3, "fan4": 6, "fan5": 5}
     SLEEP_ENUM = 1
 
     # Mode low nibble (byte 6, bits 0-3).
@@ -92,19 +95,23 @@ class Airspool(HVAC):
             "mode": ["cool", "dry", "heat"],
             # The public API works in degC (library convention); values are
             # converted to the nearest degF and BCD-encoded into byte 4.  The
-            # exact valid range is UNVERIFIED; 16-30 degC (~61-86 degF) is a
-            # sensible mini-split span.  Note the device resolution is 1 degF
-            # (~0.56 degC), so some degC values map to the same degF setpoint.
-            "temperature": [x for x in range(16, 31)],
-            "fan": ["auto", "fan1", "fan2", "fan3"],
+            # device is degF-native (61-86 degF), so degC is exposed at 0.5 degC
+            # resolution: that is fine enough to reach every distinct degF
+            # setpoint exactly.  A few adjacent 0.5-degC steps round to the same
+            # degF (e.g. 17.5 and 18.0 both -> 64 degF), which is harmless.
+            "temperature": [x / 2 for x in range(32, 61)],
+            "fan": ["auto", "fan1", "fan2", "fan3", "fan4", "fan5"],
             "sleep": ["off", "on"],
             "swing": ["off", "on"],  # vertical louver (0x38 = full swing)
             "hswing": ["off", "on"],  # horizontal swing
-            "eco": ["off", "on"],
+            # byte 6, 0x40: the "energy saver speed control" (formerly guessed
+            # to be a generic eco flag).
+            "energy_saver": ["off", "on"],
             "display": ["off", "on"],
             "turbo": ["off", "on"],
             "power": ["off", "on"],
-            # "SE" is a named flag whose function is UNKNOWN (byte 5, 0x80).
+            # byte 5, 0x80: "SE" = Save Energy.  The remote only toggles it on/
+            # off; the 25/50/75% panel steps are not individually IR-addressable.
             "se": ["off", "on"],
         }
         self.xtra_capabilities = {}
@@ -115,7 +122,7 @@ class Airspool(HVAC):
             "sleep": "off",
             "swing": "off",
             "hswing": "off",
-            "eco": "off",
+            "energy_saver": "off",
             "display": "on",
             "turbo": "off",
             "power": "on",
@@ -178,8 +185,8 @@ class Airspool(HVAC):
     def set_hswing(self, mode):
         self._set_choice("hswing", mode)
 
-    def set_eco(self, mode):
-        self._set_choice("eco", mode)
+    def set_energy_saver(self, mode):
+        self._set_choice("energy_saver", mode)
 
     def set_display(self, mode):
         self._set_choice("display", mode)
@@ -191,7 +198,7 @@ class Airspool(HVAC):
         self._set_choice("power", mode)
 
     def set_se(self, mode):
-        # UNKNOWN feature: exposed so it can be captured/experimented with.
+        # "SE" = Save Energy (byte 5, 0x80); on/off only.
         self._set_choice("se", mode)
 
     # ------------------------------------------------------------------ coders
@@ -212,7 +219,7 @@ class Airspool(HVAC):
         return mask
 
     def code_se(self):
-        # byte 5, 0x80 = "SE".  UNKNOWN function.
+        # byte 5, 0x80 = "SE" (Save Energy).  On/off toggle only.
         mask = self._empty_mask()
         if self._on("se"):
             mask[5] |= 0x80
@@ -230,7 +237,7 @@ class Airspool(HVAC):
         # byte 6 low nibble = mode.  Heat additionally carries the fixed 0xE0
         # high-bit signature (so heat always reads 0xE1).  We treat those high
         # bits as part of the heat mode signature rather than user-controllable
-        # eco/display flags.
+        # energy-saver/display flags.
         mode = self._val("mode")
         mask = self._empty_mask()
         mask[6] |= self.MODE_NIBBLE.get(mode, self.MODE_NIBBLE["cool"])
@@ -248,11 +255,11 @@ class Airspool(HVAC):
             mask[6] |= 0x20
         return mask
 
-    def code_eco(self):
-        # byte 6, 0x40 = eco.  Togglable only in cool/dehumidify until verified;
-        # in heat it is part of the 0xE0 signature.
+    def code_energy_saver(self):
+        # byte 6, 0x40 = energy-saver ("energy saver speed control").  Togglable
+        # only in cool/dehumidify; in heat it is part of the 0xE0 signature.
         mask = self._empty_mask()
-        if self._on("eco"):
+        if self._on("energy_saver"):
             mask[6] |= 0x40
         return mask
 
@@ -297,7 +304,7 @@ class Airspool(HVAC):
             self.code_turbo,
             self.code_mode,
             self.code_display,
-            self.code_eco,
+            self.code_energy_saver,
             self.code_airflow,
             self.code_swing,
             self.code_hswing,
@@ -375,7 +382,8 @@ def main():
         "--temp",
         type=float,
         default=24,
-        help="Temperature (degC, converted to nearest degF). (default 24).",
+        help="Temperature (degC at 0.5 resolution, converted to nearest degF). "
+        "(default 24).",
     )
     parser.add_argument(
         "-m",
@@ -387,7 +395,7 @@ def main():
     parser.add_argument(
         "-f",
         "--fan",
-        choices=["auto", "fan1", "fan2", "fan3"],
+        choices=["auto", "fan1", "fan2", "fan3", "fan4", "fan5"],
         default="auto",
         help="Fan speed. (default 'auto').",
     )
@@ -405,7 +413,12 @@ def main():
         help="Horizontal swing",
     )
     parser.add_argument(
-        "-e", "--eco", action="store_true", default=False, help="Eco mode"
+        "-e",
+        "--energy-saver",
+        dest="energy_saver",
+        action="store_true",
+        default=False,
+        help="Energy-saver speed control",
     )
     parser.add_argument(
         "-d",
@@ -423,7 +436,7 @@ def main():
         "--se",
         action="store_true",
         default=False,
-        help='Set the unidentified "SE" flag',
+        help="Enable SE (Save Energy)",
     )
     parser.add_argument(
         "-O",
@@ -471,7 +484,7 @@ def main():
     device.set_sleep((opts.sleep and "on") or "off")
     device.set_swing((opts.swing and "on") or "off")
     device.set_hswing((opts.hswing and "on") or "off")
-    device.set_eco((opts.eco and "on") or "off")
+    device.set_energy_saver((opts.energy_saver and "on") or "off")
     device.set_display((opts.display and "on") or "off")
     device.set_turbo((opts.turbo and "on") or "off")
     device.set_se((opts.se and "on") or "off")

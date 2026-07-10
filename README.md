@@ -41,6 +41,9 @@ With the inclusion of the library from IRremoteESP8266 there is a lot of support
 
 - aeg
   - Chillflex Pro AXP26U338CW
+- airspool
+  - mini-split (Tuya-style)
+  - generic
 - airton
   - SMVH09B-2A2A3NH
   - RD1A1

@@ -55,7 +55,7 @@ def _make_device(**settings):
     dev.set_hswing(settings.get("hswing", "off"))
     dev.set_display(settings.get("display", "on"))
     dev.set_turbo(settings.get("turbo", "off"))
-    dev.set_energy_saver(settings.get("energy_saver", "off"))
+    dev.set_se_step(settings.get("se_step", "off"))
     dev.set_se(settings.get("se", "off"))
     return dev
 
@@ -226,21 +226,21 @@ def run(probe):
         "Limiter turns ON.  Note the level after the dot (.1/.2/.3).",
         "Level after the dot?  (0/1/2/3)",
         se="on",
-        energy_saver="off",
+        se_step="off",
     )
     probe.step(
         "Y: SE ON + speed-control bit ON (byte6 0x40, one extra bit flipped)",
         "If this level DIFFERS from X, the unit is counting, not reading a level.",
         "Level after the dot?  (0/1/2/3)",
         se="on",
-        energy_saver="on",
+        se_step="on",
     )
     probe.step(
         "X again (identical frame to the first X)",
         "ABSOLUTE -> same level as the first X.  COUNTER -> a new/higher level.",
         "Level after the dot?  (0/1/2/3)",
         se="on",
-        energy_saver="off",
+        se_step="off",
     )
 
     # ------------------------------------------------- 3. step through levels
@@ -256,7 +256,7 @@ def run(probe):
             "Level should move up by one (wrapping .3 -> .1).",
             "Level after the dot?  (0/1/2/3)",
             se="on",
-            energy_saver=es,
+            se_step=es,
         )
 
     # ------------------------------------------ 4. persistence over power cycle
@@ -270,7 +270,7 @@ def run(probe):
         "Did it turn OFF, and what level was showing just before?  (0/1/2/3)",
         power="off",
         se="on",
-        energy_saver="off",
+        se_step="off",
     )
     probe.step(
         "Power ON, SE OFF",
@@ -284,7 +284,7 @@ def run(probe):
         "Does it resume the level from before the power cycle, or start fresh?",
         "Level after the dot?  (0/1/2/3)",
         se="on",
-        energy_saver="off",
+        se_step="off",
     )
 
     # ---------------------------------------------------- 5. mode dependence
@@ -308,7 +308,7 @@ def run(probe):
             mode=mode,
             temperature=temp,
             se="on",
-            energy_saver="off",
+            se_step="off",
         )
 
     # -------------------------------------- 6. hunt for a second limiter toggle

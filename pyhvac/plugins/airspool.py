@@ -51,10 +51,26 @@ class Airspool(HVAC):
       byte 4   : setpoint temperature, BCD of the value in degF (75 -> 0x75).
                  The device is degF-native; the public API takes degC (the
                  library convention) and converts to the nearest degF.
-      byte 5   : flags  (0x04 power on, 0x40 turbo, 0x80 "SE" = Save Energy)
+      byte 5   : flags  (0x04 power on, 0x40 turbo, 0x80 "SE" = the AC power
+                 limiter on/off; absolute, always settable)
       byte 6   : low nibble = mode (1=heat, 2=dehumidify, 3=cool); 0x20 display,
-                 0x40 energy-saver (the "energy saver speed control"); heat
+                 0x40 "SE speed control" step (momentary - see note below); heat
                  carries the fixed 0xE0 high-bit signature
+
+    SE / energy-saver behaviour (confirmed on hardware, issue #4):
+      * byte 5 0x80 turns the AC power limiter on or off.  This bit is absolute:
+        the frame states the on/off state and the unit obeys it.
+      * byte 6 0x40 is the "SE speed control" - the button labelled "Energy
+        saver / AC limiter speed control".  It is MOMENTARY: it does not carry a
+        level.  The limiter level (.1/.2/.3 = 25/50/75%) is a counter the unit
+        keeps itself and steps by one (wrapping .3 -> .1) each time it accepts a
+        distinct SE frame.  Consecutive identical frames are ignored, so to walk
+        the level the sender must alternate this bit between frames.  There is no
+        way to address a specific level over IR - only "limiter on/off" (byte 5)
+        and "step once" (byte 6) are expressible.  On the indoor display the
+        power-plug icon is white when the limiter is off and blue when it is on
+        (level >= .1).  Probing every reserved bit turned up no second,
+        separately addressable limiter.
       byte 7   : reserved (00)
       byte 8   : airflow bitfield (fan/sleep enum, vertical louver, turbo)
       byte 9-10: reserved (00)
@@ -104,14 +120,17 @@ class Airspool(HVAC):
             "sleep": ["off", "on"],
             "swing": ["off", "on"],  # vertical louver (0x38 = full swing)
             "hswing": ["off", "on"],  # horizontal swing
-            # byte 6, 0x40: the "energy saver speed control" (formerly guessed
-            # to be a generic eco flag).
-            "energy_saver": ["off", "on"],
+            # byte 6, 0x40: the "SE speed control" step.  Momentary, not a
+            # sticky flag - "on" emits one step frame that bumps the unit's
+            # limiter-level counter (.1 -> .2 -> .3 -> .1).  Send alternating
+            # frames to walk it; identical frames are ignored.
+            "se_step": ["off", "on"],
             "display": ["off", "on"],
             "turbo": ["off", "on"],
             "power": ["off", "on"],
-            # byte 5, 0x80: "SE" = Save Energy.  The remote only toggles it on/
-            # off; the 25/50/75% panel steps are not individually IR-addressable.
+            # byte 5, 0x80: "SE" = the AC power limiter on/off.  Absolute and
+            # always settable.  The 25/50/75% level is a unit-side counter
+            # stepped via se_step; it is not individually IR-addressable.
             "se": ["off", "on"],
         }
         self.xtra_capabilities = {}
@@ -122,7 +141,7 @@ class Airspool(HVAC):
             "sleep": "off",
             "swing": "off",
             "hswing": "off",
-            "energy_saver": "off",
+            "se_step": "off",
             "display": "on",
             "turbo": "off",
             "power": "on",
@@ -185,8 +204,10 @@ class Airspool(HVAC):
     def set_hswing(self, mode):
         self._set_choice("hswing", mode)
 
-    def set_energy_saver(self, mode):
-        self._set_choice("energy_saver", mode)
+    def set_se_step(self, mode):
+        # "SE speed control" (byte 6, 0x40).  Momentary: "on" emits one step
+        # frame; the unit steps its limiter-level counter on each accepted frame.
+        self._set_choice("se_step", mode)
 
     def set_display(self, mode):
         self._set_choice("display", mode)
@@ -237,7 +258,7 @@ class Airspool(HVAC):
         # byte 6 low nibble = mode.  Heat additionally carries the fixed 0xE0
         # high-bit signature (so heat always reads 0xE1).  We treat those high
         # bits as part of the heat mode signature rather than user-controllable
-        # energy-saver/display flags.
+        # se-step/display flags.
         mode = self._val("mode")
         mask = self._empty_mask()
         mask[6] |= self.MODE_NIBBLE.get(mode, self.MODE_NIBBLE["cool"])
@@ -255,11 +276,12 @@ class Airspool(HVAC):
             mask[6] |= 0x20
         return mask
 
-    def code_energy_saver(self):
-        # byte 6, 0x40 = energy-saver ("energy saver speed control").  Togglable
-        # only in cool/dehumidify; in heat it is part of the 0xE0 signature.
+    def code_se_step(self):
+        # byte 6, 0x40 = "SE speed control" step.  Momentary; setting it "on"
+        # emits one step frame.  Togglable only in cool/dehumidify; in heat it is
+        # already part of the 0xE0 signature.
         mask = self._empty_mask()
-        if self._on("energy_saver"):
+        if self._on("se_step"):
             mask[6] |= 0x40
         return mask
 
@@ -304,7 +326,7 @@ class Airspool(HVAC):
             self.code_turbo,
             self.code_mode,
             self.code_display,
-            self.code_energy_saver,
+            self.code_se_step,
             self.code_airflow,
             self.code_swing,
             self.code_hswing,
@@ -414,11 +436,12 @@ def main():
     )
     parser.add_argument(
         "-e",
-        "--energy-saver",
-        dest="energy_saver",
+        "--se-step",
+        dest="se_step",
         action="store_true",
         default=False,
-        help="Energy-saver speed control",
+        help="Emit one SE speed-control step (momentary; steps the unit's "
+        "limiter-level counter .1->.2->.3->.1). Alternate frames to walk it.",
     )
     parser.add_argument(
         "-d",
@@ -484,7 +507,7 @@ def main():
     device.set_sleep((opts.sleep and "on") or "off")
     device.set_swing((opts.swing and "on") or "off")
     device.set_hswing((opts.hswing and "on") or "off")
-    device.set_energy_saver((opts.energy_saver and "on") or "off")
+    device.set_se_step((opts.se_step and "on") or "off")
     device.set_display((opts.display and "on") or "off")
     device.set_turbo((opts.turbo and "on") or "off")
     device.set_se((opts.se and "on") or "off")

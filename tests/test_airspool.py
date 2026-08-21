@@ -48,7 +48,7 @@ REFERENCES = [
     ("23 CB 26 01 64 04 E1 00 00 00 00 E0 00 3E", dict(mode="heat", temperature=18)),
     (
         "23 CB 26 01 79 04 63 00 00 00 00 E0 00 D5",
-        dict(mode="cool", temperature=26, energy_saver="on"),
+        dict(mode="cool", temperature=26, se_step="on"),
     ),
     (
         "23 CB 26 01 79 04 03 00 00 00 00 E0 00 75",

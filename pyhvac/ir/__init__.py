@@ -11,4 +11,4 @@ from .model import (  # noqa: F401
     Signal,
 )
 
-from .codec import encode  # noqa: F401
+from .codec import DecodeError, decode, encode  # noqa: F401

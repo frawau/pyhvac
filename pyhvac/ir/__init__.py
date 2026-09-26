@@ -10,3 +10,5 @@ from .model import (  # noqa: F401
     Section,
     Signal,
 )
+
+from .codec import encode  # noqa: F401

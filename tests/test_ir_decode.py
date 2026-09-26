@@ -141,3 +141,11 @@ def test_negative_pulse_error_names_index():
 def test_unknown_expected_section():
     with pytest.raises(ValueError, match="unknown section"):
         decode(NEC_ONLY, [9000, 4500], expected=["nope"])
+
+
+def test_capture_with_short_final_silence():
+    # The last space of a capture is idle time, not a measured gap.
+    frames = [Frame("nec", b"\x12\x34")]
+    pulses = list(encode(NEC_ONLY, frames).pulses[:-1]) + [8000]
+    assert decode(NEC_ONLY, pulses, expected=["nec"]) == frames
+    assert decode(NEC_ONLY, pulses) == frames

@@ -193,9 +193,12 @@ class _Cursor:
         return bit
 
     def gap_ahead(self, gap):
-        return self.at_end() or (
-            not self.is_mark() and self.rest >= (1 - self.tol) * gap
-        )
+        if self.at_end():
+            return True
+        if self.is_mark():
+            return False
+        # The final space of a capture is idle time, not a measured gap.
+        return self.i == len(self.p) - 1 or self.rest >= (1 - self.tol) * gap
 
     def take_gap(self, gap):
         if not self.gap_ahead(gap):

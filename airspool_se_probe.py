@@ -39,7 +39,6 @@ import sys
 import tempfile
 
 from pyhvac.plugins.airspool import PluginObject
-from pyhvac.plugins.hvaclib import bit_reverse
 
 
 # --------------------------------------------------------------------------- IR
@@ -77,14 +76,14 @@ def build_lirc_raw(byte_index, bit_mask, **settings):
 
     Used by section 6 to poke bits the ``set_*`` API does not expose: we OR
     ``bit_mask`` into ``logical[byte_index]`` (bytes 0..12 only), recompute the
-    checksum, then bit-reverse to the wire order and produce LIRC timings.
+    checksum, then produce LIRC timings (the protocol sets the LSB-first wire
+    order).
     """
     dev = _make_device(**settings)
     logical = bytearray(dev._build_ircode()[0])
     logical[byte_index] |= bit_mask
     logical[13] = sum(logical[0:13]) & 0xFF  # recompute checksum over 0..12
-    wire = bytearray(bit_reverse(x) for x in logical)  # is_msb -> LSB-first wire
-    lirc = dev.to_lirc([wire])
+    lirc = dev.to_lirc([logical])
     return lirc, logical
 
 

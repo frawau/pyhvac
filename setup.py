@@ -7,7 +7,6 @@ from setuptools import setup, find_packages, Command
 from setuptools.dist import Distribution
 from setuptools.command.build_py import build_py
 
-
 BUILDIR = Path(__file__).parent
 LIBDIR = BUILDIR / "IRremoteESP8266"
 PYTHONDIR = LIBDIR / "python"
@@ -29,9 +28,11 @@ with open("pyhvac/__init__.py") as f:
 with open("README.md", "r") as fh:
     long_description = fh.read()
 
+
 class ExtModules(list):
     def __bool__(self):
         return not pure
+
 
 class BinaryDistribution(Distribution):
     """Distribution which always forces a binary package with platform name"""
@@ -57,9 +58,7 @@ def PrepareSwig():
         if withme:
             haspkgmgr = True
             subprocess.run(["apt-get", "-y", "uninstall", "swig"])
-            subprocess.run(
-                ["apt-get", "-y", "install", "libpcre2-dev", "python3-dev"]
-            )
+            subprocess.run(["apt-get", "-y", "install", "libpcre2-dev", "python3-dev"])
     if not haspkgmgr:
         withme = subprocess.run(
             ["which", "yum"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
@@ -156,7 +155,7 @@ setup(
             "gcsharp = pyhvac.plugins.sharp:main",
         ],
     },
-    packages=["pyhvac", "pyhvac.plugins"],
+    packages=["pyhvac", "pyhvac.ir", "pyhvac.plugins"],
     package_data={"pyhvac": ["_irhvac.so"]},
     distclass=BinaryDistribution,
     ext_modules=ExtModules(),

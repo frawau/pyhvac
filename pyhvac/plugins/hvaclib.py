@@ -29,7 +29,9 @@
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
 ##
 
-import struct
+from ..ir.codec import encode
+from ..ir.formats import broadlink_packet
+from ..ir.model import Frame
 
 try:
     from .. import irhvac
@@ -52,6 +54,10 @@ class HVAC(object):
     MARK = [435]
     SPACE = [435, 1300]
 
+    # pyhvac.ir.Protocol describing the physical layer. When None, the legacy
+    # STARTFRAME/MARK/SPACE/ENDFRAME attributes above are used instead.
+    PROTOCOL = None
+
     def __init__(self):
         self.brand = "Generic"
         self.model = "Generic"
@@ -72,14 +78,6 @@ class HVAC(object):
     def all_capabilities(self):
         return self.capabilities | self.xtra_capabilities
 
-    def get_timing(self):
-        return {
-            "start frame": self.STARTFRAME,
-            "end frame": self.ENDFRAME,
-            "mark": self.MARK,
-            "space": self.SPACE,
-        }
-
     def set_value(self, name, value):
         try:
             xx = getattr(self, "set_" + name)(value)
@@ -94,18 +92,24 @@ class HVAC(object):
 
     def build_ircode(self):
         frames = self._build_ircode()
-        if self.is_msb:
-            newframes = []
-            for f in frames:
-                newframes.append(bytearray([bit_reverse(x) for x in f]))
-            frames = newframes
-        # print("Frame with msb {} are:".format(self.is_msb))
-        # for f in frames:
-        # print(["0x%02x"%x for x in f])
+        if self.is_msb and self.PROTOCOL is None:
+            frames = [bytearray([bit_reverse(x) for x in f]) for f in frames]
         return frames
 
+    def _as_frames(self, frames):
+        """Frame objects; bare bytes go to the protocol's first section."""
+        default = next(iter(self.PROTOCOL.sections))
+        return [f if isinstance(f, Frame) else Frame(default, bytes(f)) for f in frames]
+
+    def build_signal(self):
+        if self.PROTOCOL is None:
+            raise NotImplementedError(f"{type(self).__name__} has no PROTOCOL")
+        return encode(self.PROTOCOL, self._as_frames(self.build_ircode()))
+
     def to_lirc(self, frames):
-        """Transform a list of frames into a LIRC compatible list of pulse timing pairs."""
+        """Transform a list of frames into a LIRC compatible list of pulse timings."""
+        if self.PROTOCOL is not None:
+            return list(encode(self.PROTOCOL, self._as_frames(frames)).pulses)
         lircframe = []
         for frame in frames:
             lircframe += self.STARTFRAME
@@ -124,30 +128,7 @@ class HVAC(object):
 
     def to_broadlink(self, frames):
         """Transform a list of frames to a Broadlink compatible byte string."""
-        pulses = [int(x) for x in self.to_lirc(frames)]
-        array = bytearray()
-        for pulse in pulses:
-            pulse = round(pulse * 269 / 8192)  # 32.84ms units
-
-            if pulse < 256:
-                array += bytearray(struct.pack(">B", pulse))  # big endian (1-byte)
-            else:
-                array += bytearray([0x00])  # indicate next number is 2-bytes
-                array += bytearray(struct.pack(">H", pulse))  # big endian (2-bytes)
-
-        packet = bytearray([0x26, 0x00])  # 0x26 = IR, 0x00 = no repeats
-        packet += bytearray(struct.pack("<H", len(array)))  # little endian byte count
-        packet += array
-        packet += bytearray([0x0D, 0x05])  # IR terminator
-
-        # Add 0s to make ultimate packet size a multiple of 16 for 128-bit AES encryption.
-        remainder = (
-            len(packet) + 4
-        ) % 16  # rm.send_data() adds 4-byte header (02 00 00 00)
-        if remainder:
-            packet += bytearray(16 - remainder)
-
-        return packet
+        return bytearray(broadlink_packet([int(x) for x in self.to_lirc(frames)]))
 
 
 class IRGHVAC(HVAC):

@@ -32,14 +32,20 @@
 import struct
 
 from .hvaclib import HVAC, PulseBased, GenPluginObject, bit_reverse
-from ..irhvac import (
-    kPanasonicLke,
-    kPanasonicCkp,
-    kPanasonicDke,
-    kPanasonicJke,
-    kPanasonicNke,
-    kPanasonicRkr,
-)
+
+try:
+    from ..irhvac import (
+        kPanasonicLke,
+        kPanasonicCkp,
+        kPanasonicDke,
+        kPanasonicJke,
+        kPanasonicNke,
+        kPanasonicRkr,
+    )
+except ImportError:
+    # Only the C-backed classes use these; keep the pure-Python ones importable.
+    kPanasonicLke = kPanasonicCkp = kPanasonicDke = None
+    kPanasonicJke = kPanasonicNke = kPanasonicRkr = None
 
 
 class Panasonic(HVAC):

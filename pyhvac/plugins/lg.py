@@ -29,7 +29,18 @@
 import struct
 
 from .hvaclib import HVAC, PulseBased, GenPluginObject
-from ..irhvac import GE6711AR2853M, LG6711A20083V, AKB75215403, AKB74955603, AKB73757604
+
+try:
+    from ..irhvac import (
+        GE6711AR2853M,
+        LG6711A20083V,
+        AKB75215403,
+        AKB74955603,
+        AKB73757604,
+    )
+except ImportError:
+    # Only the C-backed classes use these; keep the pure-Python ones importable.
+    GE6711AR2853M = LG6711A20083V = AKB75215403 = AKB74955603 = AKB73757604 = None
 
 
 class LG(HVAC):

@@ -30,7 +30,12 @@ import struct
 
 from .hvaclib import HVAC, PulseBased, GenPluginObject
 from .kelvinator import Kelvinator
-from ..irhvac import A907, A903, A705
+
+try:
+    from ..irhvac import A907, A903, A705
+except ImportError:
+    # Only the C-backed classes use these; keep the pure-Python ones importable.
+    A907 = A903 = A705 = None
 
 
 class Sharp(HVAC):

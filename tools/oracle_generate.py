@@ -58,6 +58,9 @@ def main():
                 except Exception as exc:  # record what works, report the rest
                     print(f"skip {cls.__name__} {state}: {exc!r}")
                     continue
+                if not pulses:
+                    print(f"skip {cls.__name__} {state}: no pulses from the C library")
+                    continue
                 records[dev.protocol].append(
                     {
                         "plugin": info.name,

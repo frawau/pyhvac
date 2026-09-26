@@ -29,6 +29,7 @@
 import struct
 
 from .hvaclib import HVAC, PulseBased, GenPluginObject
+from ..ir.model import Protocol, PulseDistance, Section
 from .kelvinator import Kelvinator
 
 try:
@@ -38,14 +39,25 @@ except ImportError:
     A907 = A903 = A705 = None
 
 
+SHARP_NATIVE = Protocol(
+    "sharp",
+    {
+        "main": Section(
+            PulseDistance(435, 435, 1400),
+            header=(3800, 1900),
+            footer=(435,),
+            gap=10000,
+            lsb_first=True,
+        )
+    },
+)
+
+
 class Sharp(HVAC):
     """Generic Sharp HVAC object. It must have, at the very minimum
     "mode" and "temperature" capabilities"""
 
-    STARTFRAME = [3800, 1900]
-    ENDFRAME = [435, 10000]
-    MARK = [435]
-    SPACE = [435, 1400]
+    PROTOCOL = SHARP_NATIVE
 
     def __init__(self):
         super().__init__()
@@ -60,8 +72,6 @@ class Sharp(HVAC):
         self.status = {"mode": "cool", "temperature": 25}
 
         self.to_set = {}
-        # Specify wether the bits order has to be swapped
-        self.is_msb = True
         self.FBODY = b"\xaa\x5a\xcf\x10\x00\x00\x00\x00\x00\x80\x00\xe0"
         self.crc_special = 0x01
 
@@ -334,15 +344,6 @@ class Sharp(HVAC):
         crc = (crc & 0x0F) << 4
         crc += self.crc_special
         return crc.to_bytes(1, "big")
-
-    def get_timing(self):
-        # Well Sharp is different
-        return {
-            "start frame": self.STARTFRAME,
-            "end frame": self.ENDFRAME,
-            "mark": self.MARK,
-            "space": self.SPACE,
-        }
 
 
 class JTech(Sharp):

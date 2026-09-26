@@ -30,11 +30,27 @@
 import struct
 
 from .hvaclib import HVAC, PulseBased, GenPluginObject, bit_reverse
+from ..ir.model import Protocol, PulseDistance, Section
+
+DAIKIN_NATIVE = Protocol(
+    "daikin-native",
+    {
+        "main": Section(
+            PulseDistance(435, 435, 1300),
+            header=(3500, 1750),
+            footer=(435,),
+            gap=10000,
+            lsb_first=False,
+        )
+    },
+)
 
 
 class Daikinth(HVAC):
     """Generic Daikin HVAC object. It must have, at the very minimum
     "mode" and "temperature" capabilities"""
+
+    PROTOCOL = DAIKIN_NATIVE
 
     FBODY = b"\x88\x5b\xe4\x00\x00\x0c\x00\x00\x00\x00\x00\x00\x00\x00\x00\xa3\x00\x10"
 
@@ -51,8 +67,6 @@ class Daikinth(HVAC):
         self.status = {"mode": "cool", "temperature": 25}
 
         self.to_set = {}
-        # Specify wether the bits order has to be swapped
-        self.is_msb = False
 
     def set_temperature(self, temp):
         if temp < self.capabilities["temperature"][0]:

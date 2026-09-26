@@ -29,6 +29,7 @@
 import struct
 
 from .hvaclib import HVAC, PulseBased, GenPluginObject
+from ..ir.model import Protocol, PulseDistance, Section
 
 try:
     from ..irhvac import (
@@ -43,14 +44,26 @@ except ImportError:
     GE6711AR2853M = LG6711A20083V = AKB75215403 = AKB74955603 = AKB73757604 = None
 
 
+# Frames are 4 bytes (32 bits) on the wire, as the legacy emitter sent them.
+LG_NATIVE = Protocol(
+    "lg-native",
+    {
+        "main": Section(
+            PulseDistance(520, 520, 1530),
+            header=(3100, 9850),
+            footer=(520,),
+            gap=12000,
+            lsb_first=False,
+        )
+    },
+)
+
+
 class LG(HVAC):
     """Generic LG HVAC object. It must have, at the very minimum
     "mode" and "temperature" capabilities"""
 
-    STARTFRAME = [3100, 9850]
-    ENDFRAME = [520, 12000]
-    MARK = [520]
-    SPACE = [520, 1530]
+    PROTOCOL = LG_NATIVE
 
     def __init__(self):
         super().__init__()
@@ -65,8 +78,6 @@ class LG(HVAC):
         self.status = {"mode": "off", "temperature": 25}
 
         self.to_set = {}
-        # Specify wether the bits order has to be swapped
-        self.is_msb = False
         self.FBODY = b"\x88\x00\x00"
 
     def set_temperature(self, temp):
@@ -395,17 +406,6 @@ class LG(HVAC):
             crc += (x & 0xF0) >> 4
             crc += x & 0x0F
         return ((crc & 0x0F) << 4).to_bytes(1, "big")
-
-    def get_timing(self):
-        # Well LG is different
-        return {
-            "start frame": STARTFRAME,
-            "end frame": ENDFRAME,
-            "mark": MARK,
-            "space 0": SPACE0,
-            "space 1": SPACE1,
-            "drop_bits": 4,
-        }
 
 
 class InverterV(LG):

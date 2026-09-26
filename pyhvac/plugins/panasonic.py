@@ -32,6 +32,7 @@
 import struct
 
 from .hvaclib import HVAC, PulseBased, GenPluginObject, bit_reverse
+from ..ir.model import Protocol, PulseDistance, Section
 
 try:
     from ..irhvac import (
@@ -48,9 +49,25 @@ except ImportError:
     kPanasonicJke = kPanasonicNke = kPanasonicRkr = None
 
 
+PANASONIC_NATIVE = Protocol(
+    "panasonic-native",
+    {
+        "main": Section(
+            PulseDistance(435, 435, 1300),
+            header=(3500, 1750),
+            footer=(435,),
+            gap=10000,
+            lsb_first=False,
+        )
+    },
+)
+
+
 class Panasonic(HVAC):
     """Generic Panasonic HVAC object. It must have, at the very minimum
     "mode" and "temperature" capabilities"""
+
+    PROTOCOL = PANASONIC_NATIVE
 
     FHEADER = b"\x40\x04\x07\x20\x00"
     F1BODY = b"\x00\x00"
@@ -73,8 +90,6 @@ class Panasonic(HVAC):
         self.status = {"mode": "off", "temperature": 25}
 
         self.to_set = {}
-        # Specify wether the bits order has to be swapped
-        self.is_msb = False
         self.base_temp = 16
 
     def set_temperature(self, temp):

@@ -29,15 +29,33 @@
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
 ##
 
-from .hvaclib import HVAC, GenPluginObject, bit_reverse
+from .hvaclib import HVAC, GenPluginObject
+from ..ir.codec import decode
+from ..ir.model import Protocol, PulseDistance, Section
+
+# Physical layer: 38 kHz, pulse-distance, LSB-first within each byte.
+AIRSPOOL = Protocol(
+    "airspool",
+    {
+        "main": Section(
+            PulseDistance(480, 360, 1180),
+            header=(3200, 1400),
+            # Final stop mark, then a long trailing gap before any repeat.  The
+            # exact gap length is not part of the documented capture; 100 ms is
+            # a safe value.
+            footer=(480,),
+            gap=100_000,
+            lsb_first=True,
+        )
+    },
+)
 
 
 class Airspool(HVAC):
     """Airspool mini-split (Tuya-style) HVAC object.
 
-    Physical layer: 38 kHz carrier, pulse-distance encoding, LSB-first within
-    each byte (handled by ``is_msb`` which swaps the bit order at build time so
-    the MSB-first emitter in :class:`HVAC` produces an LSB-first wire stream).
+    Physical layer (see ``AIRSPOOL``): 38 kHz carrier, pulse-distance
+    encoding, LSB-first within each byte.
 
       Header   : ~3200 us mark, ~1400 us space
       Bit mark : ~480 us (constant)
@@ -79,13 +97,7 @@ class Airspool(HVAC):
       byte 13  : checksum = sum(byte 0..12) & 0xFF
     """
 
-    # Physical-layer timings (microseconds).
-    STARTFRAME = [3200, 1400]
-    # Final stop mark, then a long trailing gap before any repeat.  The exact
-    # gap length is not part of the documented capture; 100 ms is a safe value.
-    ENDFRAME = [480, 100000]
-    MARK = [480]  # constant bit mark
-    SPACE = [360, 1180]  # SPACE[0] -> bit 0, SPACE[-1] -> bit 1
+    PROTOCOL = AIRSPOOL
 
     # Fixed skeleton, bytes 0..12 (the checksum, byte 13, is appended later).
     FBODY = b"\x23\xcb\x26\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00"
@@ -149,7 +161,6 @@ class Airspool(HVAC):
         }
         self.to_set = {}
         # LSB-first on the wire: swap the bit order of every byte at build time.
-        self.is_msb = True
 
     # ------------------------------------------------------------------ helpers
     def _val(self, key):
@@ -340,33 +351,9 @@ class Airspool(HVAC):
 
     # ------------------------------------------------------------------ decoding
     def decode_pulse(self, pulse, endian="msb"):
-        """Decode an Airspool LIRC pulse train back into the logical byte frame.
-
-        ``pulse`` is a flat list of timings as produced by ``to_lirc`` (header,
-        then a (mark, space) pair per bit).  Returns the 14-byte logical frame,
-        i.e. what ``_build_ircode`` produced before the LSB-first bit swap.
-        """
-        p = list(pulse)
-        i = len(self.STARTFRAME)  # skip the header
-        nbits = len(self.FBODY + b"\x00") * 8  # 14 bytes
-        bits = []
-        for _ in range(nbits):
-            space = p[i + 1]
-            # classify the space against the two known durations
-            bit = 1 if abs(space - self.SPACE[-1]) < abs(space - self.SPACE[0]) else 0
-            bits.append(bit)
-            i += 2
-        # bits were emitted MSB-first per wire byte
-        wire = bytearray()
-        for b in range(nbits // 8):
-            val = 0
-            for k in range(8):
-                val = (val << 1) | bits[b * 8 + k]
-            wire.append(val)
-        if self.is_msb:
-            # undo the LSB-first wire encoding to recover the logical frame
-            wire = bytearray(bit_reverse(x) for x in wire)
-        return wire
+        """Decode an Airspool pulse train back into the logical 14-byte frame."""
+        frames = decode(self.PROTOCOL, [int(x) for x in pulse], expected=["main"])
+        return bytearray(frames[0].data)
 
 
 class PluginObject(GenPluginObject):

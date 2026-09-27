@@ -35,7 +35,7 @@ class Trotech(PulseBased):
     TAIL = [592, 6184]
 
     def __init__(self):
-        super().__init__("TROTECH")
+        super().__init__("TROTEC")
         self.capabilities = {
             "mode": ["auto", "cool", "dry", "fan"],
             "temperature": [16, 30],
@@ -51,7 +51,7 @@ class Trotech3550(PulseBased):
     SPACE = [500, 1950]  # ditto
 
     def __init__(self):
-        super().__init__("TROTECH_3550")
+        super().__init__("TROTEC_3550")
         self.capabilities = {
             "mode": ["auto", "cool", "dry", "fan"],
             "temperature": [16, 30],

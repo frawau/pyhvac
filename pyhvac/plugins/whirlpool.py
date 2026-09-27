@@ -33,7 +33,7 @@ class Whirlpool(PulseBased):
     SPACE = [480, 1535]  # ditto
 
     def __init__(self):
-        super().__init__("VHIRLPOOL_AC", variant=DG11J13A)
+        super().__init__("WHIRLPOOL_AC", variant=DG11J13A)
         self.capabilities = {
             "mode": ["auto", "cool", "dry", "fan", "heat"],
             "temperature": [18, 32],
@@ -51,7 +51,7 @@ class Whirlpoolv2(PulseBased):
     SPACE = [480, 1535]  # ditto
 
     def __init__(self):
-        super().__init__("VHIRLPOOL_AC", variant=DG11J191)
+        super().__init__("WHIRLPOOL_AC", variant=DG11J191)
         self.capabilities = {
             "mode": ["auto", "cool", "dry", "fan", "heat"],
             "temperature": [18, 32],

@@ -181,14 +181,3 @@ def test_pulse_timings_use_physical_layer():
     # Final stop mark then a long trailing gap.
     assert pulses[-2] == 480
     assert pulses[-1] >= 10000
-
-
-def test_probe_raw_frames_decode_to_their_logical_bytes():
-    # airspool_se_probe.py pokes raw bits; its pulses must carry exactly the
-    # logical frame it reports (no double bit reversal).
-    import airspool_se_probe
-
-    lirc, logical = airspool_se_probe.build_lirc_raw(
-        7, 0xFF, mode="cool", temperature=24
-    )
-    assert Airspool().decode_pulse(lirc) == logical

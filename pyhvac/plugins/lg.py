@@ -319,7 +319,7 @@ class LG(HVAC):
 
         return bytearray()
 
-    def set_diagnostic(self):
+    def set_diagnostic(self, mode):
         if "diagnostic" not in self.xtra_capabilities:
             return
         if mode not in self.xtra_capabilities["diagnostic"]:
@@ -327,12 +327,13 @@ class LG(HVAC):
         if self.status["diagnostic"] != mode:
             self.to_set["diagnostic"] = mode
 
-    def code_cleaning(self):
+    def code_diagnostic(self):
         if "diagnostic" in self.to_set:
             mode = self.to_set["diagnostic"]
             self.to_set["diagnostic"] = "off"  # It is a request, not a toggle
             if mode == "on":
                 return bytearray(b"\x88\xc0\xce")
+        return bytearray()
 
     def set_mode(self, mode):
         if mode not in self.capabilities["mode"]:

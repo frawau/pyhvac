@@ -5,6 +5,8 @@ Temperatures are degrees Celsius with at most one decimal.
 
 from __future__ import annotations
 
+import math
+from collections.abc import Mapping as _Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Mapping, Optional, Tuple
@@ -29,6 +31,8 @@ def _check_setting(name, value, keywords):
 def _tenths(value, name):
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError(f"{name} must be a number (°C), got {value!r}")
+    if not math.isfinite(value * 10):
+        raise ValueError(f"{name} must be a finite number (°C), got {value!r}")
     return round(value * 10)
 
 
@@ -87,10 +91,23 @@ class HvacState:
 
     @classmethod
     def from_dict(cls, data):
+        """Rebuild a state from ``to_dict()`` output.
+
+        Unknown keys are ignored. Anything malformed (missing or invalid
+        fields, a non-mapping) raises ``ValueError``, so a caller restoring
+        persisted state can fall back to an unknown previous state.
+        """
+        if not isinstance(data, _Mapping):
+            raise ValueError(f"a state must be a mapping, got {type(data).__name__}")
+        missing = [k for k in ("power", "mode", "temperature") if k not in data]
+        if missing:
+            raise ValueError(f"state is missing {missing}")
+        features = data.get("features", {})
+        if not isinstance(features, _Mapping):
+            raise ValueError(f"features must be a mapping, got {features!r}")
         known = ("power", "mode", "temperature", "fan", "swing_v", "swing_h")
         kwargs = {k: data[k] for k in known if k in data}
-        kwargs["features"] = dict(data.get("features", {}))
-        return cls(**kwargs)
+        return cls(features=dict(features), **kwargs)
 
 
 @dataclass(frozen=True)

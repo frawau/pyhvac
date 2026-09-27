@@ -130,3 +130,20 @@ def test_legacy_signal_is_even_and_positive():
     dev = LegacyDevice("lg", "generic", LG)
     pulses = dev.encode(None, HvacState(True, "cool", 22.0)).signal.pulses
     assert len(pulses) % 2 == 0 and min(pulses) > 0
+
+
+def test_legacy_feature_default_is_the_old_status_default():
+    from pyhvac.plugins.lg import InverterV
+
+    dev = LegacyDevice("lg", "inverter v", InverterV)
+    state = dev.normalise(HvacState(True, "cool", 22.0))
+    assert state.features["auto_bias"] == "default"
+
+
+def test_capabilities_without_status_are_not_advertised():
+    from pyhvac.plugins.lg import DualInverter
+
+    # DualInverter lists hswing but keeps no status for it: never sent.
+    assert (
+        LegacyDevice("lg", "dual inverter", DualInverter).capabilities.swing_h is None
+    )

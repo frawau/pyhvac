@@ -119,3 +119,28 @@ def test_capabilities_validation():
         Capabilities(modes=(), temperature=rng)
     with pytest.raises(ValueError):
         Capabilities(modes=("cool", "fanheat"), temperature=rng)
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        {},
+        {"power": True, "mode": "cool"},
+        {"power": True, "mode": "cool", "temperature": 24.0, "features": None},
+        {"power": True, "mode": "cool", "temperature": 24.0, "features": [1]},
+        {"power": True, "mode": "cool", "temperature": float("inf")},
+        {"power": True, "mode": "cool", "temperature": 1e308},
+        {"power": True, "mode": "cool", "temperature": float("nan")},
+        {"power": True, "mode": "cool", "temperature": "24"},
+        {"power": True, "mode": "heat_cool", "temperature": 24.0},
+        {"power": True, "mode": "cool", "temperature": 24.0, "swing_v": "wide"},
+        [],
+        None,
+        "state",
+    ],
+)
+def test_from_dict_rejects_malformed_data_with_value_error(data):
+    # Callers restoring persisted state catch ValueError and fall back to
+    # previous=None ("unknown").
+    with pytest.raises(ValueError):
+        HvacState.from_dict(data)

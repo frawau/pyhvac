@@ -73,7 +73,7 @@ class Sharp(HVAC):
         }
         # For functions that require their own frames
         self.xtra_capabilities = {}
-        self.status = {"mode": "cool", "temperature": 25}
+        self.status = {"mode": "cool", "temperature": 25, "economy": "off"}
 
         self.to_set = {}
         self.FBODY = b"\xaa\x5a\xcf\x10\x00\x00\x00\x00\x00\x80\x00\xe0"

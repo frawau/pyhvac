@@ -50,12 +50,15 @@ def _fan_choice(values):
     return Choice(tuple(c for c, _ in canonical), dict(canonical))
 
 
-def legacy_capabilities(caps, temperature_step):
+def legacy_capabilities(caps, temperature_step, defaults=None):
     """Capabilities for an old class from its ``capabilities | xtra_capabilities``.
 
     Every fan/swing value is labelled with its old name, so the labels are
-    also the translation table back to the old vocabulary.
+    also the translation table back to the old vocabulary. ``defaults`` (the
+    old class's status) puts each feature's old default first, so that
+    normalising a state without that feature keeps the old behaviour.
     """
+    defaults = defaults or {}
     temps = list(caps["temperature"])
     decimals = (0, 5) if temperature_step == 0.5 else (0,)
     features = {}
@@ -63,8 +66,13 @@ def legacy_capabilities(caps, temperature_step):
         if key in ("mode", "temperature", "fan", "swing", "hswing"):
             continue
         values = list(values)
+        default = defaults.get(key)
+        if default in values:
+            values.remove(default)
+            values.insert(0, default)
         if sorted(values) == ["off", "on"]:
-            features[key] = Choice((False, True), {False: "off", True: "on"})
+            canonical = tuple(v == "on" for v in values)
+            features[key] = Choice(canonical, {False: "off", True: "on"})
         else:
             features[key] = Choice(tuple(values))
     return Capabilities(
@@ -86,8 +94,17 @@ class LegacyDevice(Device):
         super().__init__(brand, model)
         self.legacy_class = cls
         probe = cls()
+        caps = {**probe.capabilities, **probe.xtra_capabilities}
+        if not isinstance(probe, IRGHVAC):
+            # Pure-Python classes never send a key they keep no status for
+            # (see encode), so it is not advertised either.
+            caps = {
+                k: v
+                for k, v in caps.items()
+                if k in ("mode", "temperature") or k in probe.status
+            }
         self.capabilities = legacy_capabilities(
-            {**probe.capabilities, **probe.xtra_capabilities}, probe.temperature_step
+            caps, probe.temperature_step, probe.status
         )
 
     def to_old(self, state):
@@ -155,7 +172,16 @@ class LegacyDevice(Device):
             for k, v in old.items()
             if (sparse or k in dev.status) and dev.status.get(k) != v
         }
+        if not target.power:
+            # Always an explicit "off": with previous unknown, a fresh object
+            # whose status is already "off" would otherwise send nothing.
+            dev.to_set["mode"] = "off"
         pulses = [int(x) for x in dev.to_lirc(dev.build_ircode())]
+        if not pulses:
+            name = getattr(dev, "protocol", type(dev).__name__)
+            raise NotImplementedError(
+                f"the legacy encoder produced no signal for {name}"
+            )
         if len(pulses) % 2:
             pulses.append(TRAILER_GAP)
         return Command(Signal(38000, tuple(pulses)), target)

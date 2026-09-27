@@ -28,8 +28,12 @@
 
 import struct
 
+from dataclasses import replace
+
 from .hvaclib import HVAC, PulseBased, GenPluginObject
-from ..ir.model import Protocol, PulseDistance, Section
+from ..device import Device
+from ..ir.model import Frame, Protocol, PulseDistance, Section
+from ..state import BOOL, Capabilities, Choice, TemperatureRange
 from .kelvinator import Kelvinator
 
 try:
@@ -546,6 +550,129 @@ class SharpA705(PulseBased):
             "light": ["off", "on"],
             "purifier": ["off", "on"],
         }
+
+
+# --------------------------------------------------------------- Device API
+
+JTECH_BODY = b"\xaa\x5a\xcf\x10\x00\x00\x00\x00\x00\x80\x00\xe0"
+JTECH_MODE = {"auto": 0x00, "cool": 0x02, "dry": 0x03}  # byte 6 low bits
+JTECH_FAN = {"auto": 0x20, "1": 0x40, "2": 0x30, "3": 0x50, "4": 0x70}  # byte 6 high
+JTECH_SWING_V = {"auto": 8, "1": 9, "2": 10, "3": 11, "4": 12, "5": 13, "swing": 14}
+JTECH_SWING_H = {"1": 0x20, "2": 0x10, "3": 0x30, "swing": 0xF0}  # byte 8 high
+JTECH_SPOT_SIDE = {"middle": 0x10, "left": 0x20, "right": 0x30}
+POWER_ON, POWER_OFF, POWER_CHANGE = 0x11, 0x21, 0x31  # byte 5 transitions
+SPECIAL_ON, SPECIAL_OFF = 0x61, 0x71  # byte 5 of a powerful/economy frame
+
+
+def sharp_crc(body, special=0x01):
+    crc = 0
+    for x in body:
+        crc ^= x
+    crc ^= special
+    crc ^= crc >> 4
+    return ((crc & 0x0F) << 4) + special
+
+
+def jtech_temperature(celsius):
+    """Byte 4 for a setpoint; the unit takes whole and half degrees."""
+    tenths = round(celsius * 10)
+    whole, half = tenths // 10, tenths % 10 != 0
+    if whole < 16:
+        return whole + 0x3E + (0x20 if half else 0)
+    return (0x70 if half else 0xC0) + whole - 15
+
+
+class JTechDevice(Device):
+    """Sharp J-Tech (FTM-PV2S): byte 5 encodes a power transition, so the
+    frames depend on ``previous``; see the spec's transition table."""
+
+    PROTOCOL = SHARP_NATIVE
+    capabilities = Capabilities(
+        modes=("auto", "cool", "dry"),
+        temperature=TemperatureRange(14.0, 29.0, (0, 5)),
+        fan=Choice(
+            ("auto", "1", "2", "3", "4"),
+            {"1": "lowest", "2": "low", "3": "medium", "4": "highest"},
+        ),
+        swing_v=Choice(
+            ("auto", "swing", "1", "2", "3", "4", "5"),
+            {"1": "ceiling", "2": "90°", "3": "60°", "4": "45°", "5": "30°"},
+        ),
+        swing_h=Choice(
+            ("1", "2", "3", "swing"), {"1": "left", "2": "middle", "3": "right"}
+        ),
+        features={
+            "purifier": BOOL,
+            "powerful": BOOL,
+            "economy": BOOL,
+            "spot": Choice(
+                (
+                    "off",
+                    "close left",
+                    "close middle",
+                    "close right",
+                    "far left",
+                    "far middle",
+                    "far right",
+                )
+            ),
+        },
+    )
+
+    def normalise(self, state):
+        state = super().normalise(state)
+        if state.mode == "dry" and state.fan != "auto":
+            state = replace(state, fan="auto")  # the unit ignores fan in dry
+        return state
+
+    def _body(self, previous, target):
+        """Every byte except the power byte (5) and the mode bits of byte 6."""
+        body = bytearray(JTECH_BODY)
+        if target.power and target.mode == "cool":
+            body[4] = jtech_temperature(target.temperature)
+        body[6] |= JTECH_FAN[target.fan]
+        spot = target.features["spot"]
+        if spot == "off":
+            body[8] = JTECH_SWING_H[target.swing_h] | JTECH_SWING_V[target.swing_v]
+        else:
+            front, side = spot.split(" ")
+            body[8] = JTECH_SPOT_SIDE[side] | (0x0C if front == "close" else 0x09)
+            body[9] |= 0x01
+        if target.features["purifier"]:
+            body[11] |= 0x04
+        # The main frame carries the economy state the unit is in; the
+        # economy frame below is what changes it.
+        if (previous or target).features["economy"]:
+            body[11] |= 0x10
+        return body
+
+    def frames(self, previous, target, actions):
+        body = self._body(previous, target)
+        if not target.power:
+            body[5] = POWER_OFF
+        elif previous is None or not previous.power:
+            body[5] = POWER_ON
+        else:
+            body[5] = POWER_CHANGE
+        body[6] |= JTECH_MODE[target.mode]
+        frames = [body]
+        if target.power:
+            for name in ("powerful", "economy"):
+                wanted = target.features[name]
+                if previous is not None and previous.features[name] == wanted:
+                    continue
+                extra = self._body(previous, target)
+                extra[5] = SPECIAL_ON if wanted else SPECIAL_OFF
+                extra[6] |= JTECH_MODE[target.mode]
+                if name == "powerful":
+                    extra[10] |= 0x01
+                elif wanted:
+                    extra[11] |= 0x10
+                frames.append(extra)
+        return [Frame("main", bytes(f) + bytes([sharp_crc(f)])) for f in frames]
+
+
+DEVICES = {"j-tech": JTechDevice}
 
 
 class PluginObject(GenPluginObject):

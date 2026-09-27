@@ -38,7 +38,7 @@ class Carrier(PulseBased):
     def __init__(self):
         super().__init__("CARRIER_AC64")
         self.capabilities = {
-            "mode": ["off", "cool", "fan" "heat"],
+            "mode": ["off", "cool", "fan", "heat"],
             "temperature": [16, 30],
             "fan": ["auto", "high", "medium", "low"],
         }

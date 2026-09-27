@@ -269,9 +269,11 @@ class IRGHVAC(HVAC):
         self.to_set["mode"] = mode
 
     def set_fan(self, mode="off"):
-        if mode not in self.capabilities["mode"]:
-            mode = self.capabilities["mode"][0]
-        self.to_set["mode"] = mode
+        if "fan" not in self.capabilities:
+            return
+        if mode not in self.capabilities["fan"]:
+            mode = self.capabilities["fan"][0]
+        self.to_set["fan"] = mode
 
     def set_swing(self, mode="off"):
         if mode not in self.capabilities["swing"]:

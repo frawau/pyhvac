@@ -62,3 +62,14 @@ def test_every_c_backed_class_names_a_known_protocol():
         if not hasattr(irhvac, cls().protocol)
     ]
     assert unknown == []
+
+
+def test_every_c_backed_class_uses_known_modes():
+    pytest.importorskip("pyhvac.irhvac")
+    known = {"off", "auto", "cool", "heat", "dry", "fan"}
+    unknown = [
+        f"{name}: {sorted(set(cls().capabilities['mode']) - known)}"
+        for name, cls in _irghvac_classes()
+        if not set(cls().capabilities["mode"]) <= known
+    ]
+    assert unknown == []

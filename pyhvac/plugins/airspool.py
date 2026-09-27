@@ -31,7 +31,9 @@
 
 from .hvaclib import HVAC, GenPluginObject
 from ..ir.codec import decode
-from ..ir.model import Protocol, PulseDistance, Section
+from ..device import Device
+from ..ir.model import Frame, Protocol, PulseDistance, Section
+from ..state import BOOL, Capabilities, Choice, TemperatureRange
 
 # Physical layer: 38 kHz, pulse-distance, LSB-first within each byte.
 AIRSPOOL = Protocol(
@@ -354,6 +356,69 @@ class Airspool(HVAC):
         """Decode an Airspool pulse train back into the logical 14-byte frame."""
         frames = decode(self.PROTOCOL, [int(x) for x in pulse], expected=["main"])
         return bytearray(frames[0].data)
+
+
+# --------------------------------------------------------------- Device API
+
+# Canonical fan level -> airflow enum (byte 8, bits 0-2); see Airspool.FAN_ENUM.
+AIRSPOOL_FAN = {"auto": 0, "1": 2, "2": 4, "3": 3, "4": 6, "5": 5}
+
+
+class AirspoolDevice(Device):
+    """Stateless Airspool device: a full-state protocol, previous is ignored."""
+
+    PROTOCOL = AIRSPOOL
+    capabilities = Capabilities(
+        modes=("cool", "dry", "heat"),
+        temperature=TemperatureRange(16.0, 30.0, (0, 5)),
+        fan=Choice(
+            ("auto", "1", "2", "3", "4", "5"),
+            {"1": "fan1", "2": "fan2", "3": "fan3", "4": "fan4", "5": "fan5"},
+        ),
+        swing_v=Choice(("off", "swing")),
+        swing_h=Choice(("off", "swing")),
+        features={
+            "sleep": BOOL,
+            "powerful": BOOL,
+            "light": Choice((True, False)),  # display on by default
+            "power_limit": BOOL,
+        },
+        actions={"se_step": "SE speed step"},
+    )
+
+    def frames(self, previous, target, actions):
+        body = bytearray(Airspool.FBODY)
+        feat = target.features
+        temp_f = Airspool.c_to_f(target.temperature)
+        body[4] = ((temp_f // 10) << 4) | (temp_f % 10)
+        if target.power:
+            body[5] |= 0x04
+        if feat["power_limit"]:
+            body[5] |= 0x80
+        if feat["powerful"]:
+            body[5] |= 0x40
+            body[8] |= 0x40
+        body[6] |= Airspool.MODE_NIBBLE[target.mode]
+        if target.mode == "heat":
+            body[6] |= 0xE0
+        if feat["light"]:
+            body[6] |= 0x20
+        if "se_step" in actions:
+            body[6] |= 0x40
+        body[8] |= Airspool.SLEEP_ENUM if feat["sleep"] else AIRSPOOL_FAN[target.fan]
+        if target.swing_v == "swing":
+            body[8] |= 0x38
+        if target.swing_h != "swing":
+            body[11] |= 0xE0
+        body.append(sum(body) & 0xFF)
+        return [Frame("main", bytes(body))]
+
+
+DEVICES = {
+    "generic": AirspoolDevice,
+    "airspool": AirspoolDevice,
+    "airspool mini-split": AirspoolDevice,
+}
 
 
 class PluginObject(GenPluginObject):

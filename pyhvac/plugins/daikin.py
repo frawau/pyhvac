@@ -854,6 +854,183 @@ DEVICES.update({m: Daikin64Device for m in DAIKIN64_MODELS})
 DEVICES.update({m: Daikin64Device for m in DAIKIN64_MODELS})
 
 
+# --------------------------------------------------------------- Daikin128
+# Layout from IRremoteESP8266's Daikin128Protocol (ir_Daikin.h): 16 bytes
+# sent as two headerless-joined sections of 8 (kDaikin128SectionLength);
+# frame byte n of the second section is struct byte n + 8. The first
+# section's checksum is the top nibble of its last byte, the second's is a
+# nibble sum in its last byte (IRDaikin128::calcFirst/SecondChecksum).
+
+DAIKIN128 = Protocol(
+    "daikin128",
+    {
+        # kDaikin128LeaderMark/Space, sent twice
+        "preamble": Section(None, header=(9800, 9800, 9800, 9800)),
+        "first": Section(
+            PulseDistance(350, 382, 954),
+            header=(4600, 2500),
+            footer=(350,),
+            gap=20300,
+        ),
+        # No header: the bits follow the first section's gap directly, and
+        # the section closes on kDaikin128FooterMark (= kDaikin128HdrMark).
+        "second": Section(PulseDistance(350, 382, 954), footer=(4600,), gap=20300),
+    },
+    carrier=38000,  # kDaikin128Freq
+)
+
+
+@dataclass(frozen=True)
+class Daikin128FirstSum(Checksum):
+    """Daikin128's first checksum: the nibbles of data[start:end] plus the low
+    nibble of data[at], mod 16, written in the top nibble of data[at].
+
+    It shares its byte with data fields (the low nibble), so ``positions`` is
+    empty: Layout checks overlaps per byte. DAIKIN128_FIRST keeps bits 60-63
+    free of fields (tested).
+    """
+
+    def compute(self, data):
+        nibbles = sum((b >> 4) + (b & 0x0F) for b in self._input(data))
+        return (nibbles + (data[self.at] & 0x0F)) & 0x0F
+
+    def positions(self):
+        return set()
+
+    def apply(self, data):
+        data[self.at] = (data[self.at] & 0x0F) | self.compute(data) << 4
+
+    def check(self, data):
+        return data[self.at] >> 4 == self.compute(data)
+
+
+def _bcd(n):
+    return (n // 10) << 4 | n % 10
+
+
+DAIKIN128_MODE = {  # kDaikin128*
+    "dry": 0b0001,
+    "cool": 0b0010,
+    "fan": 0b0100,
+    "heat": 0b1000,
+    "auto": 0b1010,
+}
+DAIKIN128_FAN = {  # canonical fan -> kDaikin128Fan*
+    "auto": 0b0001,  # kDaikin128FanAuto
+    "1": 0b1001,  # lowest: kDaikin128FanQuiet
+    "2": 0b1000,  # kDaikin128FanLow
+    "3": 0b0100,  # kDaikin128FanMed
+    "4": 0b0010,  # kDaikin128FanHigh
+    "5": 0b0011,  # highest: kDaikin128FanPowerful
+}
+# kDaikin128MinTemp..kDaikin128MaxTemp, BCD (setTemp: uint8ToBcd)
+DAIKIN128_TEMPERATURE = {t: _bcd(t) for t in range(16, 31)}
+
+DAIKIN128_FIRST = Layout(
+    bytes.fromhex("1600000000000004"),  # byte 7 bit 2: always 1
+    {
+        "mode": Field.at(1, 0, 4, values=DAIKIN128_MODE),
+        "fan": Field.at(1, 4, 4, values=DAIKIN128_FAN),
+        "clock_mins": Field.at(2, 0, 8),  # BCD
+        "clock_hours": Field.at(3, 0, 8),  # BCD
+        "on_hours": Field.at(4, 0, 6),  # BCD
+        "on_half_hour": Field.at(4, 6, 1),
+        "on_timer": Field.at(4, 7, 1),
+        "off_hours": Field.at(5, 0, 6),  # BCD
+        "off_half_hour": Field.at(5, 6, 1),
+        "off_timer": Field.at(5, 7, 1),
+        "temperature": Field.at(6, 0, 8, values=DAIKIN128_TEMPERATURE),
+        "swing_v": Field.at(7, 0, 1, values={"off": 0, "swing": 1}),
+        "sleep": Field.at(7, 1, 1),
+        "power": Field.at(7, 3, 1),  # a toggle, not a state
+    },
+    checksum=Daikin128FirstSum(0, 7, 7),
+)
+DAIKIN128_SECOND = Layout(
+    bytes.fromhex("a100000000000000"),
+    {
+        "ceiling": Field.at(1, 0, 1),  # light toggle, ceiling unit
+        "economy": Field.at(1, 2, 1),
+        "wall": Field.at(1, 3, 1),  # light toggle, wall unit
+    },
+    checksum=NibbleSum(0, 7, 7),
+)
+
+
+class Daikin128Device(Device):
+    """Daikin128 (BRC52B63): full state, but power is a toggle bit.
+
+    The power bit asks the unit to flip its power, so it is set only when
+    the power changes: ``previous.power != target.power``. With no previous
+    state it is set for "on" and clear for "off", as IRac sends from a fresh
+    object (no previous state to toggle against).
+    """
+
+    PROTOCOL = DAIKIN128
+    LAYOUTS = (None, DAIKIN128_FIRST, DAIKIN128_SECOND)
+    capabilities = Capabilities(
+        modes=("auto", "dry", "cool", "heat", "fan"),
+        temperature=TemperatureRange(16.0, 30.0),
+        fan=Choice(
+            ("auto", "1", "2", "3", "4", "5"),
+            {
+                "auto": "auto",
+                "1": "lowest",
+                "2": "low",
+                "3": "medium",
+                "4": "high",
+                "5": "highest",
+            },
+        ),
+        swing_v=Choice(("off", "swing"), {"off": "off", "swing": "on"}),
+        features={"economy": Choice((False, True), {False: "off", True: "on"})},
+    )
+
+    def frames(self, previous, target, actions):
+        if previous is None:
+            toggle = target.power
+        else:
+            toggle = previous.power != target.power
+        # As the C path: an off message carries mode auto (IRac passes mode
+        # "off", which convertMode maps to auto).
+        mode = target.mode if target.power else "auto"
+        fan = target.fan
+        if mode == "auto" and fan in ("1", "5"):
+            fan = "auto"  # setFan: no quiet or powerful in auto
+        first = DAIKIN128_FIRST.build(
+            mode=mode,
+            fan=fan,
+            temperature=target.temperature,
+            swing_v=target.swing_v,
+            power=toggle,
+        )
+        second = DAIKIN128_SECOND.build(
+            # setEcono: only in cool and heat
+            economy=target.features["economy"]
+            and mode in ("cool", "heat"),
+        )
+        return [
+            Frame("preamble", b""),
+            Frame("first", bytes(first)),
+            Frame("second", bytes(second)),
+        ]
+
+
+DAIKIN128_MODELS = (
+    "17 Series FTXB09AXVJU",
+    "17 Series FTXB12AXVJU",
+    "17 Series FTXB24AXVJU",
+    "BRC52B63 remote",
+    "Daikin128",
+)
+
+
+DEVICES.update({m: Daikin128Device for m in DAIKIN128_MODELS})
+
+
+DEVICES.update({m: Daikin128Device for m in DAIKIN128_MODELS})
+
+
 class PluginObject(GenPluginObject):
     MODELS = {
         "generic": Daikinth,

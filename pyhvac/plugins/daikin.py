@@ -726,6 +726,134 @@ DEVICES.update({m: DaikinArcDevice for m in DAIKIN_ARC_MODELS})
 DEVICES.update({m: DaikinArcDevice for m in DAIKIN_ARC_MODELS})
 
 
+# -------------------------------------------------------------- Daikin64
+# Layout from IRremoteESP8266's Daikin64Protocol (ir_Daikin.h): one 64-bit
+# word sent LSB first, i.e. 8 bytes in order, each LSB first. The message is
+# a bitless leader (two kDaikin64LdrMark/LdrSpace pairs), the frame, then a
+# bare kDaikin64HdrMark followed by kDefaultMessageGap (sendDaikin64).
+
+DAIKIN64 = Protocol(
+    "daikin64",
+    {
+        "leader": Section(None, header=(9800, 9800, 9800, 9800)),
+        "main": Section(
+            PulseDistance(350, 382, 954),
+            header=(4600, 2500),
+            footer=(350,),
+            gap=20300,
+        ),
+        "trailer": Section(None, header=(4600,), gap=100000),
+    },
+)
+
+
+class Daikin64Checksum:
+    """kDaikin64ChecksumOffset/Size: the sum of the 15 nibbles below bit 60,
+    mod 16, stored in bits 60-63 (the top nibble of byte 7)."""
+
+    def positions(self):
+        # A nibble, not a byte: byte 7's low nibble holds fields, so Layout's
+        # byte-level overlap check cannot apply. No field uses bits 60-63.
+        return set()
+
+    def compute(self, data):
+        total = sum((b >> 4) + (b & 0x0F) for b in data[:7]) + (data[7] & 0x0F)
+        return total & 0x0F
+
+    def apply(self, data):
+        data[7] = (data[7] & 0x0F) | self.compute(data) << 4
+
+    def check(self, data):
+        return data[7] >> 4 == self.compute(data)
+
+
+# Skeleton from kDaikin64KnownGoodState with the written fields and the sum
+# cleared: byte 0 is 0x16, the clock (07:20, BCD) and both timers (22 h,
+# disabled) are never set by the C path, and byte 7 bit 2 is always set.
+DAIKIN64_LAYOUT = Layout(
+    bytes.fromhex("1600200716160004"),
+    {
+        "mode": Field.at(1, 0, 4, values={"dry": 1, "cool": 2, "fan": 4, "heat": 8}),
+        "fan": Field.at(  # kDaikin64Fan*
+            1,
+            4,
+            4,
+            values={
+                "auto": 0b0001,
+                "1": 0b1001,  # quiet
+                "2": 0b1000,  # low
+                "3": 0b0100,  # medium
+                "4": 0b0010,  # high
+                "5": 0b0011,  # turbo
+            },
+        ),
+        "temperature": Field.at(  # whole °C, BCD
+            6, 0, 8, values={t: int(str(t), 16) for t in range(16, 31)}
+        ),
+        "swing_v": Field.at(7, 0, 1, values={"off": 0, "swing": 1}),
+        "power": Field.at(7, 3, 1),  # a toggle
+    },
+    checksum=Daikin64Checksum(),
+)
+
+
+class Daikin64Device(Device):
+    """Daikin64 (DGS01): full state, except that the power bit is a toggle.
+
+    With ``previous`` the bit is set when the power changes, as IRac's
+    handleToggles does. Without it the bit is ``target.power``, as the C path
+    sends from a fresh IRac: an "on" toggles, an "off" toggles nothing.
+    """
+
+    PROTOCOL = DAIKIN64
+    LAYOUTS = (None, DAIKIN64_LAYOUT, None)
+    capabilities = Capabilities(
+        modes=("dry", "cool", "heat", "fan"),
+        temperature=TemperatureRange(16.0, 30.0),
+        fan=Choice(
+            ("auto", "1", "2", "3", "4", "5"),
+            {
+                "auto": "auto",
+                "1": "lowest",
+                "2": "low",
+                "3": "medium",
+                "4": "high",
+                "5": "highest",
+            },
+        ),
+        swing_v=Choice(("off", "swing"), {"off": "off", "swing": "on"}),
+    )
+
+    def frames(self, previous, target, actions):
+        if previous is None:
+            toggle = target.power
+        else:
+            toggle = target.power != previous.power
+        data = DAIKIN64_LAYOUT.build(
+            # As the C path: an off message carries mode cool (IRac passes
+            # mode "off", which convertMode maps to cool).
+            mode=target.mode if target.power else "cool",
+            fan=target.fan,
+            temperature=int(target.temperature),
+            swing_v=target.swing_v,
+            power=toggle,
+        )
+        return [
+            Frame("leader", b""),
+            Frame("main", bytes(data)),
+            Frame("trailer", b""),
+        ]
+
+
+DAIKIN64_MODELS = ("FFN-C/FCN-F Series", "DGS01 remote", "FTWX35AXV1", "Daikin64")
+
+
+DEVICES.update({m: Daikin64Device for m in DAIKIN64_MODELS})
+
+
+DEVICES.update({m: Daikin64Device for m in DAIKIN64_MODELS})
+
+
 class PluginObject(GenPluginObject):
     MODELS = {
         "generic": Daikinth,

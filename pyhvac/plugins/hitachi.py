@@ -902,8 +902,9 @@ HITACHI296_TEMP_AUTO = 1  # kHitachiAc296TempAuto
 HITACHI296_MIN_TEMP = 16  # kHitachiAc296MinTemp
 
 # Skeleton: IRHitachiAc296::stateReset with the parity bytes left for the
-# checksum. Byte 13 bits 0-1 ("unset_low") and byte 25 bit 7 ("unset") are
-# never written by stateReset; see Hitachi296Device.
+# checksum. Byte 13 bits 0-1 ("unset_low") and bit 7 ("unset_high"), and
+# byte 25 bit 7 ("unset") are never written by stateReset; see
+# Hitachi296Device.
 HITACHI296_LAYOUT = Layout(
     bytes.fromhex(
         "0110004000ff00cc00920043000000000000000000000000000000f1000000000000000300"
@@ -911,6 +912,7 @@ HITACHI296_LAYOUT = Layout(
     {
         "unset_low": Field.at(13, 0, 2),  # padding the C path never initialises
         "temperature": Field.at(13, 2, 5),  # whole °C, or kHitachiAc296TempAuto
+        "unset_high": Field.at(13, 7, 1),  # padding the C path never initialises
         "mode": Field.at(25, 0, 4, values=HITACHI296_MODE),
         "fan": Field.at(25, 4, 3),
         "unset": Field.at(25, 7, 1),  # padding bit the C path never initialises
@@ -923,13 +925,14 @@ HITACHI296_LAYOUT = Layout(
 class Hitachi296Device(Device):
     """Hitachi296 (RAR-3U3): a full-state protocol, ``previous`` is ignored.
 
-    Byte 13 bits 0-1 (padding before Temp) and byte 25 bit 7 (padding after
-    Fan) are unnamed in HitachiAC296Protocol and never written by
-    IRHitachiAc296::stateReset. IRac builds the object on the stack, so the
-    C path sends whatever memory held: byte 25 bit 7 differs from process
-    to process, and byte 13 bits 0-1 came out 0b11 in every process tried,
-    by accident. The port sends 0 for all three bits, as the RAR-3U3 remote
-    does in the library's captured messages (ir_Hitachi_test.cpp).
+    Byte 13 bits 0-1 and bit 7 (padding around Temp) and byte 25 bit 7
+    (padding after Fan) are unnamed in HitachiAC296Protocol and never
+    written by IRHitachiAc296::stateReset. IRac builds the object on the
+    stack, so the C path sends whatever memory held: byte 25 bit 7 differs
+    from process to process, byte 13 bits 0-1 came out 0b11 in every process
+    tried and bit 7 came out 0, both by accident. The port sends 0 for all
+    four bits, as the RAR-3U3 remote does in the library's captured messages
+    (ir_Hitachi_test.cpp).
     """
 
     PROTOCOL = HITACHI296
@@ -964,6 +967,7 @@ class Hitachi296Device(Device):
             mode=mode,
             fan=HITACHI296_FAN[target.fan],
             unset_low=0,
+            unset_high=0,
             unset=0,
             power=target.power,
         )

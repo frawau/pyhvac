@@ -16,12 +16,14 @@ from pyhvac.state import HvacState
 # - byte 25 bit 7 ("unset", after Fan) changes from process to process (its
 #   parity bit, byte 26 bit 7, follows); the committed fixture holds 1;
 # - byte 13 bits 0-1 ("unset_low", before Temp) came out 0b11 in every
-#   process tried, by accident; the fixture holds 0b11.
-# The port sends 0 for all three, as in the library's RAR-3U3 captures
+#   process tried, by accident; the fixture holds 0b11;
+# - byte 13 bit 7 ("unset_high", after Temp) came out 0 so far.
+# The port sends 0 for all four bits, as in the library's RAR-3U3 captures
 # (ir_Hitachi_test.cpp: byte 13 = 0x04 / 0x60, byte 25 = 0x57 / 0x13).
 UNSET = Defect("unset", 0, 1, "C sends stale memory in byte 25 bit 7")
 UNSET_LOW = Defect("unset_low", 0, 3, "C sends stale memory in byte 13 bits 0-1")
-DEFECTS = (UNSET, UNSET_LOW)
+UNSET_HIGH = Defect("unset_high", 0, 1, "C sends stale memory in byte 13 bit 7")
+DEFECTS = (UNSET, UNSET_LOW, UNSET_HIGH)
 
 # The two RAR-3U3 messages of ir_Hitachi_test.cpp (TestDecodeHitachiAc296).
 REAL_EXAMPLE = bytes.fromhex(  # power on, auto, fan auto
@@ -172,3 +174,23 @@ def test_layouts_must_cover_every_frame():
     record = load_oracle("HITACHI_AC296")[0]
     with pytest.raises(AssertionError, match="layout"):
         assert_matches_oracle(dev, record, (), DEFECTS)
+
+
+def test_stale_high_padding_bit_is_a_declared_defect():
+    # Byte 13 bit 7 is also never written by stateReset: C sends whatever
+    # memory holds there. A C frame with a 1 in it must be accepted as that
+    # declared defect, not fail as an unexplained byte difference.
+    from pyhvac.ir.codec import encode
+    from pyhvac.ir.model import Frame
+    from pyhvac.plugins.hitachi import HITACHI296_LAYOUT
+
+    assert "unset_high" in HITACHI296_LAYOUT.fields
+    dev = device()
+    record = load_oracle("HITACHI_AC296")[0]
+    ours = dev.frames(None, state_from_record(dev, record["state"]), ())
+    stale = bytearray(ours[0].data)
+    HITACHI296_LAYOUT.write_raw(stale, "unset_high", 1)
+    HITACHI296_LAYOUT.checksum.apply(stale)
+    theirs = encode(dev.PROTOCOL, [Frame(ours[0].section, bytes(stale))])
+    stale_record = {"state": record["state"], "pulses": list(theirs.pulses)}
+    assert_matches_oracle(dev, stale_record, dev.LAYOUTS, DEFECTS)

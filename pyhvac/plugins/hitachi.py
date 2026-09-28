@@ -188,6 +188,123 @@ class Hitachi296(PulseBased):
 DEVICES = {}
 
 
+# --------------------------------------------------------------- HitachiAc
+# Layout from IRremoteESP8266's HitachiProtocol (ir_Hitachi.h): one 28-byte
+# frame (kHitachiAcStateLength), sent MSB first (sendHitachiAC), so frame
+# byte n is struct byte n. Every field holds its value bit-reversed
+# (IRHitachiAc stores reverseBits(value, 8)), and so do the value tables.
+
+HITACHI_AC = Protocol(
+    "hitachi-ac",
+    {
+        "main": Section(
+            PulseDistance(400, 500, 1250),  # kHitachiAcBitMark/ZeroSpace/OneSpace
+            header=(3300, 1700),  # kHitachiAcHdrMark/HdrSpace
+            footer=(400,),
+            gap=100000,  # kHitachiAcMinGap = kDefaultMessageGap
+            lsb_first=False,
+        ),
+    },
+    carrier=38000,  # kHitachiAcFreq
+)
+
+
+@dataclass(frozen=True)
+class HitachiAcChecksum(Checksum):
+    """IRHitachiAc::calcChecksum: 62 minus the sum of the bit-reversed bytes
+    before ``at``, bit-reversed."""
+
+    def compute(self, data):
+        return bit_reverse((62 - sum(self._input(data))) & 0xFF)
+
+
+HITACHI_AC_MODES = {  # kHitachiAc{Auto,Heat,Cool,Dry,Fan}
+    "auto": 2,
+    "heat": 3,
+    "cool": 4,
+    "dry": 5,
+    "fan": 0xC,
+}
+HITACHI_AC_FANS = {  # IRHitachiAc::convertFan
+    "auto": 1,  # kHitachiAcFanAuto
+    "1": 2,  # kHitachiAcFanLow (kLow)
+    "2": 3,  # kHitachiAcFanMed (kMedium)
+    "3": 4,  # kHitachiAcFanHigh - 1 (kHigh; kMax would be kHitachiAcFanHigh)
+}
+HITACHI_AC_MIN_TEMP = 16  # kHitachiAcMinTemp
+
+# Skeleton: IRHitachiAc::stateReset with the written fields and the sum
+# cleared. Bytes 0-8, 14/15 (0x60 below the swing bits) and 24 (0x80) are
+# fixed; byte 9 is 0x10, or 0x90 at kHitachiAcMinTemp (setTemp).
+HITACHI_AC_LAYOUT = Layout(
+    bytes.fromhex("80080c02fd807f884810000000006060000000000000000080000000"),
+    {
+        "min_temp": Field.at(9, 7, 1),
+        "mode": Field.at(
+            10, 0, 8, values={k: bit_reverse(v) for k, v in HITACHI_AC_MODES.items()}
+        ),
+        "temperature": Field.at(  # whole °C, doubled
+            11, 0, 8, values={t: bit_reverse(t << 1) for t in range(16, 33)}
+        ),
+        "fan": Field.at(
+            13, 0, 8, values={k: bit_reverse(v) for k, v in HITACHI_AC_FANS.items()}
+        ),
+        "swing_v": Field.at(14, 7, 1, values={"off": 0, "swing": 1}),
+        "swing_h": Field.at(15, 7, 1, values={"off": 0, "swing": 1}),
+        "power": Field.at(17, 0, 1),
+    },
+    checksum=HitachiAcChecksum(0, 27, 27, reverse=True),
+)
+
+
+class HitachiAcDevice(Device):
+    """Hitachi (RAS-35THA6): a full-state protocol, ``previous`` is ignored."""
+
+    PROTOCOL = HITACHI_AC
+    LAYOUTS = (HITACHI_AC_LAYOUT,)
+    capabilities = Capabilities(
+        modes=("auto", "heat", "cool", "dry", "fan"),
+        temperature=TemperatureRange(16.0, 32.0),
+        fan=Choice(
+            ("auto", "1", "2", "3"),
+            {"auto": "auto", "1": "low", "2": "medium", "3": "high"},
+        ),
+        swing_v=Choice(("off", "swing"), {"off": "off", "swing": "on"}),
+        swing_h=Choice(("off", "swing"), {"off": "off", "swing": "on"}),
+    )
+
+    def frames(self, previous, target, actions):
+        # As the C path: an off message carries mode auto (IRac passes mode
+        # "off", which convertMode maps to kHitachiAcAuto).
+        mode = target.mode if target.power else "auto"
+        # IRHitachiAc::setFan clamps by mode: dry only has low and medium
+        # (kHitachiAcFanLow..+1), fan has no auto (minimum kHitachiAcFanLow).
+        fan = target.fan
+        if mode == "dry":
+            fan = {"auto": "1", "3": "2"}.get(fan, fan)
+        elif mode == "fan" and fan == "auto":
+            fan = "1"
+        # setMode(kHitachiAcFan) writes the special temperature 64, but IRac
+        # calls setTemp(degrees) after setMode, so the setpoint is always sent.
+        temperature = int(target.temperature)
+        data = HITACHI_AC_LAYOUT.build(
+            min_temp=temperature == HITACHI_AC_MIN_TEMP,
+            mode=mode,
+            temperature=temperature,
+            fan=fan,
+            swing_v=target.swing_v,
+            swing_h=target.swing_h,
+            power=target.power,
+        )
+        return [Frame("main", bytes(data))]
+
+
+HITACHI_AC_MODELS = ("RAS-35THA6 remote", "generic")
+
+
+DEVICES.update({m: HitachiAcDevice for m in HITACHI_AC_MODELS})
+
+
 # Now the match between models and objects
 class PluginObject(GenPluginObject):
     MODELS = {

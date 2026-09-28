@@ -75,6 +75,7 @@ def assert_matches_oracle(device, record, layouts, defects=()):
     ours = device.frames(None, state, ())
     names = [f.section for f in ours]
     theirs = decode(device.PROTOCOL, record["pulses"], expected=names)
+    assert len(layouts) == len(ours), "one layout (or None) per frame is required"
     allowed = {(d.field, d.ours, d.theirs) for d in defects}
     deviated = False
     for i, (a, b, layout) in enumerate(zip(ours, theirs, layouts)):

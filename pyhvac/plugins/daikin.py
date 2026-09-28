@@ -570,8 +570,12 @@ class Daikin2Device(Device):
 
     def frames(self, previous, target, actions):
         feat = target.features
+        # As the C path: an off message carries mode auto (IRac passes mode
+        # "off", which Daikin2 maps to auto), so the cool minimum never
+        # applies to it.
+        mode = target.mode if target.power else "auto"
         temperature = target.temperature
-        if target.mode == "cool":
+        if mode == "cool":
             temperature = max(temperature, DAIKIN2_MIN_COOL)
         first = DAIKIN2_FIRST.build(
             power2=not target.power,
@@ -581,11 +585,11 @@ class Daikin2Device(Device):
         )
         second = DAIKIN2_SECOND.build(
             power=target.power,
-            mode=target.mode,
+            mode=mode,
             temperature=temperature,
             fan=target.fan,
             powerful=feat["powerful"],
-            quiet=feat["quiet"],
+            quiet=feat["quiet"] and not feat["powerful"],  # powerful cancels quiet
             economy=feat["economy"],
             purifier=feat["purifier"],
         )

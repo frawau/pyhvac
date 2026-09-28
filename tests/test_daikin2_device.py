@@ -70,3 +70,31 @@ def test_undeclared_deviation_is_reported():
     record = next(r for r in load_oracle("DAIKIN2") if "hswing" not in r["state"])
     with pytest.raises(AssertionError, match="swing_h"):
         assert_matches_oracle(dev, record, dev.LAYOUTS, defects=())
+
+
+@pytest.mark.parametrize("mode", ["auto", "dry", "cool", "heat", "fan"])
+def test_off_frame_matches_the_c_path_in_every_mode(mode):
+    # The C path sends mode "off", which Daikin2 turns into auto, with the
+    # setpoint as given (the cool minimum does not apply to auto).
+    dev = device()
+    state = dev.normalise(HvacState(False, mode, 12.0))
+    _, _, second = dev.frames(None, state, ())
+    read = DAIKIN2_SECOND.read(second.data)
+    assert (read["mode"], read["temperature"]) == ("auto", 12)
+
+
+def test_powerful_cancels_quiet_as_the_c_path_does():
+    dev = device()
+    state = dev.normalise(
+        HvacState(True, "cool", 24.0, features={"quiet": True, "powerful": True})
+    )
+    _, _, second = dev.frames(None, state, ())
+    read = DAIKIN2_SECOND.read(second.data)
+    assert (read["powerful"], read["quiet"]) == (1, 0)
+
+
+def test_layouts_must_cover_every_frame():
+    dev = device()
+    record = load_oracle("DAIKIN2")[0]
+    with pytest.raises(AssertionError, match="layout"):
+        assert_matches_oracle(dev, record, dev.LAYOUTS[:2], DEFECTS)

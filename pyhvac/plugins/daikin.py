@@ -1419,6 +1419,123 @@ DEVICES.update({m: Daikin216Device for m in DAIKIN216_MODELS})
 DEVICES.update({m: Daikin216Device for m in DAIKIN216_MODELS})
 
 
+# --------------------------------------------------------------- Daikin312
+# Layout from IRremoteESP8266's Daikin312Protocol (ir_Daikin.h): 39 bytes in
+# two sections of 20 and 19, each closed by a sum-of-bytes checksum; frame
+# byte n of the second section is struct byte n + 20. The sections follow a
+# headerless leader of five zero bits (sendDaikin312).
+
+DAIKIN312_BITS = PulseDistance(453, 414, 1275)  # kDaikin312BitMark/Zero/OneSpace
+DAIKIN312 = Protocol(
+    "daikin312",
+    {
+        "leader": Section(DAIKIN312_BITS, footer=(453,), gap=25100),
+        "main": Section(DAIKIN312_BITS, header=(3518, 1688), footer=(453,), gap=35512),
+    },
+    carrier=36700,  # kDaikin312Freq
+)
+
+# Skeleton bits the port never changes, as IRac::daikin312 sends them: beep
+# off (Beep = 3, byte 7) and auto clean hardwired on (Clean, byte 14 bit 4).
+DAIKIN312_FIRST = Layout(
+    bytes.fromhex("11da2700025864d8640600000000100000000000"),
+    {
+        "power2": Field.at(6, 7, 1),  # inverse of power
+        "mold": Field.at(8, 3, 1),
+        "light": Field.at(12, 0, 2, values={True: 1, False: 3}),  # as IRac
+    },
+    checksum=Sum8(0, 19, 19),
+)
+DAIKIN312_SECOND = Layout(
+    bytes.fromhex("11da27000008000000000006600000c5000800"),
+    {
+        "power": Field.at(5, 0, 1),
+        "mode": Field.at(
+            5, 4, 3, values={"auto": 0, "dry": 2, "cool": 3, "heat": 4, "fan": 6}
+        ),
+        "temperature": Field.at(6, 0, 7),  # in half degrees
+        "swing_v": Field.at(8, 0, 4, values={"off": 0x0, "swing": 0xF}),
+        "fan": Field.at(8, 4, 4, values={"auto": 0xA, "1": 3, "2": 5, "3": 6}),
+        "swing_h": Field.at(9, 0, 4, values={"off": 0x0, "swing": 0xF}),
+        "powerful": Field.at(13, 0, 1),
+        "quiet": Field.at(13, 5, 1),
+        "economy": Field.at(16, 2, 1),
+        "purifier": Field.at(16, 4, 1),
+    },
+    checksum=Sum8(0, 18, 18),
+)
+DAIKIN312_MIN_COOL = 18.0  # kDaikin312MinCoolTemp
+
+
+class Daikin312Device(Device):
+    """Daikin312 (ARC466A67): a full-state protocol, ``previous`` is ignored."""
+
+    PROTOCOL = DAIKIN312
+    LAYOUTS = (None, DAIKIN312_FIRST, DAIKIN312_SECOND)
+    capabilities = Capabilities(
+        modes=("auto", "dry", "cool", "heat", "fan"),
+        temperature=TemperatureRange(10.0, 32.0, (0, 5)),
+        fan=Choice(
+            ("auto", "1", "2", "3"),
+            {"auto": "auto", "1": "low", "2": "medium", "3": "high"},
+        ),
+        swing_v=Choice(("off", "swing"), {"off": "off", "swing": "on"}),
+        swing_h=Choice(("off", "swing"), {"off": "off", "swing": "on"}),
+        features={
+            name: Choice((False, True), {False: "off", True: "on"})
+            for name in (
+                "quiet",
+                "powerful",
+                "light",
+                "economy",
+                "purifier",
+                "cleaning",
+            )
+        },
+    )
+
+    def frames(self, previous, target, actions):
+        feat = target.features
+        # As the C path: an off message carries mode auto (IRac passes mode
+        # "off", which Daikin312 maps to auto), so the cool minimum never
+        # applies to it.
+        mode = target.mode if target.power else "auto"
+        temperature = target.temperature
+        if mode == "cool":
+            temperature = max(temperature, DAIKIN312_MIN_COOL)
+        first = DAIKIN312_FIRST.build(
+            power2=not target.power,
+            mold=feat["cleaning"],
+            light=feat["light"],
+        )
+        second = DAIKIN312_SECOND.build(
+            power=target.power,
+            mode=mode,
+            temperature=int(temperature * 2),
+            fan=target.fan,
+            swing_v=target.swing_v,
+            swing_h=target.swing_h,
+            powerful=feat["powerful"],
+            quiet=feat["quiet"] and not feat["powerful"],  # powerful cancels quiet
+            economy=feat["economy"],
+            purifier=feat["purifier"],
+        )
+        return [
+            Frame("leader", b"\x00", 5),
+            Frame("main", bytes(first)),
+            Frame("main", bytes(second)),
+        ]
+
+
+DAIKIN312_MODELS = ("FTXM20R5V1B", "ARC466A67 remote", "Daikin312")
+
+
+DEVICES.update({m: Daikin312Device for m in DAIKIN312_MODELS})
+
+
+DEVICES.update({m: Daikin312Device for m in DAIKIN312_MODELS})
+
+
 class PluginObject(GenPluginObject):
     MODELS = {
         "generic": Daikinth,

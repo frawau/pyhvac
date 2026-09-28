@@ -611,6 +611,158 @@ HITACHI424_MODELS = ("RAR-8P2 remote", "RAS-AJ25H", "generic 424")
 DEVICES.update({m: Hitachi424Device for m in HITACHI424_MODELS})
 
 
+# ------------------------------------------------------------- Hitachi344
+# Layout from IRremoteESP8266's Hitachi424Protocol (ir_Hitachi.h), which
+# IRHitachiAc344 reuses for its 43 bytes (kHitachiAc344StateLength), with the
+# kHitachiAc344* values and the 344-only SwingH (byte 35) and SwingV (byte 37)
+# fields. Sent by sendHitachiAC: one frame, LSB first (MSBfirst is false for
+# kHitachiAc344StateLength), closed by kHitachiAcMinGap. From byte 3 on,
+# every second byte is the complement of the one before it
+# (IRHitachiAc424::setInvertedStates).
+
+HITACHI344 = Protocol(
+    "hitachi344",
+    {
+        "main": Section(
+            PulseDistance(400, 500, 1250),  # kHitachiAcBitMark/ZeroSpace/OneSpace
+            header=(3300, 1700),  # kHitachiAcHdrMark/HdrSpace
+            footer=(400,),
+            gap=100000,  # kHitachiAcMinGap = kDefaultMessageGap
+        )
+    },
+    carrier=38000,  # kHitachiAcFreq
+)
+
+HITACHI344_BUTTON = {  # kHitachiAc344Button*
+    "power_mode": 0x13,
+    "fan": 0x42,
+    "temp_down": 0x43,
+    "temp_up": 0x44,
+    "swing_v": 0x81,
+    "swing_h": 0x8C,
+}
+HITACHI344_FAN = {  # canonical fan -> kHitachiAc344Fan*
+    "1": 1,  # lowest: kHitachiAc344FanMin
+    "2": 2,  # kHitachiAc344FanLow
+    "3": 3,  # kHitachiAc344FanMedium
+    "4": 4,  # kHitachiAc344FanHigh
+    "auto": 5,  # kHitachiAc344FanAuto
+    "5": 6,  # highest: kHitachiAc344FanMax
+}
+HITACHI344_SWING_H = {  # canonical position -> kHitachiAc344SwingH*
+    "auto": 0,  # kHitachiAc344SwingHAuto
+    "1": 5,  # far left: kHitachiAc344SwingHLeftMax
+    "2": 4,  # kHitachiAc344SwingHLeft
+    "3": 3,  # kHitachiAc344SwingHMiddle
+    "4": 2,  # kHitachiAc344SwingHRight
+    "5": 1,  # far right: kHitachiAc344SwingHRightMax
+}
+
+# Skeleton from IRHitachiAc344::stateReset with the written fields cleared
+# (the complements are recomputed by the checksum).
+HITACHI344_LAYOUT = Layout(
+    bytes.fromhex(
+        "01100040bfff00cc3300ff00ff00ff00ff00ff00ff00ff00ff00ffe11e00ff00ff807f00ff00ff00ff00ff"
+    ),
+    {
+        # raw[9] and raw[29] are not in the struct: IRHitachiAc424::setFan
+        # writes 0x92/0x00, 0x98 for FanMin, and 0xA9/0x30 for FanMax.
+        "fan_byte9": Field.at(9, 0, 8),
+        "button": Field.at(11, 0, 8, values=HITACHI344_BUTTON),
+        "temperature": Field.at(13, 2, 6, encode=int),  # whole °C
+        "mode": Field.at(25, 0, 4, values={"fan": 1, "cool": 3, "dry": 5, "heat": 6}),
+        "fan": Field.at(25, 4, 4, values=HITACHI344_FAN),
+        "power": Field.at(27, 4, 1),
+        "fan_byte29": Field.at(29, 0, 8),
+        "swing_h": Field.at(35, 0, 3, values=HITACHI344_SWING_H),
+        # The SwingV state bit (IRHitachiAc344::setSwingV). IRac::hitachi344
+        # never calls setSwingV, only setSwingVToggle (the button), so the C
+        # path always sends it clear; the port does too.
+        "swing_v": Field.at(37, 5, 1),
+    },
+    checksum=InvertedPairs(3, 43),
+)
+
+
+class Hitachi344Device(Device):
+    """Hitachi344 (RAS-22NK, RF11T1): full state, plus a swing toggle.
+
+    Vertical swing is sent as a button press (``button`` = swing_v, byte 11),
+    which toggles the louvre. With ``previous`` the button is pressed only
+    when swing_v changes, as IRac::handleToggles does for HITACHI_AC344 with
+    a previous state. With ``previous=None`` it is pressed when swing_v is
+    "swing", as a fresh IRac sends. Otherwise the button is power/mode:
+    IRac::hitachi344 calls setPower last, and setSwingVToggle only replaces
+    the button when swing is asked for.
+    """
+
+    PROTOCOL = HITACHI344
+    LAYOUTS = (HITACHI344_LAYOUT,)
+    capabilities = Capabilities(
+        modes=("cool", "fan", "dry", "heat"),
+        temperature=TemperatureRange(16.0, 32.0),
+        fan=Choice(
+            ("auto", "1", "2", "3", "4", "5"),
+            {
+                "auto": "auto",
+                "1": "lowest",
+                "2": "low",
+                "3": "medium",
+                "4": "high",
+                "5": "highest",
+            },
+        ),
+        swing_v=Choice(("off", "swing"), {"off": "off", "swing": "on"}),
+        swing_h=Choice(
+            ("auto", "1", "2", "3", "4", "5"),
+            {
+                "auto": "auto",
+                "1": "far left",
+                "2": "left",
+                "3": "middle",
+                "4": "right",
+                "5": "far right",
+            },
+        ),
+    )
+
+    def frames(self, previous, target, actions):
+        # As the C path: an off message carries mode cool (IRac passes mode
+        # "off", which convertMode maps to cool).
+        mode = target.mode if target.power else "cool"
+        # IRHitachiAc424::setFan: dry allows auto or up to low; fan mode has
+        # no auto and falls back to min.
+        fan = HITACHI344_FAN[target.fan]
+        if mode == "dry" and fan != HITACHI344_FAN["auto"]:
+            fan = min(fan, 2)  # kHitachiAc424FanMaxDry
+        elif mode == "fan" and fan == HITACHI344_FAN["auto"]:
+            fan = 1  # kHitachiAc424FanMin
+        if previous is None:
+            press = target.swing_v != "off"
+        else:
+            press = target.swing_v != previous.swing_v
+        data = HITACHI344_LAYOUT.build(
+            fan_byte9={1: 0x98, 6: 0xA9}.get(fan, 0x92),
+            button="swing_v" if press else "power_mode",
+            # IRac's setTemp comes after setMode, so fan mode keeps the
+            # setpoint rather than kHitachiAc424FanTemp.
+            temperature=int(target.temperature),
+            mode=mode,
+            fan=HITACHI344_LAYOUT.fields["fan"].from_int(fan),
+            power=target.power,
+            fan_byte29=0x30 if fan == 6 else 0x00,
+            swing_h=target.swing_h,
+            swing_v=0,
+        )
+        return [Frame("main", bytes(data))]
+
+
+HITACHI344_MODELS = ("RAS-22NK", "RF11T1", "generic 344")
+
+
+DEVICES.update({m: Hitachi344Device for m in HITACHI344_MODELS})
+
+
 # Now the match between models and objects
 class PluginObject(GenPluginObject):
     MODELS = {

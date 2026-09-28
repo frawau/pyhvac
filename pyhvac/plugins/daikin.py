@@ -1229,6 +1229,96 @@ DEVICES.update({m: Daikin160Device for m in DAIKIN160_MODELS})
 DEVICES.update({m: Daikin160Device for m in DAIKIN160_MODELS})
 
 
+# ------------------------------------------------------------- Daikin176
+# Layout from IRremoteESP8266's Daikin176Protocol (ir_Daikin.h): 22 bytes in
+# two sections of 7 and 15, each closed by a sum-of-bytes checksum; frame
+# byte n of the second section is struct byte n + 7.
+
+DAIKIN176 = Protocol(
+    "daikin176",
+    {
+        "main": Section(
+            PulseDistance(370, 710, 1780),
+            header=(5070, 2140),
+            footer=(370,),
+            gap=29410,
+        ),
+    },
+    carrier=38000,
+)
+
+DAIKIN176_MODES = {"fan": 0, "heat": 1, "cool": 2, "auto": 3, "dry": 7}
+# AltMode bits kept in line with the mode (IRDaikin176::setMode)
+DAIKIN176_ALT_MODES = {"fan": 6, "heat": 7, "cool": 7, "auto": 7, "dry": 2}
+DAIKIN176_DRY_FAN_TEMP = 17.0  # kDaikin176DryFanTemp
+
+DAIKIN176_FIRST = Layout(
+    bytes.fromhex("11da1718040000"),
+    {"unit_id": Field.at(3, 0, 1)},  # Id1: 0 = unit A, 1 = unit B
+    checksum=Sum8(0, 6, 6),
+)
+DAIKIN176_SECOND = Layout(
+    bytes.fromhex("11da17180003000000000000002000"),
+    {
+        "unit_id": Field.at(3, 0, 1),  # Id2, always equal to Id1
+        "alt_mode": Field.at(5, 4, 3),
+        "mode_button": Field.at(6, 0, 8),  # kDaikin176ModeButton when set
+        "power": Field.at(7, 0, 1),
+        "mode": Field.at(7, 4, 3, values=DAIKIN176_MODES),
+        "temperature": Field.at(10, 1, 6),  # whole °C - 9
+        "swing_h": Field.at(11, 0, 4, values={"off": 0x6, "swing": 0x5}),
+        "fan": Field.at(11, 4, 4, values={"1": 1, "2": 3}),  # kDaikinFanMin/176FanMax
+    },
+    checksum=Sum8(0, 14, 14),
+)
+
+
+class Daikin176Device(Device):
+    """Daikin176 (BRC4C153): a full-state protocol, ``previous`` is ignored.
+
+    The header's ModeButton byte marks a mode-button press, but the C path
+    always clears it (IRac::daikin176 calls setTemp and setFan after
+    setMode), so every message is a plain full state with ModeButton 0.
+    """
+
+    PROTOCOL = DAIKIN176
+    LAYOUTS = (DAIKIN176_FIRST, DAIKIN176_SECOND)
+    capabilities = Capabilities(
+        modes=("auto", "dry", "cool", "heat", "fan"),
+        temperature=TemperatureRange(10.0, 32.0),
+        fan=Choice(("1", "2"), {"1": "low", "2": "high"}),
+        swing_h=Choice(("off", "swing"), {"off": "off", "swing": "on"}),
+    )
+
+    def frames(self, previous, target, actions):
+        # As the C path: an off message carries mode cool (IRac passes mode
+        # "off", which convertMode maps to cool) with the setpoint as given.
+        mode = target.mode if target.power else "cool"
+        temperature = target.temperature
+        if mode in ("dry", "fan"):
+            temperature = DAIKIN176_DRY_FAN_TEMP
+        first = DAIKIN176_FIRST.build()
+        second = DAIKIN176_SECOND.build(
+            alt_mode=DAIKIN176_ALT_MODES[mode],
+            mode_button=0,
+            power=target.power,
+            mode=mode,
+            temperature=int(temperature) - 9,
+            swing_h=target.swing_h,
+            fan=target.fan,
+        )
+        return [Frame("main", bytes(first)), Frame("main", bytes(second))]
+
+
+DAIKIN176_MODELS = ("BRC4C153 remote", "FFQ35B8V1B", "BRC4C151 remote", "Daikin176")
+
+
+DEVICES.update({m: Daikin176Device for m in DAIKIN176_MODELS})
+
+
+DEVICES.update({m: Daikin176Device for m in DAIKIN176_MODELS})
+
+
 class PluginObject(GenPluginObject):
     MODELS = {
         "generic": Daikinth,

@@ -122,9 +122,10 @@ def test_frame_accepts_int_list():
     assert Frame("main", [1, 2]).data == b"\x01\x02"
 
 
-def test_frame_rejects_empty_data():
+def test_frame_rejects_empty_data_with_bits():
+    # Empty data is only for bitless sections, and then carries no bits.
     with pytest.raises(ValueError):
-        Frame("main", b"")
+        Frame("main", b"", 8)
 
 
 @pytest.mark.parametrize("nbits", [0, 8, 17])

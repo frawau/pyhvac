@@ -80,7 +80,17 @@ def encode(protocol, frames):
             raise ValueError(
                 f"unknown section {frame.section!r} for protocol {protocol.name!r}"
             ) from None
-        levels += _section_levels(section, _frame_bits(frame, section))
+        if section.bits is None:
+            if frame.nbits:
+                raise ValueError(
+                    f"bitless section {frame.section!r} takes an empty frame"
+                )
+            bits = []
+        elif not frame.nbits:
+            raise ValueError(f"section {frame.section!r} needs data")
+        else:
+            bits = _frame_bits(frame, section)
+        levels += _section_levels(section, bits)
     merged = _merge(levels)
     if merged[-1] > 0:
         merged.append(-protocol.trailer_gap)
@@ -247,7 +257,19 @@ def _section_end(cur, section):
     return None
 
 
+def _parse_bitless(cur, name, section):
+    for k, d in enumerate(section.header):
+        cur.take(k % 2 == 0, d, partial=True)
+    for k, d in enumerate(section.footer):
+        cur.take(k % 2 == 0, d, partial=True)
+    if section.gap:
+        cur.take_gap(section.gap)
+    return Frame(name, b"", 0)
+
+
 def _parse_section(cur, name, section):
+    if section.bits is None:
+        return _parse_bitless(cur, name, section)
     enc = section.bits
     for k, d in enumerate(section.header):
         last = k == len(section.header) - 1

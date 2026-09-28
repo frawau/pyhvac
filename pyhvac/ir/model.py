@@ -65,16 +65,20 @@ class Section:
     """Template for one burst on the wire: header, bits, footer, gap.
 
     ``header`` and ``footer`` alternate mark, space, ... starting with a mark.
+    With ``bits=None`` the section is a fixed burst (a preamble or leader)
+    that carries no data and is sent with an empty frame.
     """
 
-    bits: BitEncoding
+    bits: Optional[BitEncoding]
     header: Tuple[int, ...] = ()
     footer: Tuple[int, ...] = ()
     gap: int = 0
     lsb_first: bool = True
 
     def __post_init__(self):
-        if not isinstance(self.bits, (PulseDistance, PulseWidth, Manchester)):
+        if self.bits is not None and not isinstance(
+            self.bits, (PulseDistance, PulseWidth, Manchester)
+        ):
             raise ValueError(f"unknown bit encoding {self.bits!r}")
         object.__setattr__(self, "header", tuple(self.header))
         object.__setattr__(self, "footer", tuple(self.footer))
@@ -83,6 +87,8 @@ class Section:
         for i, d in enumerate(self.footer):
             _check_int(f"footer[{i}]", d, "µs")
         _check_int("gap", self.gap, "µs", minimum=0)
+        if self.bits is None and not (self.header or self.footer or self.gap):
+            raise ValueError("a bitless section needs a header, a footer or a gap")
         if isinstance(self.bits, PulseDistance) and not self.footer:
             # Without a closing mark the last bit's space merges into the gap
             # and its value cannot be recovered.
@@ -119,7 +125,10 @@ class Protocol:
 
 @dataclass(frozen=True)
 class Frame:
-    """Payload for one section. ``nbits`` defaults to all bits of ``data``."""
+    """Payload for one section. ``nbits`` defaults to all bits of ``data``.
+
+    An empty frame (``data=b""``, ``nbits=0``) is sent with a bitless section.
+    """
 
     section: str
     data: bytes
@@ -127,9 +136,12 @@ class Frame:
 
     def __post_init__(self):
         data = bytes(self.data)
-        if not data:
-            raise ValueError("frame data must not be empty")
         object.__setattr__(self, "data", data)
+        if not data:
+            if self.nbits not in (None, 0):
+                raise ValueError(f"an empty frame has 0 bits, not {self.nbits}")
+            object.__setattr__(self, "nbits", 0)
+            return
         nbits = 8 * len(data) if self.nbits is None else self.nbits
         _check_int("nbits", nbits, "bits")
         if not 8 * (len(data) - 1) < nbits <= 8 * len(data):

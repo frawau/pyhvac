@@ -305,6 +305,185 @@ HITACHI_AC_MODELS = ("RAS-35THA6 remote", "generic")
 DEVICES.update({m: HitachiAcDevice for m in HITACHI_AC_MODELS})
 
 
+# ------------------------------------------------------------- Hitachi1
+# Layout from IRremoteESP8266's Hitachi1Protocol (ir_Hitachi.h): one 13-byte
+# frame, bytes in order, each sent MSB first (sendHitachiAC1: sendGeneric
+# with MSBfirst). Header kHitachiAc1HdrMark/HdrSpace, bits
+# kHitachiAcBitMark/ZeroSpace/OneSpace, gap kHitachiAcMinGap
+# (kDefaultMessageGap), carrier kHitachiAcFreq.
+
+HITACHI1 = Protocol(
+    "hitachi1",
+    {
+        "main": Section(
+            PulseDistance(400, 500, 1250),
+            header=(3400, 3400),
+            footer=(400,),
+            gap=100000,
+            lsb_first=False,
+        )
+    },
+    carrier=38000,
+)
+
+
+@dataclass(frozen=True)
+class Hitachi1Checksum(NibbleSum):
+    """IRHitachiAc1::calcChecksum: the sum of every nibble of data[start:end],
+    each nibble bit-reversed, stored bit-reversed.
+
+    ``reverse=True`` covers the per-nibble reversal (the nibbles of a
+    reversed byte are its nibbles reversed); NibbleSum writes its result as
+    computed, so the final reversal needs this subclass. The checksum is a
+    whole byte (kHitachiAc1ChecksumStartByte..Sum).
+    """
+
+    reverse: bool = True
+
+    def compute(self, data):
+        return bit_reverse(super().compute(data))
+
+
+def _rev5(n):
+    return int(f"{n:05b}"[::-1], 2)
+
+
+HITACHI1_MIN_TEMP, HITACHI1_MAX_TEMP = 16, 32  # kHitachiAcMin/MaxTemp
+HITACHI1_TEMP_AUTO = 25  # kHitachiAc1TempAuto
+HITACHI1_SLEEP = 0b010  # kHitachiAc1Sleep2: what IRac sends for any sleep
+
+HITACHI1_LAYOUT = Layout(
+    # IRHitachiAc1::stateReset with the written fields and the sum cleared:
+    # byte 6 bit 7 stays set, the timers (bytes 7-10) are never set by IRac.
+    bytes.fromhex("b2ae4d11f00080000000000000"),
+    {
+        "model": Field.at(3, 6, 2, values={"A": 0b10, "B": 0b01}),
+        "fan": Field.at(  # kHitachiAc1Fan*
+            5, 0, 4, values={"auto": 1, "1": 8, "2": 4, "3": 2}
+        ),
+        "mode": Field.at(  # kHitachiAc1*
+            5,
+            4,
+            4,
+            values={
+                "dry": 0b0010,
+                "fan": 0b0100,
+                "cool": 0b0110,
+                "heat": 0b1001,
+                "auto": 0b1110,
+            },
+        ),
+        # (celsius - kHitachiAc1TempDelta), 5 bits reversed
+        "temperature": Field.at(
+            6,
+            2,
+            5,
+            values={
+                t: _rev5(t - 7) for t in range(HITACHI1_MIN_TEMP, HITACHI1_MAX_TEMP + 1)
+            },
+        ),
+        "swing_toggle": Field.at(11, 0, 1),
+        "sleep": Field.at(11, 1, 3),  # kHitachiAc1Sleep*
+        "power_toggle": Field.at(11, 4, 1),
+        "power": Field.at(11, 5, 1),
+        "swing_v": Field.at(11, 6, 1, values={"off": 0, "swing": 1}),
+        "swing_h": Field.at(11, 7, 1, values={"off": 0, "swing": 1}),
+    },
+    checksum=Hitachi1Checksum(5, 12, 12),
+)
+
+
+class Hitachi1Device(Device):
+    """Hitachi AC1 (R-LT0541-HTA, remote variants A and B): full state plus a
+    power toggle and a swing toggle bit.
+
+    The variant ("A" or "B", kHitachiAc1Model_A/B) comes from the model
+    (HITACHI1_MODELS) unless given, so the registry's ``cls(brand, model)``
+    call picks it; unknown models get A, as IRHitachiAc1::setModel does.
+
+    Toggles, as IRac::sendAc does for HITACHI_AC1 (not handleToggles): the
+    power toggle is set when the power changes, the swing toggle when
+    swing_v or swing_h changes. IRac compares against its previous state,
+    and a fresh IRac's previous state is the stdAc default (power off, both
+    swings off), so without ``previous`` this device compares against that:
+    power toggle = target.power, swing toggle = any swing on. This matches
+    the C path in both cases.
+    """
+
+    PROTOCOL = HITACHI1
+    LAYOUTS = (HITACHI1_LAYOUT,)
+    capabilities = Capabilities(
+        modes=("auto", "heat", "cool", "dry", "fan"),
+        temperature=TemperatureRange(16.0, 32.0),
+        fan=Choice(
+            ("auto", "1", "2", "3"),
+            {"auto": "auto", "1": "low", "2": "medium", "3": "high"},
+        ),
+        swing_v=Choice(("off", "swing"), {"off": "off", "swing": "on"}),
+        swing_h=Choice(("off", "swing"), {"off": "off", "swing": "on"}),
+        features={"sleep": Choice((False, True), {False: "off", True: "on"})},
+    )
+
+    def __init__(self, brand, model, variant=None):
+        super().__init__(brand, model)
+        self.variant = variant or HITACHI1_MODELS.get(model, "A")
+        if self.variant not in ("A", "B"):
+            raise ValueError(f"unknown Hitachi1 variant {self.variant!r}")
+
+    def frames(self, previous, target, actions):
+        if previous is None:  # a fresh IRac: its previous state is all off
+            power_toggle = target.power
+            swing_toggle = target.swing_v != "off" or target.swing_h != "off"
+        else:
+            power_toggle = previous.power != target.power
+            swing_toggle = (
+                previous.swing_v != target.swing_v or previous.swing_h != target.swing_h
+            )
+        # As the C path: an off message carries mode auto (IRac passes mode
+        # "off", which convertMode maps to auto).
+        mode = target.mode if target.power else "auto"
+        # setTemp is ignored in auto: the reset state's kHitachiAc1TempAuto.
+        temperature = HITACHI1_TEMP_AUTO if mode == "auto" else int(target.temperature)
+        fan = target.fan
+        if mode == "auto":
+            fan = "auto"  # setFan: auto is locked to auto speed
+        elif mode == "dry":
+            fan = "1"  # setFan: dry is locked to low speed
+        elif mode in ("heat", "fan") and fan == "auto":
+            fan = "1"  # setFan: no auto speed in heat and fan, low instead
+        data = HITACHI1_LAYOUT.build(
+            model=self.variant,
+            mode=mode,
+            temperature=temperature,
+            fan=fan,
+            swing_v=target.swing_v,
+            swing_h=target.swing_h,
+            # IRac's Sleep2 for any sleep; setSleep: only in auto and cool.
+            sleep=(
+                HITACHI1_SLEEP
+                if target.features["sleep"] and mode in ("auto", "cool")
+                else 0
+            ),
+            power=target.power,
+            power_toggle=power_toggle,
+            swing_toggle=swing_toggle,
+        )
+        return [Frame("main", bytes(data))]
+
+
+HITACHI1_MODELS = {  # model -> remote variant (hitachi_ac1_remote_model_t)
+    "LT0541-HTA remote": "A",
+    "Series VI": "A",
+    "KAZE-312KSDP": "A",
+    "R-LT0541-HTA/Y.K.1.1-1 V2.3 remote": "A",
+    "generic 1 code a": "A",
+    "generic 1 code b": "B",
+}
+
+
+DEVICES.update({m: Hitachi1Device for m in HITACHI1_MODELS})
+
+
 # Now the match between models and objects
 class PluginObject(GenPluginObject):
     MODELS = {

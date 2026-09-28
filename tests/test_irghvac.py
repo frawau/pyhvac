@@ -73,3 +73,27 @@ def test_every_c_backed_class_uses_known_modes():
         if not set(cls().capabilities["mode"]) <= known
     ]
     assert unknown == []
+
+
+def test_every_advertised_swing_value_translates():
+    # A value missing from trans_swing/trans_hswing is silently dropped by
+    # build_ircode, so e.g. swing "on" never reached the C library.
+    pytest.importorskip("pyhvac.irhvac")
+    missing = []
+    for name, cls in _irghvac_classes():
+        dev = cls()
+        caps = {**dev.capabilities, **dev.xtra_capabilities}
+        for key, trans in (("swing", dev.trans_swing), ("hswing", dev.trans_hswing)):
+            for value in caps.get(key, ()):
+                try:
+                    trans(value)
+                except KeyError:
+                    missing.append(f"{name}.{key}={value!r}")
+    assert missing == []
+
+
+def test_swing_on_means_swing():
+    irhvac = pytest.importorskip("pyhvac.irhvac")
+    dev = bare_device(CAPS)
+    assert dev.trans_swing("on") == irhvac.swingv_t_kAuto
+    assert dev.trans_hswing("on") == irhvac.swingh_t_kAuto

@@ -220,6 +220,7 @@ class IRGHVAC(HVAC):
             "30°": irhvac.swingv_t_kLow,
             "0°": irhvac.swingv_t_kLowest,
             "off": irhvac.swingv_t_kOff,
+            "on": irhvac.swingv_t_kAuto,  # kAuto is IRremoteESP8266's "swing"
         }
 
         return trad[swing]
@@ -238,6 +239,7 @@ class IRGHVAC(HVAC):
             "middle": irhvac.swingh_t_kMiddle,
             "wide": irhvac.swingh_t_kWide,
             "auto": irhvac.swingh_t_kAuto,
+            "on": irhvac.swingh_t_kAuto,  # kAuto: "a.k.a. On" in IRremoteESP8266
         }
 
         return trad[swing]

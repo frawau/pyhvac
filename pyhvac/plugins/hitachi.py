@@ -865,6 +865,117 @@ HITACHI264_MODELS = ("RAR-2P2 remote", "RAK-25NH5", "generic 264")
 DEVICES.update({m: Hitachi264Device for m in HITACHI264_MODELS})
 
 
+# ----------------------------------------------------------- Hitachi296
+# Layout from IRremoteESP8266's HitachiAC296Protocol (ir_Hitachi.h): 37 bytes
+# sent LSB first in one frame (sendHitachiAC with MSBfirst false for
+# kHitachiAc296StateLength). After the 3-byte header, every second byte is
+# the complement of the one before it (IRHitachiAc296::setInvertedStates).
+
+HITACHI296 = Protocol(
+    "hitachi296",
+    {
+        "main": Section(
+            PulseDistance(400, 500, 1250),  # kHitachiAcBitMark/ZeroSpace/OneSpace
+            header=(3300, 1700),  # kHitachiAcHdrMark/HdrSpace
+            footer=(400,),
+            gap=100000,  # kHitachiAcMinGap (kDefaultMessageGap)
+        ),
+    },
+    carrier=38000,  # sendHitachiAC: 38 kHz
+)
+
+HITACHI296_MODE = {  # kHitachiAc296*, as IRHitachiAc296::convertMode
+    "cool": 0b0011,  # kHitachiAc296Cool
+    "dry": 0b0101,  # kHitachiAc296Dehumidify
+    "heat": 0b0110,  # kHitachiAc296Heat
+    "auto": 0b0111,  # kHitachiAc296Auto
+}
+HITACHI296_FAN = {  # canonical fan -> kHitachiAc296Fan*, as convertFan
+    "1": 0b001,  # lowest: kHitachiAc296FanSilent
+    "2": 0b010,  # kHitachiAc296FanLow
+    "3": 0b011,  # kHitachiAc296FanMedium
+    "4": 0b100,  # kHitachiAc296FanHigh
+    "5": 0b100,  # highest: kHitachiAc296FanHigh (no higher code exists)
+    "auto": 0b101,  # kHitachiAc296FanAuto
+}
+HITACHI296_TEMP_AUTO = 1  # kHitachiAc296TempAuto
+HITACHI296_MIN_TEMP = 16  # kHitachiAc296MinTemp
+
+# Skeleton: IRHitachiAc296::stateReset with the parity bytes left for the
+# checksum. Byte 13 bits 0-1 ("unset_low") and byte 25 bit 7 ("unset") are
+# never written by stateReset; see Hitachi296Device.
+HITACHI296_LAYOUT = Layout(
+    bytes.fromhex(
+        "0110004000ff00cc00920043000000000000000000000000000000f1000000000000000300"
+    ),
+    {
+        "unset_low": Field.at(13, 0, 2),  # padding the C path never initialises
+        "temperature": Field.at(13, 2, 5),  # whole °C, or kHitachiAc296TempAuto
+        "mode": Field.at(25, 0, 4, values=HITACHI296_MODE),
+        "fan": Field.at(25, 4, 3),
+        "unset": Field.at(25, 7, 1),  # padding bit the C path never initialises
+        "power": Field.at(27, 4, 1),
+    },
+    checksum=InvertedPairs(3, 37),
+)
+
+
+class Hitachi296Device(Device):
+    """Hitachi296 (RAR-3U3): a full-state protocol, ``previous`` is ignored.
+
+    Byte 13 bits 0-1 (padding before Temp) and byte 25 bit 7 (padding after
+    Fan) are unnamed in HitachiAC296Protocol and never written by
+    IRHitachiAc296::stateReset. IRac builds the object on the stack, so the
+    C path sends whatever memory held: byte 25 bit 7 differs from process
+    to process, and byte 13 bits 0-1 came out 0b11 in every process tried,
+    by accident. The port sends 0 for all three bits, as the RAR-3U3 remote
+    does in the library's captured messages (ir_Hitachi_test.cpp).
+    """
+
+    PROTOCOL = HITACHI296
+    LAYOUTS = (HITACHI296_LAYOUT,)
+    capabilities = Capabilities(
+        modes=("auto", "cool", "dry", "heat"),
+        temperature=TemperatureRange(16.0, 25.0),
+        fan=Choice(
+            ("auto", "1", "2", "3", "4", "5"),
+            {
+                "auto": "auto",
+                "1": "lowest",
+                "2": "low",
+                "3": "medium",
+                "4": "high",
+                "5": "highest",
+            },
+        ),
+    )
+
+    def frames(self, previous, target, actions):
+        # As the C path: an off message carries mode auto (IRac passes mode
+        # "off", which convertMode maps to auto), and in auto setTemp stores
+        # kHitachiAc296TempAuto instead of the setpoint.
+        mode = target.mode if target.power else "auto"
+        if mode == "auto":
+            temperature = HITACHI296_TEMP_AUTO
+        else:
+            temperature = max(int(target.temperature), HITACHI296_MIN_TEMP)
+        data = HITACHI296_LAYOUT.build(
+            temperature=temperature,
+            mode=mode,
+            fan=HITACHI296_FAN[target.fan],
+            unset_low=0,
+            unset=0,
+            power=target.power,
+        )
+        return [Frame("main", bytes(data))]
+
+
+HITACHI296_MODELS = ("RAR-3U3 remote", "RAS-70YHA3", "generic 296")
+
+
+DEVICES.update({m: Hitachi296Device for m in HITACHI296_MODELS})
+
+
 # Now the match between models and objects
 class PluginObject(GenPluginObject):
     MODELS = {

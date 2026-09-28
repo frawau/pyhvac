@@ -23,8 +23,19 @@
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
 #
 
+from dataclasses import dataclass
+
 from .hvaclib import PulseBased, GenPluginObject
-from ..irhvac import R_LT0541_HTA_A, R_LT0541_HTA_B
+from ..device import Device
+from ..fields import Checksum, Field, InvertedPairs, Layout, NibbleSum, bit_reverse
+from ..ir.model import Frame, Protocol, PulseDistance, Section
+from ..state import Capabilities, Choice, TemperatureRange
+
+try:
+    from ..irhvac import R_LT0541_HTA_A, R_LT0541_HTA_B
+except ImportError:
+    # Only the C-backed classes use these; keep the ported ones importable.
+    R_LT0541_HTA_A = R_LT0541_HTA_B = None
 
 
 class Hitachi(PulseBased):
@@ -172,6 +183,9 @@ class Hitachi296(PulseBased):
             "temperature": [16, 25],
             "fan": ["auto", "highest", "high", "medium", "low", "lowest"],
         }
+
+
+DEVICES = {}
 
 
 # Now the match between models and objects

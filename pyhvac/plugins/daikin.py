@@ -723,9 +723,6 @@ DAIKIN_ARC_MODELS = (
 DEVICES.update({m: DaikinArcDevice for m in DAIKIN_ARC_MODELS})
 
 
-DEVICES.update({m: DaikinArcDevice for m in DAIKIN_ARC_MODELS})
-
-
 # -------------------------------------------------------------- Daikin64
 # Layout from IRremoteESP8266's Daikin64Protocol (ir_Daikin.h): one 64-bit
 # word sent LSB first, i.e. 8 bytes in order, each LSB first. The message is
@@ -846,9 +843,6 @@ class Daikin64Device(Device):
 
 
 DAIKIN64_MODELS = ("FFN-C/FCN-F Series", "DGS01 remote", "FTWX35AXV1", "Daikin64")
-
-
-DEVICES.update({m: Daikin64Device for m in DAIKIN64_MODELS})
 
 
 DEVICES.update({m: Daikin64Device for m in DAIKIN64_MODELS})
@@ -1028,9 +1022,6 @@ DAIKIN128_MODELS = (
 DEVICES.update({m: Daikin128Device for m in DAIKIN128_MODELS})
 
 
-DEVICES.update({m: Daikin128Device for m in DAIKIN128_MODELS})
-
-
 # --------------------------------------------------------------- Daikin152
 # Layout from IRremoteESP8266's Daikin152Protocol (ir_Daikin.h): one 19-byte
 # frame closed by a sum-of-bytes checksum, preceded by a 5-bit all-zero
@@ -1122,9 +1113,6 @@ class Daikin152Device(Device):
 
 
 DAIKIN152_MODELS = ("ARC480A5 remote", "Daikin152")
-
-
-DEVICES.update({m: Daikin152Device for m in DAIKIN152_MODELS})
 
 
 DEVICES.update({m: Daikin152Device for m in DAIKIN152_MODELS})
@@ -1226,9 +1214,6 @@ DAIKIN160_MODELS = ("ARC423A5 remote", "FTE12HV2S", "Daikin160")
 DEVICES.update({m: Daikin160Device for m in DAIKIN160_MODELS})
 
 
-DEVICES.update({m: Daikin160Device for m in DAIKIN160_MODELS})
-
-
 # ------------------------------------------------------------- Daikin176
 # Layout from IRremoteESP8266's Daikin176Protocol (ir_Daikin.h): 22 bytes in
 # two sections of 7 and 15, each closed by a sum-of-bytes checksum; frame
@@ -1311,9 +1296,6 @@ class Daikin176Device(Device):
 
 
 DAIKIN176_MODELS = ("BRC4C153 remote", "FFQ35B8V1B", "BRC4C151 remote", "Daikin176")
-
-
-DEVICES.update({m: Daikin176Device for m in DAIKIN176_MODELS})
 
 
 DEVICES.update({m: Daikin176Device for m in DAIKIN176_MODELS})
@@ -1411,9 +1393,6 @@ class Daikin216Device(Device):
 
 
 DAIKIN216_MODELS = ("ARC433B69 remote", "ARC484A4 remote", "FTQ60TV16U2", "Daikin216")
-
-
-DEVICES.update({m: Daikin216Device for m in DAIKIN216_MODELS})
 
 
 DEVICES.update({m: Daikin216Device for m in DAIKIN216_MODELS})
@@ -1528,9 +1507,6 @@ class Daikin312Device(Device):
 
 
 DAIKIN312_MODELS = ("FTXM20R5V1B", "ARC466A67 remote", "Daikin312")
-
-
-DEVICES.update({m: Daikin312Device for m in DAIKIN312_MODELS})
 
 
 DEVICES.update({m: Daikin312Device for m in DAIKIN312_MODELS})

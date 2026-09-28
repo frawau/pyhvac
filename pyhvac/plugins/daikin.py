@@ -1130,6 +1130,105 @@ DEVICES.update({m: Daikin152Device for m in DAIKIN152_MODELS})
 DEVICES.update({m: Daikin152Device for m in DAIKIN152_MODELS})
 
 
+# --------------------------------------------------------------- Daikin160
+# Layout from IRremoteESP8266's Daikin160Protocol (ir_Daikin.h): 20 bytes in
+# two sections of 7 and 13, each closed by a sum-of-bytes checksum; frame
+# byte n of the second section is struct byte n + 7.
+
+DAIKIN160 = Protocol(
+    "daikin160",
+    {
+        "main": Section(
+            PulseDistance(342, 700, 1786),
+            header=(5000, 2145),
+            footer=(342,),
+            gap=29650,
+        ),
+    },
+    carrier=38000,
+)
+
+DAIKIN160_SWING_V = {  # kDaikin160SwingV*; the header has no "off" value
+    "auto": 0xF,
+    "off": 0xF,  # as the C path: setSwingVertical falls back to auto
+    "1": 0x5,  # highest
+    "2": 0x4,  # high
+    "3": 0x3,  # middle
+    "4": 0x2,  # low
+    "5": 0x1,  # lowest
+}
+
+DAIKIN160_FIRST = Layout(
+    bytes.fromhex("11da27f00d0000"),
+    {},
+    checksum=Sum8(0, 6, 6),
+)
+DAIKIN160_SECOND = Layout(
+    bytes.fromhex("11da2700d30001000000000800"),
+    {
+        "power": Field.at(5, 0, 1),
+        "mode": Field.at(
+            5, 4, 3, values={"auto": 0, "dry": 2, "cool": 3, "heat": 4, "fan": 6}
+        ),
+        "swing_v": Field.at(6, 4, 4, values=DAIKIN160_SWING_V),
+        "temperature": Field.at(9, 1, 6),  # whole °C - 10
+        "fan": Field.at(10, 0, 4, values={"auto": 0xA, "1": 4, "2": 5, "3": 6}),
+    },
+    checksum=Sum8(0, 12, 12),
+)
+
+
+class Daikin160Device(Device):
+    """Daikin160 (ARC423A5): a full-state protocol, ``previous`` is ignored."""
+
+    PROTOCOL = DAIKIN160
+    LAYOUTS = (DAIKIN160_FIRST, DAIKIN160_SECOND)
+    capabilities = Capabilities(
+        modes=("auto", "dry", "cool", "heat", "fan"),
+        temperature=TemperatureRange(10.0, 32.0),
+        fan=Choice(
+            ("auto", "1", "2", "3"),
+            {"auto": "auto", "1": "low", "2": "medium", "3": "high"},
+        ),
+        swing_v=Choice(
+            ("off", "auto", "1", "2", "3", "4", "5"),
+            {
+                "off": "off",
+                "auto": "auto",
+                "1": "90°",
+                "2": "60°",
+                "3": "45°",
+                "4": "30°",
+                "5": "0°",
+            },
+        ),
+    )
+
+    def frames(self, previous, target, actions):
+        # As the C path: an off message carries mode auto (IRac passes mode
+        # "off", which convertMode maps to auto).
+        second = DAIKIN160_SECOND.build(
+            power=target.power,
+            mode=target.mode if target.power else "auto",
+            swing_v=target.swing_v,
+            temperature=int(target.temperature) - 10,
+            fan=target.fan,
+        )
+        return [
+            Frame("main", bytes(DAIKIN160_FIRST.build())),
+            Frame("main", bytes(second)),
+        ]
+
+
+DAIKIN160_MODELS = ("ARC423A5 remote", "FTE12HV2S", "Daikin160")
+
+
+DEVICES.update({m: Daikin160Device for m in DAIKIN160_MODELS})
+
+
+DEVICES.update({m: Daikin160Device for m in DAIKIN160_MODELS})
+
+
 class PluginObject(GenPluginObject):
     MODELS = {
         "generic": Daikinth,

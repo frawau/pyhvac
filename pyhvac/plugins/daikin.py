@@ -1319,6 +1319,106 @@ DEVICES.update({m: Daikin176Device for m in DAIKIN176_MODELS})
 DEVICES.update({m: Daikin176Device for m in DAIKIN176_MODELS})
 
 
+# --------------------------------------------------------------- Daikin216
+# Layout from IRremoteESP8266's Daikin216Protocol (ir_Daikin.h): 27 bytes in
+# two sections of 8 and 19 (kDaikin216Section1Length), each closed by a
+# sum-of-bytes checksum; frame byte n of the second section is struct byte
+# n + 8.
+
+DAIKIN216 = Protocol(
+    "daikin216",
+    {
+        "main": Section(
+            PulseDistance(420, 450, 1300),
+            header=(3440, 1750),
+            footer=(420,),
+            gap=29650,
+        ),
+    },
+    carrier=38000,
+)
+
+DAIKIN216_SWING = {"off": 0b0000, "swing": 0b1111}  # kDaikin216Swing{Off,On}
+
+DAIKIN216_FIRST = Layout(
+    bytes.fromhex("11da27f000000000"),
+    {},
+    checksum=Sum8(0, 7, 7),
+)
+DAIKIN216_SECOND = Layout(
+    bytes.fromhex("11da27000000000000000000000000c0000000"),
+    {
+        "power": Field.at(5, 0, 1),
+        "mode": Field.at(
+            5, 4, 3, values={"auto": 0, "dry": 2, "cool": 3, "heat": 4, "fan": 6}
+        ),
+        "temperature": Field.at(6, 1, 6, encode=int),  # whole °C
+        "swing_v": Field.at(8, 0, 4, values=DAIKIN216_SWING),
+        # kDaikinFan*: level n is sent as n + 2; quiet is a fan value.
+        "fan": Field.at(
+            8, 4, 4, values={"auto": 0xA, "quiet": 0xB, "1": 3, "2": 5, "3": 6}
+        ),
+        "swing_h": Field.at(9, 0, 4, values=DAIKIN216_SWING),
+        "powerful": Field.at(13, 0, 1),
+    },
+    checksum=Sum8(0, 18, 18),
+)
+
+
+class Daikin216Device(Device):
+    """Daikin216 (ARC433B69): a full-state protocol, ``previous`` is ignored."""
+
+    PROTOCOL = DAIKIN216
+    LAYOUTS = (DAIKIN216_FIRST, DAIKIN216_SECOND)
+    capabilities = Capabilities(
+        modes=("auto", "dry", "cool", "heat", "fan"),
+        temperature=TemperatureRange(10.0, 32.0),
+        fan=Choice(
+            ("auto", "1", "2", "3"),
+            {"auto": "auto", "1": "low", "2": "medium", "3": "high"},
+        ),
+        swing_v=Choice(("off", "swing"), {"off": "off", "swing": "on"}),
+        swing_h=Choice(("off", "swing"), {"off": "off", "swing": "on"}),
+        features={
+            name: Choice((False, True), {False: "off", True: "on"})
+            for name in ("powerful", "quiet")
+        },
+    )
+
+    def frames(self, previous, target, actions):
+        feat = target.features
+        # As the C path: an off message carries mode auto (IRac passes mode
+        # "off", which convertMode turns into auto).
+        mode = target.mode if target.power else "auto"
+        # Quiet is a fan speed (kDaikinFanQuiet); powerful cancels quiet and
+        # then leaves the fan on auto (IRDaikin216::setPowerful/setQuiet).
+        fan = target.fan
+        if feat["quiet"]:
+            fan = "auto" if feat["powerful"] else "quiet"
+        second = DAIKIN216_SECOND.build(
+            power=target.power,
+            mode=mode,
+            temperature=target.temperature,
+            swing_v=target.swing_v,
+            fan=fan,
+            swing_h=target.swing_h,
+            powerful=feat["powerful"],
+        )
+        return [
+            Frame("main", bytes(DAIKIN216_FIRST.build())),
+            Frame("main", bytes(second)),
+        ]
+
+
+DAIKIN216_MODELS = ("ARC433B69 remote", "ARC484A4 remote", "FTQ60TV16U2", "Daikin216")
+
+
+DEVICES.update({m: Daikin216Device for m in DAIKIN216_MODELS})
+
+
+DEVICES.update({m: Daikin216Device for m in DAIKIN216_MODELS})
+
+
 class PluginObject(GenPluginObject):
     MODELS = {
         "generic": Daikinth,

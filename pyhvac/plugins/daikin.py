@@ -1031,6 +1031,105 @@ DEVICES.update({m: Daikin128Device for m in DAIKIN128_MODELS})
 DEVICES.update({m: Daikin128Device for m in DAIKIN128_MODELS})
 
 
+# --------------------------------------------------------------- Daikin152
+# Layout from IRremoteESP8266's Daikin152Protocol (ir_Daikin.h): one 19-byte
+# frame closed by a sum-of-bytes checksum, preceded by a 5-bit all-zero
+# leader sent with the same bit timings but no header.
+
+DAIKIN152 = Protocol(
+    "daikin152",
+    {
+        "leader": Section(PulseDistance(433, 433, 1529), footer=(433,), gap=25182),
+        "main": Section(
+            PulseDistance(433, 433, 1529),  # kDaikin152BitMark/ZeroSpace/OneSpace
+            header=(3492, 1718),  # kDaikin152HdrMark/HdrSpace
+            footer=(433,),
+            gap=25182,  # kDaikin152Gap
+        ),
+    },
+    carrier=38000,  # kDaikin152Freq
+)
+
+DAIKIN152_LEADER = Frame("leader", b"\x00", 5)  # kDaikin152LeaderBits zeros
+DAIKIN152_MAIN = Layout(
+    bytes.fromhex("11da27000000000000000000000000c5000000"),
+    {
+        "power": Field.at(5, 0, 1),
+        "mode": Field.at(  # kDaikinAuto/Dry/Cool/Heat/Fan
+            5, 4, 3, values={"auto": 0, "dry": 2, "cool": 3, "heat": 4, "fan": 6}
+        ),
+        "temperature": Field.at(6, 1, 7, encode=int),  # whole °C
+        "swing_v": Field.at(  # kDaikinSwingOff/On
+            8, 0, 4, values={"off": 0x0, "swing": 0xF}
+        ),
+        # IRac's kLow/kMedium/kHigh (kDaikinFanMin, Med, Max - 1) plus 2.
+        "fan": Field.at(8, 4, 4, values={"auto": 0xA, "1": 3, "2": 5, "3": 6}),
+        "powerful": Field.at(13, 0, 1),
+        "quiet": Field.at(13, 5, 1),
+        "comfort": Field.at(16, 1, 1),  # never set through IRac
+        "economy": Field.at(16, 2, 1),
+        "sensor": Field.at(16, 3, 1),  # never set through IRac
+    },
+    checksum=Sum8(0, 18, 18),
+)
+DAIKIN152_MIN_TEMP = 10.0  # kDaikinMinTemp, heat only
+DAIKIN152_MIN_OTHER = 18.0  # kDaikin2MinCoolTemp, every other mode
+DAIKIN152_MAX_TEMP = 32.0  # kDaikinMaxTemp
+
+
+class Daikin152Device(Device):
+    """Daikin152 (ARC480A5): a full-state protocol, ``previous`` is ignored."""
+
+    PROTOCOL = DAIKIN152
+    LAYOUTS = (None, DAIKIN152_MAIN)
+    capabilities = Capabilities(
+        modes=("auto", "dry", "cool", "heat", "fan"),
+        temperature=TemperatureRange(10.0, 32.0),
+        fan=Choice(
+            ("auto", "1", "2", "3"),
+            {"auto": "auto", "1": "low", "2": "medium", "3": "high"},
+        ),
+        swing_v=Choice(("off", "swing"), {"off": "off", "swing": "on"}),
+        features={
+            name: Choice((False, True), {False: "off", True: "on"})
+            for name in ("economy", "powerful", "quiet")
+        },
+    )
+
+    def frames(self, previous, target, actions):
+        feat = target.features
+        # As the C path: an off message carries mode auto (IRac passes mode
+        # "off", which Daikin152 maps to auto).
+        mode = target.mode if target.power else "auto"
+        # IRac sets the mode before the setpoint, so the dry/fan setpoints
+        # setMode writes are always overwritten; setTemp's floor is 10 °C in
+        # heat and 18 °C in every other mode.
+        floor = DAIKIN152_MIN_TEMP if mode == "heat" else DAIKIN152_MIN_OTHER
+        temperature = min(max(target.temperature, floor), DAIKIN152_MAX_TEMP)
+        # IRac sets quiet, then powerful (which clears quiet), then econo
+        # (which clears powerful).
+        main = DAIKIN152_MAIN.build(
+            power=target.power,
+            mode=mode,
+            temperature=temperature,
+            swing_v=target.swing_v,
+            fan=target.fan,
+            powerful=feat["powerful"] and not feat["economy"],
+            quiet=feat["quiet"] and not feat["powerful"],
+            economy=feat["economy"],
+        )
+        return [DAIKIN152_LEADER, Frame("main", bytes(main))]
+
+
+DAIKIN152_MODELS = ("ARC480A5 remote", "Daikin152")
+
+
+DEVICES.update({m: Daikin152Device for m in DAIKIN152_MODELS})
+
+
+DEVICES.update({m: Daikin152Device for m in DAIKIN152_MODELS})
+
+
 class PluginObject(GenPluginObject):
     MODELS = {
         "generic": Daikinth,

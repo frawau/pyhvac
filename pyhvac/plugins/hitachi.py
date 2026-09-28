@@ -484,6 +484,133 @@ HITACHI1_MODELS = {  # model -> remote variant (hitachi_ac1_remote_model_t)
 DEVICES.update({m: Hitachi1Device for m in HITACHI1_MODELS})
 
 
+# ------------------------------------------------------------- Hitachi424
+# Layout from IRremoteESP8266's Hitachi424Protocol (ir_Hitachi.h): 53 bytes,
+# each sent LSB first, after a bitless leader (kHitachiAc424LdrMark/Space).
+# From byte 3 on, every even byte is the complement of the byte before it
+# (IRHitachiAc424::setInvertedStates), so every field sits in an odd byte.
+
+HITACHI424 = Protocol(
+    "hitachi424",
+    {
+        "leader": Section(None, header=(29784,), gap=49290),
+        "main": Section(
+            PulseDistance(463, 372, 1208),  # kHitachiAc424BitMark/Zero/OneSpace
+            header=(3416, 1604),  # kHitachiAc424HdrMark/HdrSpace
+            footer=(463,),
+            gap=100000,  # kHitachiAcMinGap
+        ),
+    },
+    carrier=38000,  # kHitachiAcFreq
+)
+
+HITACHI424_BUTTON = {  # kHitachiAc424Button*
+    "power_mode": 0x13,
+    "fan": 0x42,
+    "temp_down": 0x43,
+    "temp_up": 0x44,
+    "swing_v": 0x81,
+    "swing_h": 0x8C,
+}
+HITACHI424_FAN = {  # canonical fan -> kHitachiAc424Fan*
+    "auto": 5,  # Auto
+    "1": 1,  # Min
+    "2": 2,  # Low
+    "3": 3,  # Medium
+    "4": 4,  # High
+    "5": 6,  # Max
+}
+
+# Skeleton: IRHitachiAc424::stateReset's bytes, pairs inverted, with every
+# field cleared. Bytes 9 and 29 are struct padding, but setFan writes them.
+HITACHI424_LAYOUT = Layout(
+    bytes.fromhex(
+        "01100040bfff00cc3300ff00ff00ff00ff00ff00ff00ff00ff00ff"
+        "e11e00ff00ff807f03fc01fe887700ff00ffff00ff00ff00ff00"
+    ),
+    {
+        "fan_aux9": Field.at(9, 0, 8),  # 0x98 fan Min, 0xA9 Max, else 0x92
+        "button": Field.at(11, 0, 8, values=HITACHI424_BUTTON),
+        "temperature": Field.at(13, 2, 6),  # whole °C
+        "mode": Field.at(25, 0, 4, values={"fan": 1, "cool": 3, "dry": 5, "heat": 6}),
+        "fan": Field.at(25, 4, 4, values=HITACHI424_FAN),
+        "power": Field.at(27, 4, 1),
+        "fan_aux29": Field.at(29, 0, 8),  # 0x30 fan Max, else 0x00
+        # IRHitachiAc344 only: the 424 class has no setter, skeleton kept.
+        "swing_h_344": Field.at(35, 0, 3),
+        "swing_v_344": Field.at(37, 5, 1),
+    },
+    checksum=InvertedPairs(3, 53),
+)
+
+
+class Hitachi424Device(Device):
+    """Hitachi424 (RAR-8P2): full state, except that vertical swing is a
+    button (byte 11): the remote keeps no swing state.
+
+    Every message carries kHitachiAc424ButtonPowerMode, as the C path does
+    (IRac::hitachi424 calls setPower last, whatever changed), unless swing is
+    toggled: then kHitachiAc424ButtonSwingV. With ``previous`` the swing
+    button is sent only when swing changes between off and on, the rule
+    IRac::handleToggles applies to HITACHI_AC424 when it is given a previous
+    state. Without ``previous`` it is sent whenever swing is on, as a fresh
+    IRac sends it (no previous state, no toggle handling).
+    """
+
+    PROTOCOL = HITACHI424
+    LAYOUTS = (None, HITACHI424_LAYOUT)
+    capabilities = Capabilities(
+        modes=("fan", "heat", "cool", "dry"),
+        temperature=TemperatureRange(16.0, 32.0),
+        fan=Choice(
+            ("auto", "1", "2", "3", "4", "5"),
+            {
+                "auto": "auto",
+                "1": "lowest",
+                "2": "low",
+                "3": "medium",
+                "4": "high",
+                "5": "highest",
+            },
+        ),
+        swing_v=Choice(("off", "swing"), {"off": "off", "swing": "on"}),
+    )
+
+    def frames(self, previous, target, actions):
+        # As the C path: an off message carries mode cool (IRac passes mode
+        # "off", which convertMode maps to cool).
+        mode = target.mode if target.power else "cool"
+        fan = target.fan
+        # IRHitachiAc424::setFan: dry allows auto, Min and Low only
+        # (kHitachiAc424FanMaxDry); fan mode has no auto and uses Min.
+        if mode == "dry" and fan in ("3", "4", "5"):
+            fan = "2"
+        elif mode == "fan" and fan == "auto":
+            fan = "1"
+        if previous is None:
+            swing = target.swing_v != "off"
+        else:
+            swing = (target.swing_v != "off") != (previous.swing_v != "off")
+        data = HITACHI424_LAYOUT.build(
+            fan_aux9={"1": 0x98, "5": 0xA9}.get(fan, 0x92),
+            button="swing_v" if swing else "power_mode",
+            # IRac's setTemp(degrees) comes after setMode, so fan mode's
+            # kHitachiAc424FanTemp never survives.
+            temperature=int(target.temperature),
+            mode=mode,
+            fan=fan,
+            power=target.power,
+            fan_aux29=0x30 if fan == "5" else 0x00,
+        )
+        return [Frame("leader", b""), Frame("main", bytes(data))]
+
+
+HITACHI424_MODELS = ("RAR-8P2 remote", "RAS-AJ25H", "generic 424")
+
+
+DEVICES.update({m: Hitachi424Device for m in HITACHI424_MODELS})
+
+
 # Now the match between models and objects
 class PluginObject(GenPluginObject):
     MODELS = {

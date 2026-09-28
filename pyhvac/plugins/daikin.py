@@ -30,7 +30,10 @@
 import struct
 
 from .hvaclib import HVAC, PulseBased, GenPluginObject, bit_reverse
-from ..ir.model import Protocol, PulseDistance, Section
+from ..device import Device
+from ..fields import Field, Layout, Sum8
+from ..ir.model import Frame, Protocol, PulseDistance, Section
+from ..state import Capabilities, Choice, TemperatureRange
 
 DAIKIN_NATIVE = Protocol(
     "daikin-native",
@@ -452,6 +455,151 @@ class Daikin312(PulseBased):
             "cleaning": ["off", "on"],
         }
         self.temperature_step = 0.5
+
+
+# --------------------------------------------------------------- Daikin2
+# Layout from IRremoteESP8266's Daikin2Protocol (ir_Daikin.h): 39 bytes in
+# two sections of 20 and 19, each closed by a sum-of-bytes checksum; frame
+# byte n of the second section is struct byte n + 20.
+
+DAIKIN2 = Protocol(
+    "daikin2",
+    {
+        "leader": Section(None, header=(10024,), gap=25180),
+        "main": Section(
+            PulseDistance(460, 420, 1270),
+            header=(3500, 1728),
+            footer=(460,),
+            gap=35204,
+        ),
+    },
+    carrier=36700,
+)
+
+DAIKIN2_SWING_V = {  # kDaikin2SwingV*
+    "off": 0xE,
+    "auto": 0xF,
+    "1": 0x1,  # highest
+    "2": 0x2,  # high
+    "3": 0x3,  # upper middle
+    "4": 0x4,  # lower middle
+    "5": 0x5,  # low
+    "6": 0x6,  # lowest
+}
+DAIKIN2_SWING_H = {  # kDaikin2SwingH*
+    "off": 0xBF,
+    "1": 0xA8,  # far left
+    "2": 0xA9,  # left
+    "3": 0xAA,  # middle
+    "4": 0xAB,  # right
+    "5": 0xAC,  # far right
+    "6": 0xA3,  # wide
+}
+
+DAIKIN2_FIRST = Layout(
+    bytes.fromhex("11da2700010040f0200c8004b01624000000d000"),
+    {
+        "power2": Field.at(6, 7, 1),  # inverse of power
+        "mold": Field.at(8, 3, 1),
+        "swing_h": Field.at(17, 0, 8, values=DAIKIN2_SWING_H),
+        "swing_v": Field.at(18, 0, 4, values=DAIKIN2_SWING_V),
+    },
+    checksum=Sum8(0, 19, 19),
+)
+DAIKIN2_SECOND = Layout(
+    bytes.fromhex("11da27000008000000000006600000c1806000"),
+    {
+        "power": Field.at(5, 0, 1),
+        "mode": Field.at(
+            5, 4, 3, values={"auto": 0, "dry": 2, "cool": 3, "heat": 4, "fan": 6}
+        ),
+        "temperature": Field.at(6, 1, 6, encode=int),  # whole °C
+        "fan": Field.at(8, 4, 4, values={"auto": 0xA, "1": 3, "2": 5, "3": 6}),
+        "powerful": Field.at(13, 0, 1),
+        "quiet": Field.at(13, 5, 1),
+        "economy": Field.at(16, 2, 1),
+        "purifier": Field.at(16, 4, 1),
+    },
+    checksum=Sum8(0, 18, 18),
+)
+DAIKIN2_MIN_COOL = 18.0  # kDaikin2MinCoolTemp
+
+
+class Daikin2Device(Device):
+    """Daikin2 (ARC477A1): a full-state protocol, ``previous`` is ignored."""
+
+    PROTOCOL = DAIKIN2
+    LAYOUTS = (None, DAIKIN2_FIRST, DAIKIN2_SECOND)
+    capabilities = Capabilities(
+        modes=("auto", "dry", "cool", "heat", "fan"),
+        temperature=TemperatureRange(10.0, 32.0),
+        fan=Choice(
+            ("auto", "1", "2", "3"),
+            {"auto": "auto", "1": "low", "2": "medium", "3": "high"},
+        ),
+        swing_v=Choice(
+            ("off", "auto", "1", "2", "3", "4", "5", "6"),
+            {
+                "off": "off",
+                "auto": "auto",
+                "1": "ceiling",
+                "2": "90°",
+                "3": "60°",
+                "4": "45°",
+                "5": "30°",
+                "6": "0°",
+            },
+        ),
+        swing_h=Choice(
+            ("off", "1", "2", "3", "4", "5", "6"),
+            {
+                "off": "off",
+                "1": "far left",
+                "2": "close left",
+                "3": "middle",
+                "4": "close right",
+                "5": "far right",
+                "6": "wide",
+            },
+        ),
+        features={
+            name: Choice((False, True), {False: "off", True: "on"})
+            for name in ("economy", "powerful", "quiet", "cleaning", "purifier")
+        },
+    )
+
+    def frames(self, previous, target, actions):
+        feat = target.features
+        temperature = target.temperature
+        if target.mode == "cool":
+            temperature = max(temperature, DAIKIN2_MIN_COOL)
+        first = DAIKIN2_FIRST.build(
+            power2=not target.power,
+            mold=feat["cleaning"],
+            swing_h=target.swing_h,
+            swing_v=target.swing_v,
+        )
+        second = DAIKIN2_SECOND.build(
+            power=target.power,
+            mode=target.mode,
+            temperature=temperature,
+            fan=target.fan,
+            powerful=feat["powerful"],
+            quiet=feat["quiet"],
+            economy=feat["economy"],
+            purifier=feat["purifier"],
+        )
+        return [
+            Frame("leader", b""),
+            Frame("main", bytes(first)),
+            Frame("main", bytes(second)),
+        ]
+
+
+DEVICES = {
+    model: Daikin2Device
+    for model in ("ARC477A1 remote", "FTXZ25NV1B", "FTXZ35NV1B", "FTXZ50NV1B")
+}
 
 
 class PluginObject(GenPluginObject):

@@ -763,6 +763,108 @@ HITACHI344_MODELS = ("RAS-22NK", "RF11T1", "generic 344")
 DEVICES.update({m: Hitachi344Device for m in HITACHI344_MODELS})
 
 
+# --------------------------------------------------------------- Hitachi264
+# Layout from IRremoteESP8266's HitachiAC264Protocol (ir_Hitachi.h): 33 bytes,
+# one frame sent LSB first (sendHitachiAC: MSBfirst is false for
+# kHitachiAc264StateLength) with the kHitachiAcHdrMark/HdrSpace header,
+# kHitachiAcBitMark/OneSpace/ZeroSpace bits and kHitachiAcMinGap
+# (kDefaultMessageGap). Bytes 3-32 are inverted pairs
+# (IRHitachiAc424::setInvertedStates: invertBytePairs(raw + 3, ...)). The
+# field offsets equal Hitachi424Protocol's, which IRHitachiAc264 really
+# writes (it derives from IRHitachiAc424 and shares its state).
+
+HITACHI264 = Protocol(
+    "hitachi264",
+    {
+        "main": Section(
+            PulseDistance(400, 500, 1250),
+            header=(3300, 1700),
+            footer=(400,),
+            gap=100000,
+        ),
+    },
+    carrier=38000,  # kHitachiAcFreq
+)
+
+HITACHI264_BUTTON = {  # kHitachiAc264Button*
+    "power_mode": 0x13,
+    "fan": 0x42,
+    "temp_down": 0x43,
+    "temp_up": 0x44,
+    "swing_v": 0x81,
+}
+
+# Skeleton: IRHitachiAc264::stateReset (IRHitachiAc424::stateReset, then
+# raw[9] = 0x92 and raw[27] = 0xC1) with the fields cleared; the inverted
+# bytes are recomputed by the checksum.
+HITACHI264_LAYOUT = Layout(
+    bytes.fromhex("0110004000ff00cc0092000000000000ff00ff00ff00ff00ff0000c10000ff00ff"),
+    {
+        "button": Field.at(11, 0, 8, values=HITACHI264_BUTTON),
+        "temperature": Field.at(13, 2, 6, encode=int),  # whole °C
+        "mode": Field.at(  # kHitachiAc264{Fan,Cool,Dry,Heat}
+            25, 0, 4, values={"fan": 1, "cool": 3, "dry": 5, "heat": 6}
+        ),
+        "fan": Field.at(  # kHitachiAc264Fan{Low,Medium,High,Auto}
+            25, 4, 4, values={"1": 1, "2": 3, "3": 4, "auto": 5}
+        ),
+        "power": Field.at(27, 4, 1),
+    },
+    checksum=InvertedPairs(3, 33),
+)
+
+
+class Hitachi264Device(Device):
+    """Hitachi264 (RAR-2P2): a full-state protocol, ``previous`` is ignored.
+
+    The button byte names the key "pressed". IRac::hitachi264 builds every
+    message on a fresh IRHitachiAc264 and calls setPower last, so the C path
+    always sends kHitachiAc264ButtonPowerMode; the port does the same, with
+    or without ``previous`` (the frame carries the full state either way).
+
+    Swing and the features (purifier, powerful, quiet, economy, light) are
+    kept for the legacy entity but have no bits: IRac::hitachi264 has "No
+    Swing(V) setting available" and IRHitachiAc264::toCommon forces swingv
+    off, so the kHitachiAc264ButtonSwingV press is never sent.
+    """
+
+    PROTOCOL = HITACHI264
+    LAYOUTS = (HITACHI264_LAYOUT,)
+    capabilities = Capabilities(
+        modes=("auto", "cool", "fan", "dry", "heat"),
+        temperature=TemperatureRange(16.0, 32.0),
+        fan=Choice(
+            ("auto", "1", "2", "3"),
+            {"auto": "auto", "1": "low", "2": "medium", "3": "high"},
+        ),
+        swing_v=Choice(("off", "swing"), {"off": "off", "swing": "on"}),
+        features={
+            name: Choice((False, True), {False: "off", True: "on"})
+            for name in ("purifier", "powerful", "quiet", "economy", "light")
+        },
+    )
+
+    def frames(self, previous, target, actions):
+        # As the C path: IRHitachiAc424::convertMode has no auto (nor off),
+        # so auto and every off message carry cool. setTemp runs after
+        # setMode, so fan mode keeps the setpoint (not kHitachiAc424FanTemp).
+        mode = target.mode if target.power and target.mode != "auto" else "cool"
+        data = HITACHI264_LAYOUT.build(
+            button="power_mode",
+            temperature=target.temperature,
+            mode=mode,
+            fan=target.fan,
+            power=target.power,
+        )
+        return [Frame("main", bytes(data))]
+
+
+HITACHI264_MODELS = ("RAR-2P2 remote", "RAK-25NH5", "generic 264")
+
+
+DEVICES.update({m: Hitachi264Device for m in HITACHI264_MODELS})
+
+
 # Now the match between models and objects
 class PluginObject(GenPluginObject):
     MODELS = {

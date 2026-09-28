@@ -1,0 +1,183 @@
+import pytest
+
+from oracle import load_oracle
+from port_oracle import assert_matches_oracle, oracle_params, state_from_record
+from pyhvac import registry
+from pyhvac.ir.model import Frame
+from pyhvac.plugins.hitachi import (
+    HITACHI264_LAYOUT,
+    HITACHI264_MODELS,
+    Hitachi264Device,
+)
+from pyhvac.state import HvacState
+
+# No declared defects: the C path sends the documented values for every
+# field it writes. Swing and the features have no bits (IRac::hitachi264
+# sets none of them), so the oracle's swing "on" records match as they are.
+
+
+def device():
+    return Hitachi264Device("hitachi", "RAR-2P2 remote")
+
+
+def read(state, previous=None):
+    dev = device()
+    (frame,) = dev.frames(previous, dev.normalise(state), ())
+    return HITACHI264_LAYOUT.read(frame.data)
+
+
+@pytest.mark.parametrize("record", oracle_params("HITACHI_AC264"))
+def test_matches_c_library(record):
+    dev = device()
+    assert_matches_oracle(dev, record, dev.LAYOUTS)
+
+
+def test_layout_round_trips_every_oracle_state():
+    dev = device()
+    for record in load_oracle("HITACHI_AC264"):
+        state = state_from_record(dev, record["state"])
+        (frame,) = dev.frames(None, state, ())
+        values = HITACHI264_LAYOUT.read(frame.data)
+        assert HITACHI264_LAYOUT.build(**values) == bytearray(frame.data)
+
+
+def test_bytes_3_to_32_are_inverted_pairs():
+    (frame,) = device().frames(None, HvacState(True, "heat", 21.0), ())
+    data = frame.data
+    assert len(data) == 33
+    assert all(data[i + 1] == data[i] ^ 0xFF for i in range(3, 33, 2))
+    assert data[:3] == bytes.fromhex("011000")
+
+
+def test_no_field_sits_on_an_inverted_byte():
+    inverted = HITACHI264_LAYOUT.checksum.positions()
+    for name, field in HITACHI264_LAYOUT.fields.items():
+        assert not {bit // 8 for bit in field.bits} & inverted, name
+
+
+@pytest.mark.parametrize("mode", ["auto", "cool", "fan", "dry", "heat"])
+def test_off_carries_mode_cool_in_every_mode(mode):
+    # IRac passes the off mode through IRHitachiAc424::convertMode: cool.
+    for t in (16.0, 24.0, 32.0):
+        values = read(HvacState(False, mode, t, fan="2"))
+        assert (values["power"], values["mode"]) == (0, "cool")
+        assert (values["temperature"], values["fan"]) == (int(t), "2")
+
+
+def test_auto_mode_is_sent_as_cool():
+    # IRHitachiAc424::convertMode has no auto; kHitachiAc264* has none either.
+    assert read(HvacState(True, "auto", 24.0))["mode"] == "cool"
+
+
+@pytest.mark.parametrize("mode", ["cool", "fan", "dry", "heat"])
+def test_modes_use_their_documented_values(mode):
+    assert read(HvacState(True, mode, 24.0))["mode"] == mode
+
+
+def test_fan_mode_keeps_the_setpoint():
+    # setMode(kHitachiAc424Fan) sets kHitachiAc424FanTemp (27), but IRac calls
+    # setTemp(degrees) after setMode, so the setpoint wins.
+    for t in (16.0, 20.0, 32.0):
+        assert read(HvacState(True, "fan", t))["temperature"] == int(t)
+
+
+def test_setpoint_is_clamped_to_16_32():
+    assert read(HvacState(True, "cool", 5.0))["temperature"] == 16
+    assert read(HvacState(True, "heat", 40.0))["temperature"] == 32
+
+
+@pytest.mark.parametrize("fan, raw", [("auto", 5), ("1", 1), ("2", 3), ("3", 4)])
+@pytest.mark.parametrize("mode", ["cool", "fan", "dry", "heat"])
+def test_every_fan_level_uses_its_documented_value_in_every_mode(mode, fan, raw):
+    # IRHitachiAc264::setFan has no per-mode clamp (unlike IRHitachiAc424's).
+    dev = device()
+    (frame,) = dev.frames(None, dev.normalise(HvacState(True, mode, 24.0, fan=fan)), ())
+    assert HITACHI264_LAYOUT.read_raw(frame.data, "fan") == raw
+
+
+def test_button_is_always_power_mode():
+    # IRac::hitachi264 calls setPower last on a fresh object: the button is
+    # kHitachiAc264ButtonPowerMode whatever changed; previous is ignored.
+    previous = HvacState(True, "cool", 20.0, fan="1")
+    for target in (
+        HvacState(True, "cool", 24.0, fan="1"),
+        HvacState(True, "cool", 20.0, fan="3"),
+        HvacState(True, "cool", 20.0, fan="1", swing_v="swing"),
+        HvacState(False, "cool", 20.0),
+    ):
+        assert read(target)["button"] == "power_mode"
+        assert read(target, device().normalise(previous))["button"] == "power_mode"
+
+
+def test_previous_is_ignored():
+    dev = device()
+    target = HvacState(True, "heat", 22.0, fan="2")
+    fresh = dev.encode(None, target).signal
+    assert dev.encode(HvacState(False, "cool", 30.0), target).signal == fresh
+
+
+def test_swing_and_features_have_no_bits():
+    # IRac::hitachi264: "No Swing(V) setting available", no quiet, turbo,
+    # light, filter...; IRHitachiAc264::toCommon forces swingv off.
+    base = device().frames(None, device().normalise(HvacState(True, "cool", 24.0)), ())
+    features = {n: True for n in ("purifier", "powerful", "quiet", "economy", "light")}
+    loaded = HvacState(True, "cool", 24.0, swing_v="swing", features=features)
+    assert device().frames(None, device().normalise(loaded), ()) == base
+
+
+def test_message_shape():
+    dev = device()
+    pulses = dev.encode(None, HvacState(True, "cool", 22.0)).signal.pulses
+    assert pulses[:2] == (3300, 1700)
+    assert pulses[-2:] == (400, 100000)
+    assert len(pulses) == 2 + 2 * 264 + 2
+
+
+def test_frame_is_a_single_main_section():
+    dev = device()
+    frames = dev.frames(None, dev.normalise(HvacState(True, "cool", 22.0)), ())
+    assert [type(f) for f in frames] == [Frame]
+    assert frames[0].section == "main"
+
+
+@pytest.mark.parametrize("model", HITACHI264_MODELS)
+def test_registry_serves_the_port(model):
+    assert isinstance(registry.get_device("hitachi", model), Hitachi264Device)
+
+
+@pytest.mark.parametrize("model", HITACHI264_MODELS)
+def test_capabilities_match_the_legacy_entity(model):
+    pytest.importorskip("pyhvac.irhvac")
+    from pyhvac.legacy import LegacyDevice
+    from pyhvac.plugins.hitachi import Hitachi264
+
+    legacy = LegacyDevice("hitachi", model, Hitachi264)
+    assert Hitachi264Device("hitachi", model).capabilities == legacy.capabilities
+
+
+def test_undeclared_deviation_is_reported():
+    # A port that sends the wrong mode in an off message must fail the check.
+    class Wrong(Hitachi264Device):
+        def frames(self, previous, target, actions):
+            data = HITACHI264_LAYOUT.build(
+                button="power_mode",
+                temperature=target.temperature,
+                mode="heat",
+                fan=target.fan,
+                power=target.power,
+            )
+            return [Frame("main", bytes(data))]
+
+    dev = Wrong("hitachi", "RAR-2P2 remote")
+    record = next(
+        r for r in load_oracle("HITACHI_AC264") if r["state"]["mode"] == "off"
+    )
+    with pytest.raises(AssertionError, match="mode"):
+        assert_matches_oracle(dev, record, dev.LAYOUTS)
+
+
+def test_layouts_must_cover_every_frame():
+    dev = device()
+    record = load_oracle("HITACHI_AC264")[0]
+    with pytest.raises(AssertionError, match="layout"):
+        assert_matches_oracle(dev, record, ())

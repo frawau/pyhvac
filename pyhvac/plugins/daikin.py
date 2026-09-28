@@ -611,6 +611,121 @@ DAIKIN2_MODELS = (
 DEVICES = {model: Daikin2Device for model in DAIKIN2_MODELS}
 
 
+# --------------------------------------------------------------- Daikin (ARC433)
+# Layout from IRremoteESP8266's DaikinESPProtocol (ir_Daikin.h): 35 bytes in
+# three sections of 8, 8 and 19, each closed by a sum-of-bytes checksum
+# (kDaikinByteChecksum1/2, Sum3); frame byte n of the third section is
+# struct byte n + 16. The message opens with a headerless 5-bit all-zero
+# leader (kDaikinHeaderLength). Every space after a footer mark is
+# kDaikinZeroSpace + kDaikinGap.
+
+DAIKIN_ARC = Protocol(
+    "daikin",
+    {
+        "leader": Section(PulseDistance(428, 428, 1280), footer=(428,), gap=29428),
+        "main": Section(
+            PulseDistance(428, 428, 1280),
+            header=(3650, 1623),
+            footer=(428,),
+            gap=29428,
+        ),
+    },
+    carrier=38000,
+)
+
+DAIKIN_ARC_SWING = {"off": 0x0, "swing": 0xF}  # kDaikinSwingOff / kDaikinSwingOn
+
+# The first two sections carry nothing the C path drives (Comfort, and the
+# clock that IRac never sets): they are sent as the header's reset state.
+DAIKIN_ARC_FIRST = Layout(bytes.fromhex("11da2700c5000000"), {}, checksum=Sum8(0, 7, 7))
+DAIKIN_ARC_SECOND = Layout(
+    bytes.fromhex("11da270042000000"), {}, checksum=Sum8(0, 7, 7)
+)
+DAIKIN_ARC_THIRD = Layout(
+    # Hardwired: byte 5 bit 3 (always 1), timers unused (kDaikinUnusedTime
+    # in bytes 10-12), byte 15 = 0xC0.
+    bytes.fromhex("11da27000008000000000006600000c0000000"),
+    {
+        "power": Field.at(5, 0, 1),
+        "mode": Field.at(
+            5, 4, 3, values={"auto": 0, "dry": 2, "cool": 3, "heat": 4, "fan": 6}
+        ),
+        "half_degrees": Field.at(6, 0, 8),  # Temp: °C × 2
+        "swing_v": Field.at(8, 0, 4, values=DAIKIN_ARC_SWING),
+        "fan": Field.at(8, 4, 4, values={"auto": 0xA, "1": 3, "2": 5, "3": 6}),
+        "swing_h": Field.at(9, 0, 4, values=DAIKIN_ARC_SWING),
+        "powerful": Field.at(13, 0, 1),
+        "quiet": Field.at(13, 5, 1),
+        "economy": Field.at(16, 2, 1),
+        "mold": Field.at(17, 1, 1),
+    },
+    checksum=Sum8(0, 18, 18),
+)
+
+
+class DaikinArcDevice(Device):
+    """Daikin (ARC433 and others): a full-state protocol, ``previous`` is
+    ignored."""
+
+    PROTOCOL = DAIKIN_ARC
+    LAYOUTS = (None, DAIKIN_ARC_FIRST, DAIKIN_ARC_SECOND, DAIKIN_ARC_THIRD)
+    capabilities = Capabilities(
+        modes=("auto", "dry", "cool", "heat", "fan"),
+        temperature=TemperatureRange(10.0, 32.0, (0, 5)),
+        fan=Choice(
+            ("auto", "1", "2", "3"),
+            {"auto": "auto", "1": "low", "2": "medium", "3": "high"},
+        ),
+        swing_v=Choice(("off", "swing"), {"off": "off", "swing": "on"}),
+        swing_h=Choice(("off", "swing"), {"off": "off", "swing": "on"}),
+        features={
+            name: Choice((False, True), {False: "off", True: "on"})
+            for name in ("economy", "powerful", "quiet", "cleaning")
+        },
+    )
+
+    def frames(self, previous, target, actions):
+        feat = target.features
+        third = DAIKIN_ARC_THIRD.build(
+            power=target.power,
+            # As the C path: an off message carries mode auto (IRac passes
+            # mode "off", which convertMode maps to auto).
+            mode=target.mode if target.power else "auto",
+            half_degrees=int(target.temperature * 2),
+            swing_v=target.swing_v,
+            fan=target.fan,
+            swing_h=target.swing_h,
+            # As IRDaikinESP's setters, called in IRac's order (quiet,
+            # powerful, econo): powerful cancels quiet, econo cancels powerful.
+            quiet=feat["quiet"] and not feat["powerful"],
+            powerful=feat["powerful"] and not feat["economy"],
+            economy=feat["economy"],
+            mold=feat["cleaning"],
+        )
+        return [
+            Frame("leader", b"\x00", 5),
+            Frame("main", bytes(DAIKIN_ARC_FIRST.build())),
+            Frame("main", bytes(DAIKIN_ARC_SECOND.build())),
+            Frame("main", bytes(third)),
+        ]
+
+
+DAIKIN_ARC_MODELS = (
+    "ARC433 remote",
+    "M Series",
+    "FTXM-M",
+    "ARC466A12 remote",
+    "ARC466A33 remote",
+    "Daikin",
+)
+
+
+DEVICES.update({m: DaikinArcDevice for m in DAIKIN_ARC_MODELS})
+
+
+DEVICES.update({m: DaikinArcDevice for m in DAIKIN_ARC_MODELS})
+
+
 class PluginObject(GenPluginObject):
     MODELS = {
         "generic": Daikinth,

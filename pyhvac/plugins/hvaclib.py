@@ -263,7 +263,8 @@ class IRGHVAC(HVAC):
         return val == "on"
 
     def trans_sleep(self, val):
-        return val == "on"
+        # IRac's sleep is in minutes: -1 is off, 0 or more is on.
+        return 0 if val == "on" else -1
 
     def set_mode(self, mode="off"):
         if mode not in self.capabilities["mode"]:
@@ -369,6 +370,7 @@ class IRGHVAC(HVAC):
             "light": "light",
             "purifier": "filter",
             "cleaning": "clean",
+            "sleep": "sleep",
         }
 
         self.update_status()

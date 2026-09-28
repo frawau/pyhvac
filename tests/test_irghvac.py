@@ -97,3 +97,27 @@ def test_swing_on_means_swing():
     dev = bare_device(CAPS)
     assert dev.trans_swing("on") == irhvac.swingv_t_kAuto
     assert dev.trans_hswing("on") == irhvac.swingh_t_kAuto
+
+
+def test_sleep_reaches_the_c_library():
+    # IRac's sleep is in minutes: -1 is off, 0 or more is on.
+    pytest.importorskip("pyhvac.irhvac")
+    from pyhvac.plugins.hitachi import Hitachi1A
+
+    for value, expected in (("on", 0), ("off", -1)):
+        dev = Hitachi1A()
+        dev.to_set = {"mode": "cool", "temperature": 24, "sleep": value}
+        dev.build_ircode()
+        assert dev.irac.next.sleep == expected
+
+
+def test_sleep_changes_the_signal():
+    pytest.importorskip("pyhvac.irhvac")
+    from pyhvac.plugins.hitachi import Hitachi1A
+
+    def pulses(value):
+        dev = Hitachi1A()
+        dev.to_set = {"mode": "cool", "temperature": 24, "sleep": value}
+        return dev.to_lirc(dev.build_ircode())
+
+    assert pulses("on") != pulses("off")

@@ -2475,6 +2475,10 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ```python
 def test_only_hitachi_ac3_stays_on_the_c_library():
+    import pytest
+
+    # Building the remaining legacy devices needs the C extension.
+    pytest.importorskip("pyhvac.irhvac")
     from pyhvac import registry
     from pyhvac.legacy import LegacyDevice
     from pyhvac.plugins.hitachi import PluginObject
@@ -2492,7 +2496,7 @@ def test_only_hitachi_ac3_stays_on_the_c_library():
 - [ ] **Step 2: Run it**
 
 Run: `python -m pytest tests/test_hitachi_family.py -q`
-Expected: 2 passed.
+Expected: 1 passed, 1 skipped (the family check needs the C extension; it runs in Step 3).
 
 - [ ] **Step 3: Run the C-extension suite**
 

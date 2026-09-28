@@ -84,7 +84,8 @@ def test_power_bit_without_previous_is_the_target_power():
     [(True, True, 0), (True, False, 1), (False, False, 0), (False, True, 1)],
 )
 def test_power_bit_with_previous_toggles_on_change(before, after, toggle):
-    # IRac::handleToggles: result.power = desired.power ^ prev->power.
+    # Toggle only on a power change. Deliberately NOT the C path: IRac::daikin64
+    # sets the toggle on every 'on' message (handleToggles skips DAIKIN64).
     dev = device()
     previous = dev.normalise(HvacState(before, "cool", 22.0))
     target = dev.normalise(HvacState(after, "cool", 22.0))

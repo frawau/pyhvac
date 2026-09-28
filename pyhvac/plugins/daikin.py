@@ -797,9 +797,13 @@ DAIKIN64_LAYOUT = Layout(
 class Daikin64Device(Device):
     """Daikin64 (DGS01): full state, except that the power bit is a toggle.
 
-    With ``previous`` the bit is set when the power changes, as IRac's
-    handleToggles does. Without it the bit is ``target.power``, as the C path
-    sends from a fresh IRac: an "on" toggles, an "off" toggles nothing.
+    With ``previous`` the bit is set only when the power changes. This is a
+    deliberate deviation from the C path: IRac::daikin64 calls
+    setPowerToggle(on) on every message (handleToggles covers DAIKIN128, not
+    DAIKIN64), so with a persistent object any change made while the unit is
+    on, a setpoint change say, toggled it off. Without ``previous`` the bit
+    is ``target.power``, as the C path sends: an "on" toggles, an "off"
+    toggles nothing.
     """
 
     PROTOCOL = DAIKIN64

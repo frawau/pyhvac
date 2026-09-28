@@ -41,6 +41,7 @@
 - **Fan lowest/highest (DAIKIN64, DAIKIN128):** `convertFan` maps them to the documented Quiet/Turbo (Powerful) fan codes, but `IRac` immediately resets them to auto via `setQuiet(false)`/`setTurbo(false)`. The ports send the documented codes. DAIKIN128 keeps its header rule: quiet and powerful fall back to auto in mode auto, including in off messages.
 - **DAIKIN128 mode dry:** `convertMode` returns `kDaikinDry` (0b010), which equals `kDaikin128Cool`, so the C path sends cool for dry. The port sends dry.
 - **DAIKIN312 horizontal swing off:** `convertSwingH` has no off case (as in DAIKIN2), so the port sends `kDaikin312SwingHOff`.
+- **DAIKIN64 power toggle with `previous` (not a `Defect`: the oracle has no `previous`):** the port toggles only when the power changes. IRac::daikin64 calls `setPowerToggle(on)` on every message (IRac::handleToggles covers DAIKIN128 only), so the old persistent integration toggled a running unit off on any change. Added after the final review.
 - **DAIKIN2 `"Daikin2"` model key:** it was missing from `DEVICES` and silently stayed on the C path. Task 1 fixes it.
 
 ## Open questions for the reviewer (not blocking)

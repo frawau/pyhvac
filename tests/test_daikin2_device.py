@@ -98,3 +98,14 @@ def test_layouts_must_cover_every_frame():
     record = load_oracle("DAIKIN2")[0]
     with pytest.raises(AssertionError, match="layout"):
         assert_matches_oracle(dev, record, dev.LAYOUTS[:2], DEFECTS)
+
+
+def test_every_daikin2_model_is_served_by_the_port():
+    for model in (
+        "ARC477A1 remote",
+        "FTXZ25NV1B",
+        "FTXZ35NV1B",
+        "FTXZ50NV1B",
+        "Daikin2",
+    ):
+        assert isinstance(registry.get_device("daikin", model), Daikin2Device)

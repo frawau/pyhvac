@@ -28,10 +28,11 @@
 ##
 
 import struct
+from dataclasses import dataclass
 
 from .hvaclib import HVAC, PulseBased, GenPluginObject, bit_reverse
 from ..device import Device
-from ..fields import Field, Layout, Sum8
+from ..fields import Checksum, Field, Layout, NibbleSum, Sum8
 from ..ir.model import Frame, Protocol, PulseDistance, Section
 from ..state import Capabilities, Choice, TemperatureRange
 
@@ -600,10 +601,14 @@ class Daikin2Device(Device):
         ]
 
 
-DEVICES = {
-    model: Daikin2Device
-    for model in ("ARC477A1 remote", "FTXZ25NV1B", "FTXZ35NV1B", "FTXZ50NV1B")
-}
+DAIKIN2_MODELS = (
+    "ARC477A1 remote",
+    "FTXZ25NV1B",
+    "FTXZ35NV1B",
+    "FTXZ50NV1B",
+    "Daikin2",
+)
+DEVICES = {model: Daikin2Device for model in DAIKIN2_MODELS}
 
 
 class PluginObject(GenPluginObject):

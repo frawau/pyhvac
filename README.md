@@ -76,7 +76,7 @@ decodes a captured signal into frames of the device's `PROTOCOL`.
 
 ## Command line
 
-    python -m pyhvac --list                      # brands
+    pyhvac --list                                # brands (or python -m pyhvac)
     python -m pyhvac --list-models Daikin        # a brand's models
     python -m pyhvac Daikin "ARC433**" --mode cool --temperature 24
     python -m pyhvac LG "AKB74955603" --mode heat --fan 2 --format pronto
@@ -96,6 +96,7 @@ checksums from captures. Register the models in `pyhvac/brands.py`.
 | `dev.set_value("mode", "cool")`, `set_value("temperature", 24)`, ... | `HvacState(power=True, mode="cool", temperature=24.0, fan=..., swing_v=..., features={...})` |
 | `frames = dev.build_ircode(); dev.to_broadlink(frames)` | `to_broadlink(device.encode(previous, state).signal)` |
 | `dev.capabilities["temperature"]`, `dev.all_capabilities["fan"]` | `device.capabilities.temperature`, `device.capabilities.fan` (values and labels) |
+| scripts `gaccode`, `gcpanasonic`, `gcdaikin`, `gclg`, `gcsharp` | `pyhvac` (or `python -m pyhvac`), see Command line |
 | brand = plugin module name, e.g. `"mitsubishi_heavy_industries"` | brand as the maker writes it; lookups ignore case and punctuation |
 | model strings of 0.1.x | the new names below; 0.1.x names still work for the former pure-Python devices (Daikin, LG and Panasonic "generic" and their variants, Airspool, Sharp "j-tech") |
 

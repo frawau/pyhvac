@@ -17,6 +17,9 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 
+[project.scripts]
+pyhvac = "pyhvac.__main__:main"
+
 [project.urls]
 Homepage = "https://github.com/frawau/pyhvac"
 

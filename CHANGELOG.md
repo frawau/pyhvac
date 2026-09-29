@@ -10,6 +10,8 @@ Breaking: new API, pure Python.
   actions)` -> `Command`; Broadlink, Pronto and raw output; decoding. The
   plugin API (`PluginObject`, `set_value`, `build_ircode`, `to_broadlink` on
   the device) is gone. See "Migrating from 0.1.x" in the README.
+- One command, `pyhvac` (also `python -m pyhvac`), replaces the 0.1.x
+  scripts `gaccode`, `gcpanasonic`, `gcdaikin`, `gclg` and `gcsharp`.
 - Names: brands and models as the manufacturers write them; 0.1.x names
   still resolve for the former pure-Python devices (Daikin, LG and Panasonic
   "generic" and their variants, Airspool, Sharp "j-tech").

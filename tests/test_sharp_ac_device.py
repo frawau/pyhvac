@@ -13,6 +13,7 @@ from port_oracle import (
     state_from_record,
 )
 from pyhvac import registry
+from pyhvac.ir.codec import decode
 from pyhvac.plugins.sharp import (
     SHARP_AC_LAYOUT,
     SHARP_AC_MODEL_VARIANT,
@@ -35,7 +36,8 @@ DEFECTS = (FAN_HIGH,)
 #   is set, restoring the mode, setpoint and fan. So C's second message is a
 #   plain "on" message. The port sends the clean message setClean(true)
 #   builds (dry, fan auto, no setpoint, Clean, PowerSpecial OnFromOff), as
-#   the real A903 capture below. Scoped to the messages with cleaning on.
+#   the real A903 capture below. Scoped to the clean message only
+#   (assert_only_the_clean_message_deviates checks every other message).
 CLEAN_DEFECTS = (
     (
         Defect("clean", 1, 0, "setPower clears Clean"),
@@ -118,10 +120,41 @@ def defects_for(record):
     return DEFECTS
 
 
+def assert_only_the_clean_message_deviates(dev, record, previous=None):
+    """CLEAN_DEFECTS excuse the clean message only: with cleaning on and the
+    unit on, the port's second message. Every other message must be C's."""
+    target = state_from_record(dev, record["state"])
+    if not (target.power and target.features["cleaning"]):
+        return
+    ours = dev.frames(previous, target, ())
+    theirs = decode(dev.PROTOCOL, record["pulses"], expected=["main"] * len(ours))
+    for i, (a, b) in enumerate(zip(ours, theirs)):
+        if i != 1:
+            assert a.data == b.data, f"message {i} of {record['state']}"
+
+
 @pytest.mark.parametrize("record", oracle_params("SHARP_AC"))
 def test_matches_c_library(record):
     dev = device_for(record)
     assert_matches_oracle(dev, record, dev.layouts, defects_for(record))
+    assert_only_the_clean_message_deviates(dev, record)
+
+
+@pytest.mark.parametrize("variant", ["A907", "A903", "A705"])
+def test_cleaning_with_powerful_sends_cs_turbo_frame(variant):
+    # IRac::sharp: setClean(clean); setPower(on, prev) (which clears Clean
+    # and restores mode, setpoint and fan); if (turbo) {send(); setTurbo();}
+    # send(). The turbo frame is built from the plain state, not the clean
+    # message the port sends before it.
+    pytest.importorskip("pyhvac.irhvac")
+    dev = device(variant)
+    record = next(
+        r for r in load_oracle("SHARP_AC") if dev.variant == device_for(r).variant
+    )
+    old = {"mode": "cool", "temperature": 24, "fan": "auto"}
+    old.update(cleaning="on", powerful="on")
+    (rec,) = c_sequence(record, [old])
+    assert_only_the_clean_message_deviates(dev, rec)
 
 
 @pytest.mark.parametrize("record, states", sequence_params("SHARP_AC"))
@@ -485,10 +518,14 @@ def test_cleaning_when_on_sends_off_then_the_clean_message():
         assert clean["power_special"] == "on_from_off"
 
 
-def test_cleaning_and_powerful_turbo_follows_the_clean_message():
-    target = state(True, "cool", 24.0, features=features(cleaning=True, powerful=True))
-    off, clean, turbo = read(target)
-    assert turbo == dict(clean, fan=7, power_special="special_on", special="turbo")
+def test_cleaning_and_powerful_turbo_follows_the_plain_state():
+    # The turbo frame comes from the state setPower restores, not from the
+    # clean message (test_cleaning_with_powerful_sends_cs_turbo_frame).
+    both = features(cleaning=True, powerful=True)
+    off, clean, turbo = read(state(True, "cool", 24.0, features=both))
+    _, plain_turbo = read(state(True, "cool", 24.0, features=features(powerful=True)))
+    assert clean["clean"] == 1 and turbo["clean"] == 0
+    assert turbo == plain_turbo
 
 
 @pytest.mark.parametrize("model", SHARP_AC_MODELS)
@@ -528,7 +565,9 @@ def test_undeclared_fan_deviation_is_reported():
         assert_matches_oracle(device_for(record), record, SHARP_AC_LAYOUT_ONLY, ())
 
 
-@pytest.mark.parametrize("field", ["clean", "mode", "temperature", "model"])
+@pytest.mark.parametrize(
+    "field", ["clean", "mode", "temperature", "model", "temp_flags"]
+)
 def test_undeclared_clean_deviation_is_reported(field):
     # A705 cool 22 with cleaning: C's second message is a cool one.
     record = _record("CRMC-A705 JBEZ remote", cleaning="on")

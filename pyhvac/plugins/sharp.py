@@ -934,6 +934,7 @@ class SharpAcDevice(Device):
         else:
             power = "on_from_off"
         messages = []
+        plain = state  # what IRac::sharp's setPower restores
         if target.features["cleaning"]:
             # Sent before IRac's setClean restores the fan: setMode left it
             # at auto in the modes without a setpoint.
@@ -951,9 +952,11 @@ class SharpAcDevice(Device):
                 power = "on_from_off"
         messages.append(dict(state, power_special=power))
         if target.features["powerful"]:
+            # setTurbo after setPower: built from the plain state, never
+            # from the clean message (setPower cleared Clean in C).
             messages.append(
                 dict(
-                    messages[-1],
+                    plain,
                     fan=SHARP_AC_FAN_MAX,
                     power_special="special_on",
                     special="turbo",

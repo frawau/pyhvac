@@ -54,9 +54,10 @@ def test_unknown_brand_or_model():
 
 @pytest.mark.skipif(_has_c_extension(), reason="needs a machine without _irhvac")
 def test_brand_needing_c_extension_is_skipped_with_warning(caplog):
+    # fujitsu.py still imports irhvac unguarded (not ported yet).
     with caplog.at_level(logging.WARNING, logger="pyhvac.registry"):
-        assert registry.models("whirlpool") == []
-    assert "whirlpool" in caplog.text
+        assert registry.models("fujitsu") == []
+    assert "fujitsu" in caplog.text
 
 
 @pytest.mark.skipif(not _has_c_extension(), reason="needs the _irhvac extension")

@@ -1,0 +1,263 @@
+import pytest
+
+from oracle import load_oracle
+from port_oracle import (
+    assert_matches_oracle,
+    assert_sequence_matches_c,
+    oracle_params,
+    sequence_params,
+    state_from_record,
+)
+from pyhvac import registry
+from pyhvac.ir.codec import decode
+from pyhvac.plugins.goodweather import (
+    GOODWEATHER,
+    GOODWEATHER_LAYOUT,
+    GOODWEATHER_MODELS,
+    GoodweatherDevice,
+)
+from pyhvac.state import HvacState
+
+# Every entity value reaches C through the legacy glue (swing "auto low"/
+# "auto high" are in trans_swing; powerful and light are in the key map; the
+# entity has no sleep), so nothing is declared.
+DEFECTS = ()
+
+
+def wire(raw):
+    """The frame sendGoodweather puts on the wire for the 48-bit ``raw``
+    state: each byte, LSB first, followed by its complement."""
+    out = bytearray()
+    for b in raw.to_bytes(6, "little"):
+        out += bytes((b, ~b & 0xFF))
+    return bytes(out)
+
+
+# Real captures from ir_Goodweather_test.cpp (issue #697).
+ON_COOL_20_SWING_FAST = wire(0xD52462000000)  # Command Power
+OFF_COOL_22 = wire(0xD52668000000)  # Command Power
+ON_COOL_22 = wire(0xD5266A000000)  # Command Power
+TEMP_UP_24 = wire(0xD5286A020000)
+TEMP_DOWN_23 = wire(0xD5276A030000)
+SWING_SLOW_22 = wire(0xD52666040000)
+
+
+def device(model="ZH/JT-03 remote"):
+    return GoodweatherDevice("goodweather", model)
+
+
+def data(state, previous=None):
+    dev = device()
+    if previous is not None:
+        previous = dev.normalise(previous)
+    (main,) = dev.frames(previous, dev.normalise(state), ())
+    return main.data
+
+
+def read(state):
+    return GOODWEATHER_LAYOUT.read(data(state))
+
+
+@pytest.mark.parametrize("record", oracle_params("GOODWEATHER"))
+def test_matches_c_library(record):
+    dev = device()
+    assert_matches_oracle(dev, record, dev.LAYOUTS, DEFECTS)
+
+
+@pytest.mark.parametrize("record, states", sequence_params("GOODWEATHER"))
+def test_sequence_matches_a_persistent_c_object(record, states):
+    # The Light/Turbo "toggles" and the Command button could depend on the
+    # message before; a persistent C object shows they do not.
+    dev = device()
+    assert_sequence_matches_c(dev, record, states, dev.LAYOUTS, DEFECTS)
+
+
+def test_layout_round_trips_every_oracle_state():
+    dev = device()
+    for record in load_oracle("GOODWEATHER"):
+        state = state_from_record(dev, record["state"])
+        (main,) = dev.frames(None, state, ())
+        values = GOODWEATHER_LAYOUT.read(main.data)
+        assert GOODWEATHER_LAYOUT.build(**values) == bytearray(main.data)
+        assert GOODWEATHER_LAYOUT.checksum.check(main.data)
+
+
+def test_every_oracle_message_is_one_frame():
+    for record in load_oracle("GOODWEATHER"):
+        (main,) = decode(GOODWEATHER, record["pulses"], ["main"])
+        assert main.data[10:] == b"\xd5\x2a"  # kGoodweatherStateInit's top byte
+
+
+def test_the_port_reproduces_the_on_cool_22_capture():
+    # "Power: On, Mode: 1 (Cool), Temp: 22C, Fan: 3 (Low), Swing: 2 (Off),
+    # Command: 0 (Power)": the remote's own frame.
+    assert data(HvacState(True, "cool", 22.0, fan="1")) == ON_COOL_22
+
+
+@pytest.mark.parametrize(
+    "capture, expected",
+    [
+        (
+            ON_COOL_20_SWING_FAST,
+            {"command": "power", "power": 1, "temperature": 20, "swing_v": "fast"},
+        ),
+        (
+            OFF_COOL_22,
+            {"command": "power", "power": 0, "mode": "cool", "temperature": 22},
+        ),
+        (
+            TEMP_UP_24,
+            {"command": "temp_up", "power": 1, "temperature": 24, "swing_v": "off"},
+        ),
+        (
+            TEMP_DOWN_23,
+            {"command": "temp_down", "power": 1, "temperature": 23, "fan": "1"},
+        ),
+        (
+            SWING_SLOW_22,
+            {"command": "swing", "power": 1, "temperature": 22, "swing_v": "slow"},
+        ),
+    ],
+)
+def test_real_captures_read_back(capture, expected):
+    # These carry the key actually pressed, swing fast, or an off message in
+    # cool, which the C path (and so the port) never sends; they read back
+    # through the layout.
+    values = GOODWEATHER_LAYOUT.read(capture)
+    assert GOODWEATHER_LAYOUT.checksum.check(capture)
+    assert {k: values[k] for k in expected} == expected
+    assert GOODWEATHER_LAYOUT.build(**values) == bytearray(capture)
+
+
+def test_complements_follow_every_byte():
+    raw = data(HvacState(True, "heat", 27.0, fan="2", swing_v="2"))
+    assert all(raw[i + 1] == ~raw[i] & 0xFF for i in range(0, 12, 2))
+
+
+@pytest.mark.parametrize("mode", ["auto", "cool", "fan", "dry", "heat"])
+@pytest.mark.parametrize("t", [16.0, 23.0, 31.0])
+def test_off_carries_mode_auto_and_the_power_button(mode, t):
+    # IRac passes mode "off"; convertMode maps it to kGoodweatherAuto. The
+    # other settings are sent as given.
+    values = read(HvacState(False, mode, t, fan="3", swing_v="1"))
+    assert (values["power"], values["command"], values["mode"]) == (0, "power", "auto")
+    assert (values["temperature"], values["fan"], values["swing_v"]) == (
+        int(t),
+        "3",
+        "slow",
+    )
+
+
+@pytest.mark.parametrize("mode", ["auto", "cool", "fan", "dry", "heat"])
+def test_on_always_names_the_power_button(mode):
+    # IRac::goodweather ends with setPower, overwriting the Mode, UpTemp/
+    # DownTemp, Fan, Swing, Turbo, Light and Sleep commands the setters wrote.
+    values = read(
+        HvacState(
+            True,
+            mode,
+            31.0,
+            fan="2",
+            swing_v="2",
+            features={"powerful": True, "light": True},
+        )
+    )
+    assert (values["power"], values["command"], values["mode"]) == (1, "power", mode)
+
+
+def test_setpoint_is_clamped_to_16_31():
+    assert read(HvacState(True, "cool", 10.0))["temperature"] == 16
+    assert read(HvacState(True, "heat", 35.0))["temperature"] == 31
+
+
+@pytest.mark.parametrize("fan, raw", [("auto", 0), ("1", 3), ("2", 2), ("3", 1)])
+def test_every_fan_level_uses_the_documented_codes(fan, raw):
+    # convertFan: kLow -> kGoodweatherFanLow (3), kMedium -> Med (2),
+    # kHigh -> High (1), auto -> Auto (0).
+    raw_read = GOODWEATHER_LAYOUT.read_raw(
+        data(HvacState(True, "cool", 22.0, fan=fan)), "fan"
+    )
+    assert raw_read == raw
+
+
+@pytest.mark.parametrize("swing, raw", [("off", 0b10), ("1", 0b01), ("2", 0b01)])
+def test_every_swing_value(swing, raw):
+    # IRac::goodweather sends kGoodweatherSwingSlow for any swing but off,
+    # so "auto low" and "auto high" send the same code.
+    raw_read = GOODWEATHER_LAYOUT.read_raw(
+        data(HvacState(True, "cool", 22.0, swing_v=swing)), "swing_v"
+    )
+    assert raw_read == raw
+
+
+def test_powerful_is_the_turbo_bit_and_light_the_light_bit():
+    turbo = read(HvacState(True, "cool", 22.0, features={"powerful": True}))
+    assert turbo["turbo"] == 1
+    assert read(HvacState(True, "cool", 22.0, features={"light": True}))["light"] == 1
+    plain = read(HvacState(True, "cool", 22.0))
+    assert (plain["turbo"], plain["light"]) == (0, 0)
+
+
+def test_quiet_sends_nothing():
+    # IRac::goodweather has no quiet setting.
+    assert data(HvacState(True, "cool", 22.0, features={"quiet": True})) == data(
+        HvacState(True, "cool", 22.0)
+    )
+
+
+def test_sleep_and_air_flow_are_never_set():
+    # The entity has no sleep (IRac gets -1: setSleep(false)), and IRac has
+    # no air flow setting.
+    values = read(
+        HvacState(True, "heat", 18.0, fan="2", swing_v="1", features={"light": True})
+    )
+    assert (values["sleep"], values["air_flow"]) == (0, 0)
+
+
+@pytest.mark.parametrize(
+    "previous",
+    [
+        None,
+        HvacState(False, "heat", 18.0),
+        HvacState(True, "cool", 26.0, fan="1", swing_v="off"),
+        HvacState(True, "cool", 22.0, fan="3", features={"light": True}),
+        HvacState(True, "cool", 22.0, features={"powerful": True, "light": True}),
+    ],
+)
+def test_previous_is_ignored(previous):
+    # IRac::goodweather writes Light and Turbo from the desired state and
+    # Command from setPower on every message; IRac::handleToggles has no
+    # GOODWEATHER case (see the sequence test).
+    dev = device()
+    target = HvacState(True, "cool", 22.0, fan="3", features={"light": True})
+    assert dev.encode(previous, target).signal == dev.encode(None, target).signal
+
+
+def test_message_shape():
+    pulses = device().encode(None, HvacState(True, "cool", 22.0)).signal.pulses
+    assert pulses[:2] == (6820, 6820)
+    # A closing bit mark, kGoodweatherHdrSpace, a bit mark, kDefaultMessageGap.
+    assert pulses[-4:] == (580, 6820, 580, 100000)
+    assert len(pulses) == 2 + 2 * 96 + 4
+
+
+@pytest.mark.parametrize("model", GOODWEATHER_MODELS)
+def test_registry_serves_the_port(model):
+    assert isinstance(registry.get_device("goodweather", model), GoodweatherDevice)
+
+
+@pytest.mark.parametrize("model", GOODWEATHER_MODELS)
+def test_capabilities_match_the_legacy_entity(model):
+    pytest.importorskip("pyhvac.irhvac")
+    from pyhvac.legacy import LegacyDevice
+    from pyhvac.plugins.goodweather import Goodweather
+
+    legacy = LegacyDevice("goodweather", model, Goodweather)
+    assert device(model).capabilities == legacy.capabilities
+
+
+def test_layouts_must_cover_every_frame():
+    dev = device()
+    record = load_oracle("GOODWEATHER")[0]
+    with pytest.raises(AssertionError, match="layout"):
+        assert_matches_oracle(dev, record, (), DEFECTS)

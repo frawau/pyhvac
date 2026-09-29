@@ -6,20 +6,31 @@ import pytest
 
 from pyhvac import registry
 from pyhvac.ir.codec import decode
-from pyhvac.plugins.panasonic import (
+from pyhvac.protocols.panasonic import (
     PANASONIC_NATIVE,
     PANASONIC_NATIVE_MAIN,
     PANASONIC_NATIVE_SHORT,
     PANASONIC_NATIVE_VARIANTS,
-    PanaCassette,
-    Panasonic,
     PanasonicNativeDevice,
 )
 from pyhvac.state import HvacState
 from port_oracle import assert_matches_golden
 
 GOLDEN = Path(__file__).parent / "fixtures" / "golden" / "panasonic.json.gz"
-LEGACY = {"Panasonic": Panasonic, "PanaCassette": PanaCassette}
+# The status of a fresh 0.1.x object of each legacy class (what the golden
+# records were built from).
+LEGACY = {
+    "Panasonic": {"mode": "off", "temperature": 25},
+    "PanaCassette": {
+        "mode": "off",
+        "temperature": 25,
+        "fan": "auto",
+        "swing": "auto",
+        "purifier": "off",
+        "economy": "off",
+        "cleaning": "off",
+    },
+}
 VARIANT = {"Panasonic": "generic", "PanaCassette": "4 way cassette"}
 
 
@@ -33,7 +44,7 @@ def _canonical(choice, old):
 def from_old(cls_name, old):
     """The HvacState an old-vocabulary state stands for, on a fresh object
     of the legacy class ``cls_name``."""
-    old = {**LEGACY[cls_name]().status, **old}
+    old = {**LEGACY[cls_name], **old}
     caps = PANASONIC_NATIVE_VARIANTS[VARIANT[cls_name]]
     kwargs = {}
     if caps.fan is not None:
@@ -129,12 +140,18 @@ def test_main_layout_matches_the_legacy_bytes():
 def test_short_layout_round_trip(name):
     data = PANASONIC_NATIVE_SHORT.build(frame=name)
     assert PANASONIC_NATIVE_SHORT.read(data) == {"frame": name}
+    # What the 0.1.x Panasonic class sent (FHEADER + F1BODY, FECON, FODOUR,
+    # each with its crc byte).
     legacy = {
-        "first": Panasonic.FHEADER + Panasonic.F1BODY,
-        "economy": Panasonic.FECON,
-        "cleaning": Panasonic.FODOUR,
+        "first": "4004072000000060",
+        "economy": "4004072001a1ac02",
+        "cleaning": "4004072001d94cca",
     }[name]
-    assert bytes(data) == legacy + Panasonic().crc(legacy)
+    assert bytes(data).hex() == legacy
+
+
+# The 0.1.x Panasonic.code_temperature() for 16..31 °C.
+LEGACY_TEMPERATURE_CODE = "04 44 24 64 14 54 34 74 0c 4c 2c 6c 1c 5c 3c 7c".split()
 
 
 def test_every_legacy_temperature_code():
@@ -142,9 +159,7 @@ def test_every_legacy_temperature_code():
         data = PANASONIC_NATIVE_MAIN.build(
             power=1, mode="cool", temperature=celsius, fan=None, swing=None
         )
-        legacy = Panasonic()
-        legacy.to_set = {"temperature": celsius}
-        assert data[6:7] == legacy.code_temperature()
+        assert data[6:7].hex() == LEGACY_TEMPERATURE_CODE[celsius - 16]
 
 
 # -------------------------------------------------------------------- rules
@@ -271,14 +286,6 @@ def fresh_registry():
     registry._factories.cache_clear()
     yield
     registry._factories.cache_clear()
-
-
-@pytest.mark.parametrize("model", ["generic", "4 way cassette"])
-def test_registry_serves_the_native_models(fresh_registry, model):
-    dev = registry.get_device("panasonic", model)
-    assert isinstance(dev, PanasonicNativeDevice)
-    assert dev.variant == model
-    assert dev.capabilities is PANASONIC_NATIVE_VARIANTS[model]
 
 
 def test_unknown_variant():

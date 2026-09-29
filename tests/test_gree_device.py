@@ -10,11 +10,10 @@ from port_oracle import (
     oracle_params,
     state_from_record,
 )
-from pyhvac import registry
 from pyhvac.fields import Joined
 from pyhvac.ir.codec import decode, encode
 from pyhvac.ir.model import Frame
-from pyhvac.plugins.gree import (
+from pyhvac.protocols.gree import (
     GREE,
     GREE_AMANA_MODELS,
     GREE_CAPABILITIES,
@@ -30,7 +29,7 @@ from pyhvac.plugins.gree import (
     GREE_VAILLAND_MODELS,
     GreeDevice,
 )
-from pyhvac.plugins.kelvinator import KelvinatorBlockSum
+from pyhvac.protocols.kelvinator import KelvinatorBlockSum
 from pyhvac.state import HvacState
 
 # The C path deviates from the documented Gree values here:
@@ -509,11 +508,6 @@ def test_previous_is_ignored():
         target,
     ):
         assert dev.encode(previous, target).signal == dev.encode(None, target).signal
-
-
-@pytest.mark.parametrize("brand, model", ALL_MODELS)
-def test_registry_serves_the_port(brand, model):
-    assert isinstance(registry.get_device(brand, model), GreeDevice)
 
 
 @pytest.mark.parametrize("variant", VARIANTS)

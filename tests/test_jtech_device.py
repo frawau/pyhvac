@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from pyhvac.plugins.sharp import JTechDevice
+from pyhvac.protocols.sharp import JTechDevice
 from pyhvac.state import HvacState
 
 GOLDEN = Path(__file__).parent / "fixtures" / "golden" / "sharp.json.gz"

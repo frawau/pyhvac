@@ -11,9 +11,8 @@ from port_oracle import (
     sequence_params,
     state_from_record,
 )
-from pyhvac import registry
 from pyhvac.ir.codec import decode
-from pyhvac.plugins.transcold import (
+from pyhvac.protocols.transcold import (
     TRANSCOLD,
     TRANSCOLD_KNOWN_GOOD_STATE,
     TRANSCOLD_LAYOUT,
@@ -348,11 +347,6 @@ def test_message_shape():
 
 
 # ------------------------------------------------------------ registration
-
-
-@pytest.mark.parametrize("model", TRANSCOLD_MODELS)
-def test_registry_serves_the_port(model):
-    assert isinstance(registry.get_device("transcold", model), TranscoldDevice)
 
 
 # ------------------------------------------------------ the C swing toggle

@@ -10,11 +10,10 @@ from port_oracle import (
     oracle_params,
     state_from_record,
 )
-from pyhvac import registry
 from pyhvac.fields import Sum8
 from pyhvac.ir.codec import decode, encode
 from pyhvac.ir.model import Frame
-from pyhvac.plugins.argo import (
+from pyhvac.protocols.argo import (
     ARGO,
     ARGO_MODELS,
     ARGO_WREM2_BITS,
@@ -447,13 +446,6 @@ def test_message_shape(model, length, tail):
     assert signal.pulses[-2:] == tail
     assert len(signal.pulses) == length
     assert signal.carrier == 38000
-
-
-@pytest.mark.parametrize("model", ARGO_MODELS)
-def test_registry_serves_the_port(model):
-    dev = registry.get_device("argo", model)
-    assert isinstance(dev, ArgoDevice)
-    assert dev.variant == ARGO_MODELS[model]
 
 
 @pytest.mark.parametrize("variant", ["WREM2", "WREM3"])

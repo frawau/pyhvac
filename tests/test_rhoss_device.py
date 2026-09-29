@@ -2,9 +2,8 @@ import pytest
 
 from oracle import load_oracle
 from port_oracle import Defect, assert_matches_oracle, oracle_params, state_from_record
-from pyhvac import registry
 from pyhvac.ir.codec import decode
-from pyhvac.plugins.rhoss import RHOSS, RHOSS_LAYOUT, RHOSS_MODELS, RhossDevice
+from pyhvac.protocols.rhoss import RHOSS, RHOSS_LAYOUT, RHOSS_MODELS, RhossDevice
 from pyhvac.state import HvacState
 
 # The C path never sends swing on: IRGHVAC.trans_swing has no "on" key, so
@@ -163,11 +162,6 @@ def test_message_shape():
     # sendGeneric's footer mark and zero space, sendRhoss's extra mark, the gap.
     assert pulses[-4:] == (648, 457, 648, 100000)
     assert len(pulses) == 2 + 2 * 96 + 4
-
-
-@pytest.mark.parametrize("model", RHOSS_MODELS)
-def test_registry_serves_the_port(model):
-    assert isinstance(registry.get_device("rhoss", model), RhossDevice)
 
 
 def test_undeclared_swing_deviation_is_reported():

@@ -2,9 +2,8 @@ import pytest
 
 from oracle import load_oracle
 from port_oracle import assert_matches_oracle, oracle_params, state_from_record
-from pyhvac import registry
 from pyhvac.ir.model import Frame
-from pyhvac.plugins.hitachi import (
+from pyhvac.protocols.hitachi import (
     HITACHI264,
     HITACHI264_LAYOUT,
     HITACHI264_MODELS,
@@ -146,11 +145,6 @@ def test_frame_is_a_single_main_section():
     frames = dev.frames(None, dev.normalise(HvacState(True, "cool", 22.0)), ())
     assert [type(f) for f in frames] == [Frame]
     assert frames[0].section == "main"
-
-
-@pytest.mark.parametrize("model", HITACHI264_MODELS)
-def test_registry_serves_the_port(model):
-    assert isinstance(registry.get_device("hitachi", model), Hitachi264Device)
 
 
 def test_capabilities_are_the_documented_controls():

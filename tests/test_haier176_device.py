@@ -2,10 +2,9 @@ import pytest
 
 from oracle import load_oracle
 from port_oracle import Defect, assert_matches_oracle, oracle_params, state_from_record
-from pyhvac import registry
 from pyhvac.fields import Sum8
 from pyhvac.ir.codec import decode
-from pyhvac.plugins.haier import (
+from pyhvac.protocols.haier import (
     HAIER176,
     HAIER176_LAYOUT,
     HAIER176_MABE_MODELS,
@@ -325,11 +324,6 @@ def test_message_shape():
 
 
 @pytest.mark.parametrize("model", HAIER176_MODELS)
-def test_registry_serves_the_port(model):
-    assert isinstance(registry.get_device("haier", model), Haier176Device)
-
-
-@pytest.mark.parametrize("model", HAIER176_MODELS)
 def test_capabilities_are_the_documented_controls(model):
     # Unchanged from the legacy entity, and what HaierAc176Protocol carries:
     # kHaierAcYrw02{Auto,Cool,Dry,Heat,Fan}, kHaierAcYrw02Min/MaxTempC,
@@ -368,10 +362,3 @@ def test_layouts_must_cover_every_frame():
     dev = device_for(record)
     with pytest.raises(AssertionError, match="layout"):
         assert_matches_oracle(dev, with_hswing(record), (), DEFECTS)
-
-
-@pytest.mark.parametrize("model", HAIER176_MABE_MODELS)
-def test_mabe_models_are_served_by_the_port(model):
-    # mabe.py's models use the Haier176A class: variant A.
-    dev = registry.get_device("mabe", model)
-    assert isinstance(dev, Haier176Device) and dev.variant == "A"

@@ -1,3 +1,7 @@
+import pytest
+
+pytest.skip("old API: deleted in Task 6", allow_module_level=True)
+
 #! /usr/bin/env python3
 # -*- coding:utf-8 -*-
 #
@@ -8,7 +12,7 @@
 
 import pytest
 
-from pyhvac.plugins.airspool import Airspool
+from pyhvac.protocols.airspool import Airspool
 
 
 def frame(hexstr):

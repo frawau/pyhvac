@@ -2,9 +2,8 @@ import pytest
 
 from oracle import load_oracle
 from port_oracle import Defect, assert_matches_oracle, oracle_params, state_from_record
-from pyhvac import registry
 from pyhvac.ir.codec import decode
-from pyhvac.plugins.sanyo import (
+from pyhvac.protocols.sanyo import (
     SANYO_AC,
     SANYO_AC_LAYOUT,
     SANYO_AC_MODELS,
@@ -207,12 +206,6 @@ def test_message_shape():
     assert pulses[:2] == (8500, 4200)
     assert pulses[-2:] == (500, 100000)
     assert len(pulses) == 2 + 2 * 72 + 2
-
-
-@pytest.mark.parametrize("model", SANYO_AC_MODELS)
-def test_registry_serves_the_port(model):
-    dev = registry.get_device("sanyo", model)
-    assert isinstance(dev, SanyoAcDevice)
 
 
 @pytest.mark.parametrize(

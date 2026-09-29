@@ -2,9 +2,8 @@ import pytest
 
 from oracle import load_oracle
 from port_oracle import Defect, assert_matches_oracle, oracle_params, state_from_record
-from pyhvac import registry
 from pyhvac.ir.codec import decode
-from pyhvac.plugins.haier import (
+from pyhvac.protocols.haier import (
     HAIER_AC,
     HAIER_AC_LAYOUT,
     HAIER_AC_MODELS,
@@ -200,11 +199,6 @@ def test_message_shape():
     assert pulses[:4] == (3000, 3000, 3000, 4300)
     assert pulses[-2:] == (520, 150000)
     assert len(pulses) == 4 + 2 * 72 + 2
-
-
-@pytest.mark.parametrize("model", HAIER_AC_MODELS)
-def test_registry_serves_the_port(model):
-    assert isinstance(registry.get_device("haier", model), HaierAcDevice)
 
 
 @pytest.mark.parametrize("model", HAIER_AC_MODELS)

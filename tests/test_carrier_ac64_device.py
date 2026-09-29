@@ -4,8 +4,7 @@ from c_oracle import c_encode
 
 from oracle import load_oracle
 from port_oracle import assert_matches_oracle, oracle_params, state_from_record
-from pyhvac import registry
-from pyhvac.plugins.carrier import (
+from pyhvac.protocols.carrier import (
     CARRIER_AC64_LAYOUT,
     CARRIER_AC64_MODELS,
     CarrierAc64Checksum,
@@ -226,11 +225,6 @@ def test_layouts_must_cover_every_frame():
     record = load_oracle("CARRIER_AC64")[0]
     with pytest.raises(AssertionError, match="layout"):
         assert_matches_oracle(dev, record, ())
-
-
-@pytest.mark.parametrize("model", CARRIER_AC64_MODELS)
-def test_registry_serves_the_port(model):
-    assert isinstance(registry.get_device("carrier", model), CarrierAc64Device)
 
 
 @pytest.mark.parametrize("mode", ["cool", "fan", "heat"])

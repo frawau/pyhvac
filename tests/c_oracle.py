@@ -66,7 +66,7 @@ def write_fixtures():
 
 
 def _legacy_class(plugin, name):
-    return getattr(importlib.import_module(f"pyhvac.plugins.{plugin}"), name)
+    return getattr(importlib.import_module(f"pyhvac.protocols.{plugin}"), name)
 
 
 def _fix_glue(cls):

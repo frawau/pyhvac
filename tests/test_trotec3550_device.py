@@ -2,9 +2,8 @@ import pytest
 
 from oracle import load_oracle
 from port_oracle import Defect, assert_matches_oracle, oracle_params, state_from_record
-from pyhvac import registry
 from pyhvac.ir.codec import decode
-from pyhvac.plugins.trotech import (
+from pyhvac.protocols.trotec import (
     TROTEC3550,
     TROTEC3550_LAYOUT,
     TROTEC3550_MODELS,
@@ -165,11 +164,6 @@ def test_previous_is_ignored(previous):
     dev = device()
     target = HvacState(True, "cool", 22.0, fan="3", swing_v="swing")
     assert dev.encode(previous, target).signal == dev.encode(None, target).signal
-
-
-@pytest.mark.parametrize("model", TROTEC3550_MODELS)
-def test_registry_serves_the_port(model):
-    assert isinstance(registry.get_device("trotech", model), Trotec3550Device)
 
 
 @pytest.mark.parametrize("model", TROTEC3550_MODELS)

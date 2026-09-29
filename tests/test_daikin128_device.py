@@ -9,8 +9,7 @@ from port_oracle import (
     sequence_params,
     state_from_record,
 )
-from pyhvac import registry
-from pyhvac.plugins.daikin import (
+from pyhvac.protocols.daikin import (
     DAIKIN128,
     DAIKIN128_FIRST,
     DAIKIN128_MODELS,
@@ -181,11 +180,6 @@ def test_light_toggles_only_when_it_changes(was, now, toggle):
     _, _, second = device().frames(previous, target, ())
     assert DAIKIN128_SECOND.read(second.data)["wall"] == toggle
     assert DAIKIN128_SECOND.read(second.data)["ceiling"] == 0
-
-
-def test_registry_serves_the_port():
-    for model in DAIKIN128_MODELS:
-        assert isinstance(registry.get_device("daikin", model), Daikin128Device)
 
 
 def _without(defect):

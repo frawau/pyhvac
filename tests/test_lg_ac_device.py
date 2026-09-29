@@ -9,9 +9,8 @@ from port_oracle import (
     sequence_params,
     state_from_record,
 )
-from pyhvac import registry
 from pyhvac.ir.codec import decode
-from pyhvac.plugins.lg import (
+from pyhvac.protocols.lg import (
     LG_AC,
     LG_AC_GE_MODELS,
     LG_AC_LAYOUT,
@@ -406,16 +405,6 @@ def test_unknown_model_gets_lg6711a20083v_and_bad_variant_raises():
     )
     with pytest.raises(ValueError):
         LgAcDevice("lg", "whatever", variant="AKB75215403")
-
-
-@pytest.mark.parametrize(
-    "brand, model",
-    [("lg", m) for m in LG_AC_MODELS] + [("ge", m) for m in LG_AC_GE_MODELS],
-)
-def test_registry_serves_the_port(brand, model):
-    dev = registry.get_device(brand, model)
-    assert isinstance(dev, LgAcDevice)
-    assert dev.variant == LG_AC_MODEL_VARIANT[model]
 
 
 def test_ge_offers_no_swing():

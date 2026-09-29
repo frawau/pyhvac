@@ -9,8 +9,7 @@ from port_oracle import (
     sequence_params,
     state_from_record,
 )
-from pyhvac import registry
-from pyhvac.plugins.daikin import (
+from pyhvac.protocols.daikin import (
     DAIKIN64,
     DAIKIN64_LAYOUT,
     DAIKIN64_MODELS,
@@ -148,11 +147,6 @@ def test_message_shape():
     assert pulses[:5] == (9800, 9800, 9800, 9800, 4600)
     assert pulses[-2:] == (4600, 100000)
     assert len(pulses) == 4 + 2 + 2 * 64 + 2 + 2
-
-
-@pytest.mark.parametrize("model", DAIKIN64_MODELS)
-def test_registry_serves_the_port(model):
-    assert isinstance(registry.get_device("daikin", model), Daikin64Device)
 
 
 def test_undeclared_deviation_is_reported():

@@ -2,8 +2,7 @@ import pytest
 
 from oracle import load_oracle
 from port_oracle import Defect, assert_matches_oracle, oracle_params, state_from_record
-from pyhvac import registry
-from pyhvac.plugins.mitsubishi_electric import (
+from pyhvac.protocols.mitsubishi_electric import (
     MITSUBISHI112,
     MITSUBISHI112_LAYOUT,
     MITSUBISHI112_MODELS,
@@ -203,13 +202,6 @@ def test_message_shape():
     assert pulses[:2] == (3450, 1696)
     assert pulses[-2:] == (450, 100000)
     assert len(pulses) == 2 + 2 * 112 + 2
-
-
-@pytest.mark.parametrize("model", MITSUBISHI112_MODELS)
-def test_registry_serves_the_port(model):
-    assert isinstance(
-        registry.get_device("mitsubishi_electric", model), Mitsubishi112Device
-    )
 
 
 @pytest.mark.parametrize(

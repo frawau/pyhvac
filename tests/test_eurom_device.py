@@ -4,9 +4,8 @@ from c_oracle import c_frozen
 
 from oracle import load_oracle
 from port_oracle import Defect, assert_matches_oracle, oracle_params, state_from_record
-from pyhvac import registry
 from pyhvac.ir.codec import decode
-from pyhvac.plugins.eurom import EUROM, EUROM_LAYOUT, EUROM_MODELS, EuromDevice
+from pyhvac.protocols.eurom import EUROM, EUROM_LAYOUT, EUROM_MODELS, EuromDevice
 from pyhvac.state import HvacState
 
 # The C path deviates from the documented Eurom values here:
@@ -212,17 +211,12 @@ def test_previous_is_ignored(previous):
     assert dev.encode(previous, target).signal == dev.encode(None, target).signal
 
 
-@pytest.mark.parametrize("model", EUROM_MODELS)
-def test_registry_serves_the_port(model):
-    assert isinstance(registry.get_device("eurom", model), EuromDevice)
-
-
 @pytest.mark.parametrize("sleep, bit", [(-1, 1), (0, 0), (30, 1)])
 def test_c_path_turns_irac_sleep_into_a_bool(sleep, bit):
     # IRac::eurom's bool sleep: IRac's "off" (-1) sends kEuromSleepEnabled,
     # and sleep from minute 0 sends it disabled.
     def live():
-        from pyhvac.plugins.eurom import Eurom
+        from pyhvac.protocols.eurom import Eurom
 
         legacy = Eurom()
         legacy.irac.next.sleep = sleep

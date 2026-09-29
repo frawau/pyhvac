@@ -2,8 +2,7 @@ import pytest
 
 from oracle import load_oracle
 from port_oracle import Defect, assert_matches_oracle, oracle_params, state_from_record
-from pyhvac import registry
-from pyhvac.plugins.daikin import DAIKIN152_MAIN, Daikin152Device
+from pyhvac.protocols.daikin import DAIKIN152_MAIN, Daikin152Device
 from pyhvac.state import HvacState
 
 # The C path never sends vertical swing: IRGHVAC.trans_swing has no entry for
@@ -144,11 +143,6 @@ def test_feature_interplay_follows_the_c_path(features, expected):
     # powerful).
     read = _read(HvacState(True, "cool", 24.0, features=features))
     assert (read["powerful"], read["quiet"], read["economy"]) == expected
-
-
-def test_registry_serves_the_port():
-    for model in ("ARC480A5 remote", "Daikin152"):
-        assert isinstance(registry.get_device("daikin", model), Daikin152Device)
 
 
 def test_undeclared_deviation_is_reported():

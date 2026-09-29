@@ -7,6 +7,11 @@ Models that need the C extension skip when it is absent.
 
 import pytest
 
+pytest.skip("old API: deleted in Task 6", allow_module_level=True)
+
+
+import pytest
+
 from pyhvac import registry
 
 # IRremoteESP8266 produces no signal for these (HITACHI_AC3 via IRac).

@@ -5,20 +5,28 @@ from pathlib import Path
 import pytest
 
 from port_oracle import assert_matches_golden
-from pyhvac import registry
 from pyhvac.choices import FAN_5, ON_OFF, SWING
 from pyhvac.ir.codec import decode
-from pyhvac.plugins.daikin import (
+from pyhvac.protocols.daikin import (
     DAIKIN_NATIVE,
     DAIKIN_NATIVE_LAYOUT,
-    Daikinth,
     DaikinNativeDevice,
-    Smash2,
 )
 from pyhvac.state import HvacState
 
 GOLDEN = Path(__file__).parent / "fixtures" / "golden" / "daikin.json.gz"
-LEGACY = {"Daikinth": Daikinth, "Smash2": Smash2}
+# The status of a fresh 0.1.x object of each legacy class (what the golden
+# records were built from).
+LEGACY = {
+    "Daikinth": {"mode": "cool", "temperature": 25},
+    "Smash2": {
+        "mode": "off",
+        "temperature": 25,
+        "fan": "auto",
+        "swing": "off",
+        "powerful": "off",
+    },
+}
 MODEL = {"Daikinth": "generic", "Smash2": "smash 2"}
 FAN = {v: k for k, v in FAN_5.labels.items()}  # "lowest" -> "1", ...
 
@@ -31,7 +39,7 @@ def from_old(cls, old):
     the power bit cleared: for a fresh object that is cool, 25 °C, fan auto,
     swing and powerful off (Smash2's stored mode "off" also encodes cool).
     """
-    status = {"fan": "auto", "swing": "off", "powerful": "off", **cls().status}
+    status = {"fan": "auto", "swing": "off", "powerful": "off", **cls}
     if old["mode"] == "off":
         old = {**status, "mode": "cool"}
         power = False
@@ -215,10 +223,3 @@ def test_setpoint_clamps():
     dev = DaikinNativeDevice("daikin", "generic")
     assert dev.normalise(HvacState(True, "cool", 16.0)).temperature == 18.0
     assert dev.normalise(HvacState(True, "cool", 35.0)).temperature == 31.0
-
-
-@pytest.mark.parametrize("model", ["generic", "smash 2"])
-def test_registered(model):
-    dev = registry.get_device("daikin", model)
-    assert isinstance(dev, DaikinNativeDevice)
-    assert (dev.brand, dev.model) == ("daikin", model)

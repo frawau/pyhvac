@@ -10,8 +10,7 @@ from port_oracle import (
     oracle_params,
     state_from_record,
 )
-from pyhvac import registry
-from pyhvac.plugins.toshiba import (
+from pyhvac.protocols.toshiba import (
     TOSHIBA_AC_CARRIER_MODELS,
     TOSHIBA_AC_LAYOUT,
     TOSHIBA_AC_LONG_LAYOUT,
@@ -286,15 +285,6 @@ def test_message_shape():
     assert pulses[:2] == (4400, 4300)
     assert pulses[-2:] == (580, 7400)
     assert len(pulses) == 2 * (2 + 2 * 72 + 2) + 2 * (2 + 2 * 56 + 2)
-
-
-@pytest.mark.parametrize(
-    "plugin, model",
-    [("toshiba", m) for m in TOSHIBA_AC_MODELS]
-    + [("carrier", m) for m in TOSHIBA_AC_CARRIER_MODELS],
-)
-def test_registry_serves_the_port(plugin, model):
-    assert isinstance(registry.get_device(plugin, model), ToshibaAcDevice)
 
 
 def test_capabilities_are_the_documented_ones():

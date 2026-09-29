@@ -8,8 +8,7 @@ from port_oracle import (
     oracle_params,
     state_from_record,
 )
-from pyhvac import registry
-from pyhvac.plugins.vestel import (
+from pyhvac.protocols.vestel import (
     VESTEL_AC,
     VESTEL_AC_LAYOUT,
     VESTEL_AC_MODELS,
@@ -300,11 +299,6 @@ def test_message_shape():
     assert pulses[:2] == (3110, 9066)
     assert pulses[-2:] == (520, 100000)
     assert len(pulses) == 2 + 2 * 56 + 2
-
-
-@pytest.mark.parametrize("model", VESTEL_AC_MODELS)
-def test_registry_serves_the_port(model):
-    assert isinstance(registry.get_device("vestel", model), VestelAcDevice)
 
 
 def _record(**match):

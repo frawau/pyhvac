@@ -2,8 +2,7 @@ import pytest
 
 from oracle import load_oracle
 from port_oracle import Defect, assert_matches_oracle, oracle_params, state_from_record
-from pyhvac import registry
-from pyhvac.plugins.daikin import (
+from pyhvac.protocols.daikin import (
     DAIKIN176,
     DAIKIN176_FIRST,
     DAIKIN176_MODELS,
@@ -80,11 +79,6 @@ def test_fan_and_swing_codes():
             state = dev.normalise(HvacState(True, "cool", 24.0, fan, swing_h=swing))
             _, second = dev.frames(None, state, ())
             assert second.data[11] == code << 4 | scode
-
-
-@pytest.mark.parametrize("model", DAIKIN176_MODELS)
-def test_registry_serves_the_port(model):
-    assert isinstance(registry.get_device("daikin", model), Daikin176Device)
 
 
 def test_undeclared_deviation_is_reported():

@@ -2,9 +2,8 @@ import pytest
 
 from oracle import load_oracle
 from port_oracle import assert_matches_oracle, oracle_params, state_from_record
-from pyhvac import registry
 from pyhvac.ir.codec import decode
-from pyhvac.plugins.amcor import (
+from pyhvac.protocols.amcor import (
     AMCOR,
     AMCOR_LAYOUT,
     AMCOR_MODELS,
@@ -183,12 +182,6 @@ def test_previous_is_ignored():
     assert dev.encode(off, on).signal == dev.encode(None, on).signal
     assert dev.encode(on, on).signal == dev.encode(None, on).signal
     assert dev.encode(on, off).signal == dev.encode(None, off).signal
-
-
-@pytest.mark.parametrize("model", AMCOR_MODELS)
-def test_registry_serves_the_port(model):
-    dev = registry.get_device("amcor", model)
-    assert isinstance(dev, AmcorDevice)
 
 
 # ir_Amcor_test.cpp DecodeAmcor.RealExample: two real captures, each the

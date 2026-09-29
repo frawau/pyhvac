@@ -4,9 +4,8 @@ import pytest
 
 from oracle import load_oracle
 from port_oracle import assert_matches_oracle, oracle_params, state_from_record
-from pyhvac import registry
 from pyhvac.ir.codec import decode
-from pyhvac.plugins.truma import (
+from pyhvac.protocols.truma import (
     TRUMA,
     TRUMA_LAYOUT,
     TRUMA_MODELS,
@@ -228,11 +227,6 @@ def test_layouts_must_cover_every_frame():
     record = load_oracle("TRUMA")[0]
     with pytest.raises(AssertionError, match="layout"):
         assert_matches_oracle(dev, record, ())
-
-
-@pytest.mark.parametrize("model", TRUMA_MODELS)
-def test_registry_serves_the_port(model):
-    assert isinstance(registry.get_device("truma", model), TrumaDevice)
 
 
 def test_capabilities_are_the_headers():

@@ -2,8 +2,7 @@ import pytest
 
 from oracle import load_oracle
 from port_oracle import Defect, assert_matches_oracle, oracle_params, state_from_record
-from pyhvac import registry
-from pyhvac.plugins.hitachi import (
+from pyhvac.protocols.hitachi import (
     HITACHI_AC,
     HITACHI_AC_LAYOUT,
     HITACHI_AC_MODELS,
@@ -162,11 +161,6 @@ def test_message_shape():
     assert pulses[:2] == (3300, 1700)
     assert pulses[-2:] == (400, 100000)
     assert len(pulses) == 2 + 2 * 224 + 2
-
-
-@pytest.mark.parametrize("model", HITACHI_AC_MODELS)
-def test_registry_serves_the_port(model):
-    assert isinstance(registry.get_device("hitachi", model), HitachiAcDevice)
 
 
 def test_fan_offers_the_four_speeds_set_fan_allows():

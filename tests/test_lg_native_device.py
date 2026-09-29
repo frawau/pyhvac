@@ -6,21 +6,34 @@ import pytest
 
 from pyhvac import registry
 from pyhvac.ir.codec import decode
-from pyhvac.plugins.lg import (
-    LG,
+from pyhvac.protocols.lg import (
     LG_NATIVE,
     LG_NATIVE_COMMAND_LAYOUT,
     LG_NATIVE_LAYOUT,
     LG_NATIVE_VARIANTS,
-    DualInverter,
-    InverterV,
     LgNativeDevice,
 )
 from pyhvac.state import HvacState
 from port_oracle import assert_matches_golden
 
 GOLDEN = Path(__file__).parent / "fixtures" / "golden" / "lg.json.gz"
-LEGACY = {"LG": LG, "InverterV": InverterV, "DualInverter": DualInverter}
+# The status of a fresh 0.1.x object of each legacy class (what the golden
+# records were built from).
+_LG_COMMON = {"mode": "off", "temperature": 25}
+_LG_INVERTER = {
+    **_LG_COMMON,
+    "fan": "auto",
+    "swing": "off",
+    "auto_bias": "default",
+    "powerful": "off",
+    "cleaning": "off",
+    "economy": "off",
+}
+LEGACY = {
+    "LG": _LG_COMMON,
+    "InverterV": _LG_INVERTER,
+    "DualInverter": {**_LG_INVERTER, "purifier": "off", "diagnostic": "off"},
+}
 VARIANT = {"LG": "generic", "InverterV": "inverter v", "DualInverter": "dual inverter"}
 
 FAN = {"auto": "auto", "lowest": "1", "low": "2", "medium": "3"}
@@ -40,8 +53,7 @@ def _canonical(choice, old):
 def from_old(cls_name, old):
     """The HvacState and actions an old-vocabulary state stands for, on a
     fresh object of the legacy class ``cls_name``."""
-    legacy = LEGACY[cls_name]()
-    old = {**legacy.status, **old}
+    old = {**LEGACY[cls_name], **old}
     caps = LG_NATIVE_VARIANTS[VARIANT[cls_name]]
     features = {}
     for name, choice in caps.features.items():
@@ -405,14 +417,6 @@ def fresh_registry():
     registry._factories.cache_clear()
     yield
     registry._factories.cache_clear()
-
-
-@pytest.mark.parametrize("model", ["generic", "inverter v", "dual inverter"])
-def test_registry_serves_the_native_models(fresh_registry, model):
-    dev = registry.get_device("lg", model)
-    assert isinstance(dev, LgNativeDevice)
-    assert dev.variant == model
-    assert dev.capabilities is LG_NATIVE_VARIANTS[model]
 
 
 def test_unknown_variant():

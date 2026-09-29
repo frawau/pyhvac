@@ -2,8 +2,7 @@ import pytest
 
 from oracle import load_oracle
 from port_oracle import Defect, assert_matches_oracle, oracle_params, state_from_record
-from pyhvac import registry
-from pyhvac.plugins.daikin import (
+from pyhvac.protocols.daikin import (
     DAIKIN216,
     DAIKIN216_FIRST,
     DAIKIN216_MODELS,
@@ -113,11 +112,6 @@ def test_swing_on_sets_the_documented_nibble():
     assert (read["swing_v"], read["swing_h"]) == ("swing", "swing")
     raw = DAIKIN216_SECOND.build(swing_v="swing", swing_h="swing")
     assert (raw[8] & 0x0F, raw[9] & 0x0F) == (0xF, 0xF)
-
-
-@pytest.mark.parametrize("model", DAIKIN216_MODELS)
-def test_registry_serves_the_port(model):
-    assert isinstance(registry.get_device("daikin", model), Daikin216Device)
 
 
 def test_undeclared_deviation_is_reported():

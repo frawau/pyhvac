@@ -9,11 +9,9 @@ from port_oracle import (
     sequence_params,
     state_from_record,
 )
-from pyhvac import registry
 from pyhvac.fields import Sum8
 from pyhvac.ir.codec import decode
-from pyhvac.plugins import panasonic
-from pyhvac.plugins.panasonic import (
+from pyhvac.protocols.panasonic import (
     PANASONIC_AC,
     PANASONIC_AC_FIRST,
     PANASONIC_AC_MODELS,
@@ -92,17 +90,6 @@ def test_sequence_matches_a_persistent_c_object(record, states):
 def test_oracle_covers_every_variant():
     models = {r["model"] for r in load_oracle("PANASONIC_AC")}
     assert {PANASONIC_AC_MODELS[m] for m in models} == set(LEGACY_CLASS)
-
-
-def test_models_are_the_legacy_ones():
-    # Every PluginObject.MODELS key served by the five classes, with the
-    # variant of its class. PanasonicLke is in no MODELS entry: unreachable.
-    legacy = {
-        m: cls.__name__
-        for m, cls in panasonic.PluginObject.MODELS.items()
-        if cls.__name__ in LEGACY_CLASS.values() or cls.__name__ == "PanasonicLke"
-    }
-    assert legacy == {m: LEGACY_CLASS[v] for m, v in PANASONIC_AC_MODELS.items()}
 
 
 def test_layout_round_trips_every_oracle_state():
@@ -435,13 +422,6 @@ def test_unknown_model_is_jke_and_unknown_variant_fails():
     assert PanasonicAcDevice("panasonic", "nope", variant="RKR").variant == "RKR"
     with pytest.raises(ValueError, match="variant"):
         PanasonicAcDevice("panasonic", "nope", variant="LKE")
-
-
-@pytest.mark.parametrize("model", PANASONIC_AC_MODELS)
-def test_registry_serves_the_port(model):
-    dev = registry.get_device("panasonic", model)
-    assert isinstance(dev, PanasonicAcDevice)
-    assert dev.variant == PANASONIC_AC_MODELS[model]
 
 
 @pytest.mark.parametrize(

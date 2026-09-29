@@ -11,9 +11,8 @@ from port_oracle import (
     sequence_params,
     state_from_record,
 )
-from pyhvac import registry
 from pyhvac.ir.codec import DecodeError, decode
-from pyhvac.plugins.lg import (
+from pyhvac.protocols.lg import (
     LG2,
     LG2_COMMAND_LAYOUT,
     LG2_COMMANDS,
@@ -553,13 +552,6 @@ def test_variant_argument_and_unknown_models():
     assert Lg2Device("lg", "whatever", variant=V3).variant == V3
     with pytest.raises(ValueError):
         Lg2Device("lg", "whatever", variant="GE6711AR2853M")
-
-
-@pytest.mark.parametrize("model", LG2_MODELS)
-def test_registry_serves_the_port(model):
-    dev = registry.get_device("lg", model)
-    assert isinstance(dev, Lg2Device)
-    assert dev.variant == LG2_MODELS[model]
 
 
 def _record(variant, **state):

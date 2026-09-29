@@ -9,10 +9,9 @@ from port_oracle import (
     sequence_params,
     state_from_record,
 )
-from pyhvac import registry
 from pyhvac.fields import InvertedPairs
 from pyhvac.ir.codec import decode
-from pyhvac.plugins.hitachi import (
+from pyhvac.protocols.hitachi import (
     HITACHI424,
     HITACHI424_LAYOUT,
     HITACHI424_MODELS,
@@ -198,11 +197,6 @@ def test_message_shape():
     assert pulses[:4] == (29784, 49290, 3416, 1604)
     assert pulses[-2:] == (463, 100000)
     assert len(pulses) == 2 + 2 + 2 * 424 + 2
-
-
-@pytest.mark.parametrize("model", HITACHI424_MODELS)
-def test_registry_serves_the_port(model):
-    assert isinstance(registry.get_device("hitachi", model), Hitachi424Device)
 
 
 @pytest.mark.parametrize("model", HITACHI424_MODELS)

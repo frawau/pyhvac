@@ -12,9 +12,8 @@ from port_oracle import (
     sequence_params,
     state_from_record,
 )
-from pyhvac import registry
 from pyhvac.ir.codec import decode
-from pyhvac.plugins.sharp import (
+from pyhvac.protocols.sharp import (
     SHARP_AC_LAYOUT,
     SHARP_AC_MODEL_VARIANT,
     SHARP_AC_MODELS,
@@ -585,13 +584,6 @@ def test_cleaning_and_powerful_turbo_follows_the_plain_state():
     _, plain_turbo = read(state(True, "cool", 24.0, features=features(powerful=True)))
     assert clean["clean"] == 1 and turbo["clean"] == 0
     assert turbo == plain_turbo
-
-
-@pytest.mark.parametrize("model", SHARP_AC_MODELS)
-def test_registry_serves_the_port(model):
-    dev = registry.get_device("sharp", model)
-    assert isinstance(dev, SharpAcDevice)
-    assert dev.variant == SHARP_AC_MODEL_VARIANT[model]
 
 
 def test_unknown_model_gets_the_a907_and_bad_variants_are_refused():

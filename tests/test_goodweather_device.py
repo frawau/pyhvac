@@ -9,9 +9,8 @@ from port_oracle import (
     sequence_params,
     state_from_record,
 )
-from pyhvac import registry
 from pyhvac.ir.codec import decode
-from pyhvac.plugins.goodweather import (
+from pyhvac.protocols.goodweather import (
     GOODWEATHER,
     GOODWEATHER_LAYOUT,
     GOODWEATHER_MODELS,
@@ -275,11 +274,6 @@ def test_message_shape():
     # A closing bit mark, kGoodweatherHdrSpace, a bit mark, kDefaultMessageGap.
     assert pulses[-4:] == (580, 6820, 580, 100000)
     assert len(pulses) == 2 + 2 * 96 + 4
-
-
-@pytest.mark.parametrize("model", GOODWEATHER_MODELS)
-def test_registry_serves_the_port(model):
-    assert isinstance(registry.get_device("goodweather", model), GoodweatherDevice)
 
 
 def test_layouts_must_cover_every_frame():

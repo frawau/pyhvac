@@ -2,9 +2,8 @@ import pytest
 
 from oracle import load_oracle
 from port_oracle import Defect, assert_matches_oracle, oracle_params, state_from_record
-from pyhvac import registry
 from pyhvac.ir.codec import decode
-from pyhvac.plugins.ecoclim import (
+from pyhvac.protocols.ecoclim import (
     ECOCLIM,
     ECOCLIM_LAYOUT,
     ECOCLIM_MODELS,
@@ -241,11 +240,6 @@ def test_message_shape():
     assert len(pulses) == 3 * (2 + 2 * 56) + 2
     record = load_oracle("ECOCLIM")[0]
     assert len(pulses) == len(record["pulses"])
-
-
-@pytest.mark.parametrize("model", ECOCLIM_MODELS)
-def test_registry_serves_the_port(model):
-    assert isinstance(registry.get_device("ecoclim", model), EcoclimDevice)
 
 
 @pytest.mark.parametrize("mode", ["off", "auto", "cool", "dry", "fan", "heat"])

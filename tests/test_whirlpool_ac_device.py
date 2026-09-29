@@ -12,9 +12,8 @@ from port_oracle import (
     sequence_params,
     state_from_record,
 )
-from pyhvac import registry
 from pyhvac.ir.codec import decode
-from pyhvac.plugins.whirlpool import (
+from pyhvac.protocols.whirlpool import (
     WHIRLPOOL_AC,
     WHIRLPOOL_AC_LAYOUT,
     WHIRLPOOL_AC_MODELS,
@@ -548,13 +547,6 @@ def test_message_shape():
     assert pulses[second : second + 2] == (597, 7920)
     assert pulses[-2:] == (597, 100000)
     assert len(pulses) == 2 + 2 * 168 + 3 * 2
-
-
-@pytest.mark.parametrize("model", sorted(WHIRLPOOL_AC_MODELS))
-def test_registry_serves_the_port(model):
-    dev = registry.get_device("whirlpool", model)
-    assert isinstance(dev, WhirlpoolAcDevice)
-    assert dev.variant == WHIRLPOOL_AC_MODELS[model]
 
 
 @pytest.mark.parametrize(

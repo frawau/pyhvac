@@ -2,8 +2,7 @@ import pytest
 
 from oracle import load_oracle
 from port_oracle import Defect, assert_matches_oracle, oracle_params, state_from_record
-from pyhvac import registry
-from pyhvac.plugins.daikin import (
+from pyhvac.protocols.daikin import (
     DAIKIN_ARC,
     DAIKIN_ARC_FIRST,
     DAIKIN_ARC_MODELS,
@@ -128,11 +127,6 @@ def test_old_fan_labels_are_the_speeds_the_c_path_sent():
         "medium",
         "high",
     )
-
-
-def test_registry_serves_the_port():
-    for model in DAIKIN_ARC_MODELS:
-        assert isinstance(registry.get_device("daikin", model), DaikinArcDevice)
 
 
 def test_undeclared_deviation_is_reported():

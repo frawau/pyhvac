@@ -10,8 +10,7 @@ from port_oracle import (
     sequence_params,
     state_from_record,
 )
-from pyhvac import registry
-from pyhvac.plugins.mirage import (
+from pyhvac.protocols.mirage import (
     MIRAGE_KKG29AC1_LAYOUT,
     MIRAGE_KKG9AC1_LAYOUT,
     MIRAGE_MAXELL_MODELS,
@@ -525,39 +524,6 @@ def test_unknown_variant_is_rejected():
 
 def test_unknown_model_gets_kkg9ac1():
     assert MirageDevice("mirage", "something else").variant == "KKG9AC1"
-
-
-@pytest.mark.parametrize(
-    "plugin, models",
-    [
-        ("mirage", MIRAGE_MODELS),
-        ("maxell", MIRAGE_MAXELL_MODELS),
-        ("tronitechnik", MIRAGE_TRONITECHNIK_MODELS),
-    ],
-)
-def test_registry_serves_the_port(plugin, models):
-    for model in models:
-        dev = registry.get_device(plugin, model)
-        assert isinstance(dev, MirageDevice)
-        assert dev.variant == MIRAGE_MODEL_VARIANT[model]
-
-
-def _legacy_classes():
-    from pyhvac.plugins import maxell, mirage, tronitechnik
-
-    for module in (mirage, maxell, tronitechnik):
-        brand = module.PluginObject().brand
-        for model, cls in module.PluginObject.MODELS.items():
-            yield brand, model, cls
-
-
-def test_every_legacy_model_is_ported():
-    served = {(b, m) for b, m, _ in _legacy_classes()}
-    assert served == (
-        {("mirage", m) for m in MIRAGE_MODELS}
-        | {("maxell", m) for m in MIRAGE_MAXELL_MODELS}
-        | {("tronitechnik", m) for m in MIRAGE_TRONITECHNIK_MODELS}
-    )
 
 
 def _record(cls, **match):

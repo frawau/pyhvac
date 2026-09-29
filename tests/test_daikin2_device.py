@@ -2,8 +2,12 @@ import pytest
 
 from oracle import load_oracle
 from port_oracle import Defect, assert_matches_oracle, oracle_params, state_from_record
-from pyhvac import registry
-from pyhvac.plugins.daikin import DAIKIN2_FIRST, DAIKIN2_SECOND, Daikin2Device, DAIKIN2
+from pyhvac.protocols.daikin import (
+    DAIKIN2_FIRST,
+    DAIKIN2_SECOND,
+    Daikin2Device,
+    DAIKIN2,
+)
 from pyhvac.state import HvacState
 
 # IRremoteESP8266 deviates from its own documented Daikin2 values here:
@@ -164,10 +168,6 @@ def test_off_clears_power_and_sets_power2():
     assert DAIKIN2_FIRST.read(first.data)["power2"] == 1
 
 
-def test_registry_serves_the_port():
-    assert isinstance(registry.get_device("daikin", "FTXZ25NV1B"), Daikin2Device)
-
-
 def test_undeclared_deviation_is_reported():
     dev = device()
     record = next(r for r in load_oracle("DAIKIN2") if "hswing" not in r["state"])
@@ -201,17 +201,6 @@ def test_layouts_must_cover_every_frame():
     record = load_oracle("DAIKIN2")[0]
     with pytest.raises(AssertionError, match="layout"):
         assert_matches_oracle(dev, record, dev.LAYOUTS[:2], DEFECTS)
-
-
-def test_every_daikin2_model_is_served_by_the_port():
-    for model in (
-        "ARC477A1 remote",
-        "FTXZ25NV1B",
-        "FTXZ35NV1B",
-        "FTXZ50NV1B",
-        "Daikin2",
-    ):
-        assert isinstance(registry.get_device("daikin", model), Daikin2Device)
 
 
 # No real capture in ir_Daikin_test.cpp needs it, but

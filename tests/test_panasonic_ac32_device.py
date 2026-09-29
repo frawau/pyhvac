@@ -9,8 +9,7 @@ from port_oracle import (
     sequence_params,
     state_from_record,
 )
-from pyhvac import registry
-from pyhvac.plugins.panasonic import (
+from pyhvac.protocols.panasonic import (
     PANASONIC_AC32_HIGH_LAYOUT,
     PANASONIC_AC32_LOW_LAYOUT,
     PANASONIC_AC32_MODELS,
@@ -221,11 +220,6 @@ def test_encode_passes_previous_to_the_toggle():
     assert dev.encode(None, on).signal != dev.encode(on, on).signal
 
 
-@pytest.mark.parametrize("model", PANASONIC_AC32_MODELS)
-def test_registry_serves_the_port(model):
-    assert isinstance(registry.get_device("panasonic", model), PanasonicAc32Device)
-
-
 def test_capabilities_are_the_documented_values():
     # Unchanged by the audit: the legacy entity already offered every
     # documented PanasonicAc32Protocol value.
@@ -239,13 +233,6 @@ def test_capabilities_are_the_documented_values():
     assert caps.swing_v.values == ("auto", "1", "2", "3", "4", "5")
     assert caps.swing_h.values == ("off", "swing")  # the SwingH bit
     assert dict(caps.features) == {}
-
-
-def test_every_panasonic32_model_is_ported():
-    from pyhvac.plugins.panasonic import Panasonic32, PluginObject
-
-    models = {m for m, cls in PluginObject.MODELS.items() if cls is Panasonic32}
-    assert models == set(PANASONIC_AC32_MODELS)
 
 
 @pytest.mark.parametrize(

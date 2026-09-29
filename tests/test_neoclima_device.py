@@ -2,9 +2,8 @@ import pytest
 
 from oracle import load_oracle
 from port_oracle import Defect, assert_matches_oracle, oracle_params, state_from_record
-from pyhvac import registry
 from pyhvac.ir.codec import decode
-from pyhvac.plugins.neoclima import (
+from pyhvac.protocols.neoclima import (
     NEOCLIMA,
     NEOCLIMA_LAYOUT,
     NEOCLIMA_MODELS,
@@ -325,11 +324,6 @@ def test_previous_is_ignored():
         target,
     ):
         assert dev.encode(previous, target).signal == dev.encode(None, target).signal
-
-
-@pytest.mark.parametrize("brand, model", ALL_MODELS)
-def test_registry_serves_the_port(brand, model):
-    assert isinstance(registry.get_device(brand, model), NeoclimaDevice)
 
 
 @pytest.mark.parametrize(

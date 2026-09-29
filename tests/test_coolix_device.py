@@ -11,9 +11,8 @@ from port_oracle import (
     sequence_params,
     state_from_record,
 )
-from pyhvac import registry
 from pyhvac.ir.codec import decode
-from pyhvac.plugins.coolix import (
+from pyhvac.protocols.coolix import (
     COOLIX,
     COOLIX_AIRWELL_MODELS,
     COOLIX_BEKO_MODELS,
@@ -557,11 +556,6 @@ def test_message_shape():
 
 
 # ------------------------------------------------------------ registration
-
-
-@pytest.mark.parametrize("plugin, model", MODELS)
-def test_registry_serves_the_port(plugin, model):
-    assert isinstance(registry.get_device(plugin, model), CoolixDevice)
 
 
 # ------------------------------------------------------ the C swing toggle

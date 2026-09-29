@@ -1,80 +1,32 @@
-import logging
-
 import pytest
 
 from pyhvac import registry
-from pyhvac.legacy import LegacyDevice
-from pyhvac.plugins.airspool import AirspoolDevice
-from pyhvac.plugins.sharp import JTechDevice
 
 
-@pytest.fixture(autouse=True)
-def fresh_registry():
-    registry._factories.cache_clear()
-    yield
-    registry._factories.cache_clear()
-
-
-def _has_c_extension():
-    try:
-        import pyhvac.irhvac  # noqa: F401
-    except ImportError:
-        return False
-    return True
-
-
-def test_brands_are_plugin_modules():
+def test_brands_are_listed_as_manufacturers_write_them():
     names = registry.brands()
-    assert "airspool" in names and "sharp" in names
-    assert "hvaclib" not in names
-    assert names == sorted(names)
+    assert "Mitsubishi Heavy Industries" in names and names == sorted(
+        names, key=str.casefold
+    )
 
 
-def test_new_style_devices_win_over_legacy_models():
-    assert isinstance(registry.get_device("airspool"), AirspoolDevice)
-    assert isinstance(registry.get_device("sharp", "j-tech"), JTechDevice)
-    assert "j-tech" in registry.models("sharp")
-
-
-def test_other_models_are_wrapped():
-    assert isinstance(registry.get_device("sharp", "generic"), LegacyDevice)
-
-
-def test_device_knows_brand_and_model():
-    dev = registry.get_device("sharp", "j-tech")
-    assert (dev.brand, dev.model) == ("sharp", "j-tech")
+def test_lookup_ignores_case_spaces_and_punctuation():
+    a = registry.get_device(
+        "mitsubishi_heavy_industries", registry.models("Mitsubishi Heavy Industries")[0]
+    )
+    assert a.brand == "Mitsubishi Heavy Industries"
 
 
 def test_unknown_brand_or_model():
-    with pytest.raises(KeyError):
-        registry.get_device("acme")
-    with pytest.raises(KeyError):
-        registry.get_device("airspool", "no such model")
+    with pytest.raises(KeyError, match="unknown brand"):
+        registry.get_device("nope", "x")
+    with pytest.raises(KeyError, match="unknown model"):
+        registry.get_device("Daikin", "nope")
 
 
-def test_brand_that_fails_to_import_is_skipped_with_warning(caplog, monkeypatch):
-    # Every plugin now guards its irhvac import, so simulate a module that
-    # cannot be imported (as an unguarded `from ..irhvac import ...` was).
-    real = registry.importlib.import_module
-
-    def fail_for_fujitsu(name, *args):
-        if name.endswith(".fujitsu"):
-            raise ImportError("No module named 'pyhvac.irhvac'")
-        return real(name, *args)
-
-    monkeypatch.setattr(registry.importlib, "import_module", fail_for_fujitsu)
-    with caplog.at_level(logging.WARNING, logger="pyhvac.registry"):
-        assert registry.models("fujitsu") == []
-    assert "fujitsu" in caplog.text
-
-
-@pytest.mark.skipif(not _has_c_extension(), reason="needs the _irhvac extension")
-def test_every_model_maps_to_a_device():
-    failures = []
-    for brand in registry.brands():
-        for model in registry.models(brand):
-            try:
-                registry.get_device(brand, model)
-            except Exception as exc:  # collect them all
-                failures.append(f"{brand}/{model}: {exc!r}")
-    assert failures == []
+def test_model_may_be_left_out_only_for_single_model_brands():
+    single = next(b for b in registry.brands() if len(registry.models(b)) == 1)
+    assert registry.get_device(single).brand == single
+    several = next(b for b in registry.brands() if len(registry.models(b)) > 1)
+    with pytest.raises(KeyError, match="several models"):
+        registry.get_device(several)

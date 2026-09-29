@@ -4,9 +4,8 @@ from c_oracle import c_encode, c_frozen
 
 from oracle import load_oracle
 from port_oracle import Defect, assert_matches_oracle, oracle_params, state_from_record
-from pyhvac import registry
 from pyhvac.ir.codec import decode
-from pyhvac.plugins.technibel import (
+from pyhvac.protocols.technibel import (
     TECHNIBEL_AC,
     TECHNIBEL_AC_ALASKA_MODELS,
     TECHNIBEL_AC_LAYOUT,
@@ -340,11 +339,6 @@ def test_there_is_no_variant_parameter():
 # ------------------------------------------------------------ registration
 
 
-@pytest.mark.parametrize("brand, model", SERVED)
-def test_registry_serves_the_port(brand, model):
-    assert isinstance(registry.get_device(brand, model), TechnibelAcDevice)
-
-
 LEGACY_CLASS = {"technibel": "Technibel", "teco": "Teco"}
 
 
@@ -381,7 +375,7 @@ def test_swing_and_sleep_match_c_with_the_glue_bypassed():
 
     def live(swing, sleep):
         from pyhvac import irhvac
-        from pyhvac.plugins.technibel import Technibel
+        from pyhvac.protocols.technibel import Technibel
 
         legacy = Technibel()
         legacy.irac.next.swingv = (

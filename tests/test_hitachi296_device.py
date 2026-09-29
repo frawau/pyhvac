@@ -2,8 +2,7 @@ import pytest
 
 from oracle import load_oracle
 from port_oracle import Defect, assert_matches_oracle, oracle_params, state_from_record
-from pyhvac import registry
-from pyhvac.plugins.hitachi import (
+from pyhvac.protocols.hitachi import (
     HITACHI296,
     HITACHI296_LAYOUT,
     HITACHI296_MODELS,
@@ -194,11 +193,6 @@ def test_message_shape():
     assert len(pulses) == 2 + 2 * 296 + 2
 
 
-@pytest.mark.parametrize("model", HITACHI296_MODELS)
-def test_registry_serves_the_port(model):
-    assert isinstance(registry.get_device("hitachi", model), Hitachi296Device)
-
-
 @pytest.mark.parametrize(
     "declared, field", [((UNSET_LOW,), "'unset'"), ((UNSET,), "'unset_low'")]
 )
@@ -222,7 +216,7 @@ def test_stale_high_padding_bit_is_a_declared_defect():
     # declared defect, not fail as an unexplained byte difference.
     from pyhvac.ir.codec import encode
     from pyhvac.ir.model import Frame
-    from pyhvac.plugins.hitachi import HITACHI296_LAYOUT
+    from pyhvac.protocols.hitachi import HITACHI296_LAYOUT
 
     assert "unset_high" in HITACHI296_LAYOUT.fields
     dev = device()

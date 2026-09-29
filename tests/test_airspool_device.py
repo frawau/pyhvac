@@ -5,15 +5,30 @@ from pathlib import Path
 import pytest
 
 from pyhvac.ir.codec import decode
-from pyhvac.plugins.airspool import AIRSPOOL, Airspool, AirspoolDevice
+from pyhvac.protocols.airspool import AIRSPOOL, AirspoolDevice
 from pyhvac.state import HvacState
 
 GOLDEN = Path(__file__).parent / "fixtures" / "golden" / "airspool.json.gz"
+# The status of a fresh 0.1.x Airspool object (what the golden records were
+# built from).
+FRESH_AIRSPOOL = {
+    "mode": "cool",
+    "temperature": 24,
+    "fan": "auto",
+    "sleep": "off",
+    "swing": "off",
+    "hswing": "off",
+    "se_step": "off",
+    "display": "on",
+    "turbo": "off",
+    "power": "on",
+    "se": "off",
+}
 
 
 def from_old(old):
     """The HvacState and actions matching an old Airspool status dict."""
-    old = {**Airspool().status, **old}
+    old = {**FRESH_AIRSPOOL, **old}
     state = HvacState(
         power=old["power"] == "on",
         mode=old["mode"],

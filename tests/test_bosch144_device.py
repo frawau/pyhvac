@@ -2,8 +2,7 @@ import pytest
 
 from oracle import load_oracle
 from port_oracle import assert_matches_oracle, oracle_params, state_from_record
-from pyhvac import registry
-from pyhvac.plugins.bosch import (
+from pyhvac.protocols.bosch import (
     BOSCH144_MODELS,
     BOSCH144_OFF_LAYOUT,
     BOSCH144_SECTION3_LAYOUT,
@@ -227,11 +226,6 @@ def test_message_shape():
         assert pulses[:2] == (4366, 4415)
         assert pulses[-2:] == (456, 5235 + 100000)
         assert len(pulses) == sections * (2 + 2 * 48 + 2)
-
-
-@pytest.mark.parametrize("model", BOSCH144_MODELS)
-def test_registry_serves_the_port(model):
-    assert isinstance(registry.get_device("bosch", model), Bosch144Device)
 
 
 def test_layouts_must_cover_every_frame():

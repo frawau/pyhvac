@@ -2,9 +2,8 @@ import pytest
 
 from oracle import load_oracle
 from port_oracle import Defect, assert_matches_oracle, oracle_params, state_from_record
-from pyhvac import registry
 from pyhvac.ir.model import Frame
-from pyhvac.plugins.daikin import (
+from pyhvac.protocols.daikin import (
     DAIKIN312,
     DAIKIN312_FIRST,
     DAIKIN312_MODELS,
@@ -148,11 +147,6 @@ def test_beep_off_and_auto_clean_are_hardwired():
     _, first, _ = frames(power=True, mode="cool", temperature=24.0)
     assert first.data[7] >> 6 == 3  # Beep off
     assert first.data[14] & 0x10  # Clean
-
-
-def test_registry_serves_the_port():
-    for model in DAIKIN312_MODELS:
-        assert isinstance(registry.get_device("daikin", model), Daikin312Device)
 
 
 def test_undeclared_deviation_is_reported():

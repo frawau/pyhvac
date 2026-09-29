@@ -4,8 +4,7 @@ from c_oracle import c_encode
 
 from oracle import load_oracle
 from port_oracle import assert_matches_oracle, oracle_params, state_from_record
-from pyhvac import registry
-from pyhvac.plugins.delonghi import (
+from pyhvac.protocols.delonghi import (
     DELONGHI_AC_LAYOUT,
     DELONGHI_AC_MODELS,
     DelonghiAcDevice,
@@ -219,11 +218,6 @@ def test_message_shape():
     assert pulses[:2] == (8984, 4200)
     assert pulses[-2:] == (572, 100000)
     assert len(pulses) == 2 + 2 * 64 + 2
-
-
-@pytest.mark.parametrize("model", DELONGHI_AC_MODELS)
-def test_registry_serves_the_port(model):
-    assert isinstance(registry.get_device("delonghi", model), DelonghiAcDevice)
 
 
 @pytest.mark.parametrize(

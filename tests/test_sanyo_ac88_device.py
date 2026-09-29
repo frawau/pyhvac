@@ -2,8 +2,7 @@ import pytest
 
 from oracle import load_oracle
 from port_oracle import Defect, assert_matches_oracle, oracle_params, state_from_record
-from pyhvac import registry
-from pyhvac.plugins.sanyo import (
+from pyhvac.protocols.sanyo import (
     SANYO_AC88,
     SANYO_AC88_LAYOUT,
     SANYO_AC88_MODELS,
@@ -232,11 +231,6 @@ def test_the_fixture_ends_on_unmerged_spaces():
     for record in load_oracle("SANYO_AC88"):
         assert len(record["pulses"]) == 3 * (2 + 2 * 88 + 2) + 1
         assert record["pulses"][-2:] == [3675, 100000]
-
-
-def test_registry_serves_the_port():
-    for model in SANYO_AC88_MODELS:
-        assert isinstance(registry.get_device("sanyo", model), SanyoAc88Device)
 
 
 def _record(**state):

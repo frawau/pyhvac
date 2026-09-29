@@ -12,8 +12,7 @@ from port_oracle import (
     sequence_params,
     state_from_record,
 )
-from pyhvac import registry
-from pyhvac.plugins.fujitsu import (
+from pyhvac.protocols.fujitsu import (
     FUJITSU_AC,
     FUJITSU_AC_LONG15_LAYOUT,
     FUJITSU_AC_LONG_LAYOUT,
@@ -513,13 +512,6 @@ def test_message_shape():
 def test_unknown_variant_is_rejected():
     with pytest.raises(ValueError):
         FujitsuAcDevice("fujitsu", "generic", variant="ARXX")
-
-
-@pytest.mark.parametrize("model", FUJITSU_AC_MODELS)
-def test_registry_serves_the_port(model):
-    dev = registry.get_device("fujitsu", model)
-    assert isinstance(dev, FujitsuAcDevice)
-    assert dev.variant == FUJITSU_AC_VARIANT[model]
 
 
 @pytest.mark.parametrize("key", ["swing", "hswing"])

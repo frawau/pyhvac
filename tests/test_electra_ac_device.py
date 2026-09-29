@@ -11,9 +11,8 @@ from port_oracle import (
     sequence_params,
     state_from_record,
 )
-from pyhvac import registry
 from pyhvac.ir.codec import decode
-from pyhvac.plugins.electra import (
+from pyhvac.protocols.electra import (
     ELECTRA_AC,
     ELECTRA_AC_AEG_MODELS,
     ELECTRA_AC_AUX_MODELS,
@@ -289,11 +288,6 @@ def test_message_shape():
     assert pulses[:2] == (9166, 4470)
     assert pulses[-2:] == (646, 100000)
     assert len(pulses) == 2 + 2 * 104 + 2
-
-
-@pytest.mark.parametrize("plugin, model", SERVED)
-def test_registry_serves_the_port(plugin, model):
-    assert isinstance(registry.get_device(plugin, model), ElectraAcDevice)
 
 
 @pytest.mark.parametrize("field, key", [("swing_v", "swing"), ("swing_h", "hswing")])

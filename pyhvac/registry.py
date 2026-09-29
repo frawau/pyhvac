@@ -1,49 +1,75 @@
-"""Find devices by brand (plugin module name) and model."""
+"""Find devices by brand and model (see pyhvac/brands.py)."""
 
 from __future__ import annotations
 
-import functools
-import importlib
-import logging
-import pkgutil
+import re
 
-from . import plugins
-from .legacy import LegacyDevice
+from . import brands as _brands
 
-_LOGGER = logging.getLogger(__name__)
+
+def _key(text):
+    """Names match ignoring case, whitespace and punctuation."""
+    return re.sub(r"[^0-9a-z]", "", text.casefold())
+
+
+def _index():
+    rows = {}
+    for brand, model, kind, cls, variant in _brands.MODELS:
+        rows.setdefault(_key(brand), (brand, {}))[1][_key(model)] = (
+            model,
+            kind,
+            cls,
+            variant,
+        )
+    return rows
+
+
+_ROWS = _index()
 
 
 def brands():
-    """Plugin module names, sorted."""
-    return sorted(
-        m.name for m in pkgutil.iter_modules(plugins.__path__) if m.name != "hvaclib"
-    )
-
-
-@functools.lru_cache(maxsize=None)
-def _factories(brand):
-    if brand not in brands():
-        raise KeyError(f"unknown brand {brand!r}")
-    try:
-        module = importlib.import_module(f"{plugins.__name__}.{brand}")
-    except ImportError as exc:
-        _LOGGER.warning("brand %s unavailable: %s", brand, exc)
-        return {}
-    factories = {}
-    for model, cls in module.PluginObject.MODELS.items():
-        factories[model] = functools.partial(LegacyDevice, brand, model, cls)
-    for model, device_class in getattr(module, "DEVICES", {}).items():
-        factories[model] = functools.partial(device_class, brand, model)
-    return factories
+    """Brand names, as the manufacturers write them, sorted."""
+    return sorted((brand for brand, _ in _ROWS.values()), key=str.casefold)
 
 
 def models(brand):
-    return list(_factories(brand))
+    """The brand's model names; KeyError for an unknown brand."""
+    return [model for model, *_ in _brand(brand)[1].values()]
 
 
 def get_device(brand, model=None):
-    factories = _factories(brand)
-    model = "generic" if model is None else model
-    if model not in factories:
-        raise KeyError(f"unknown model {model!r} for brand {brand!r}")
-    return factories[model]()
+    """A Device for ``brand`` and ``model``. ``model`` may be left out when
+    the brand has one model. The 0.1.x names of the devices that were pure
+    Python in 0.1.x still resolve (brands.ALIASES)."""
+    alias = _alias(brand, model)
+    if alias is not None:
+        brand, model = alias
+    name, table = _brand(brand)
+    if model is None:
+        if len(table) != 1:
+            raise KeyError(f"brand {name!r} has several models: {models(name)}")
+        (entry,) = table.values()
+    else:
+        entry = table.get(_key(model))
+        if entry is None:
+            raise KeyError(f"unknown model {model!r} for {name!r}: {models(name)}")
+    model, kind, cls, variant = entry
+    if variant is None:
+        return cls(name, model)
+    return cls(name, model, variant=variant)
+
+
+def _brand(brand):
+    try:
+        return _ROWS[_key(brand)]
+    except KeyError:
+        raise KeyError(f"unknown brand {brand!r}") from None
+
+
+def _alias(brand, model):
+    if model is None:
+        return None
+    for (old_brand, old_model), new in _brands.ALIASES.items():
+        if _key(old_brand) == _key(brand) and _key(old_model) == _key(model):
+            return new
+    return None

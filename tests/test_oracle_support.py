@@ -138,7 +138,7 @@ def test_golden_helper_checks_pulses_and_broadlink():
 
     from port_oracle import assert_matches_golden
     from test_jtech_device import PREVIOUS, from_old
-    from pyhvac.plugins.sharp import JTechDevice
+    from pyhvac.protocols.sharp import JTechDevice
 
     path = Path(__file__).parent / "fixtures" / "golden" / "sharp.json.gz"
     record = next(

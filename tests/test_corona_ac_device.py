@@ -12,10 +12,9 @@ from port_oracle import (
     sequence_params,
     state_from_record,
 )
-from pyhvac import registry
 from pyhvac.fields import InvertedPairs
 from pyhvac.ir.codec import decode
-from pyhvac.plugins.corona import (
+from pyhvac.protocols.corona import (
     CORONA_AC,
     CORONA_AC_MODELS,
     CORONA_AC_OFF_TIMER_LAYOUT,
@@ -285,11 +284,6 @@ def test_port_reproduces_the_19c_capture():
     # expectedState_19C: as above with PowerButton set.
     target = state(True, "heat", 19.0, fan="1", features={"economy": True})
     assert frames(target)[3].data == bytes.fromhex("28613d19e633cc")
-
-
-@pytest.mark.parametrize("model", CORONA_AC_MODELS)
-def test_registry_serves_the_port(model):
-    assert isinstance(registry.get_device("corona", model), CoronaAcDevice)
 
 
 @pytest.mark.parametrize("mode", ["heat", "dry", "cool", "fan"])

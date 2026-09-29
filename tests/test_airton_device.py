@@ -2,8 +2,7 @@ import pytest
 
 from oracle import load_oracle
 from port_oracle import Defect, assert_matches_oracle, oracle_params, state_from_record
-from pyhvac import registry
-from pyhvac.plugins.airton import (
+from pyhvac.protocols.airton import (
     AIRTON_LAYOUT,
     AIRTON_MODELS,
     AirtonDevice,
@@ -261,11 +260,6 @@ def test_message_shape():
     assert pulses[:2] == (6630, 3350)
     assert pulses[-2:] == (400, 100000)
     assert len(pulses) == 2 + 2 * 56 + 2
-
-
-@pytest.mark.parametrize("model", AIRTON_MODELS)
-def test_registry_serves_the_port(model):
-    assert isinstance(registry.get_device("airton", model), AirtonDevice)
 
 
 def test_undeclared_swing_deviation_is_reported():

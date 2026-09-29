@@ -35,10 +35,9 @@ from port_oracle import (
     sequence_params,
     state_from_record,
 )
-from pyhvac import registry
 from pyhvac.ir.codec import decode, encode
 from pyhvac.ir.model import Frame
-from pyhvac.plugins.airwell import (
+from pyhvac.protocols.airwell import (
     AIRWELL,
     AIRWELL_KNOWN_GOOD_STATE,
     AIRWELL_LAYOUT,
@@ -124,7 +123,7 @@ def _c_raws_live(states):
     from pyhvac import irhvac
     import ctypes
 
-    from pyhvac.plugins.airwell import Airwell
+    from pyhvac.protocols.airwell import Airwell
 
     lib = ctypes.CDLL(irhvac._irhvac.__file__)
     ctor = lib._ZN11IRAirwellAcC1Etbb  # IRAirwellAc(pin, inverted, modulation)
@@ -467,11 +466,6 @@ def test_message_shape():
     assert all(f.nbits == 34 for f in frames[:3])
     pulses = dev.encode(None, HvacState(True, "cool", 22.0)).signal.pulses
     assert pulses[-1] == 100000
-
-
-@pytest.mark.parametrize("model", AIRWELL_MODELS)
-def test_registry_serves_the_port(model):
-    assert isinstance(registry.get_device("airwell", model), AirwellDevice)
 
 
 def test_fan_offers_the_headers_three_speeds_and_auto():

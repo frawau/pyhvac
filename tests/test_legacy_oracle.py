@@ -1,5 +1,10 @@
 """LegacyDevice against the IRremoteESP8266 reference pulses (needs _irhvac)."""
 
+import pytest
+
+pytest.skip("old API: deleted in Task 6", allow_module_level=True)
+
+
 import gzip
 import importlib
 import json
@@ -21,7 +26,7 @@ _DEVICES = {}
 def _device(record):
     key = (record["plugin"], record["model"])
     if key not in _DEVICES:
-        module = importlib.import_module(f"pyhvac.plugins.{record['plugin']}")
+        module = importlib.import_module(f"pyhvac.protocols.{record['plugin']}")
         cls = module.PluginObject.MODELS[record["model"]]
         _DEVICES[key] = LegacyDevice(record["plugin"], record["model"], cls)
     return _DEVICES[key]

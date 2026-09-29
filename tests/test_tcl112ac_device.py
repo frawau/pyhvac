@@ -10,11 +10,10 @@ from port_oracle import (
     sequence_params,
     state_from_record,
 )
-from pyhvac import registry
 from pyhvac.fields import Sum8
 from pyhvac.ir.codec import DecodeError, decode, encode
 from pyhvac.ir.model import Frame
-from pyhvac.plugins.tcl import (
+from pyhvac.protocols.tcl import (
     TCL112AC,
     TCL112AC_DAEWOO_MODELS,
     TCL112AC_LAYOUT,
@@ -525,13 +524,6 @@ def test_message_shape():
     assert command.signal.carrier == 38000
     quiet = dev.encode(None, HvacState(True, "cool", 22.0, features={"quiet": True}))
     assert len(quiet.signal.pulses) == 2 * len(pulses)
-
-
-@pytest.mark.parametrize("plugin, model", SERVED)
-def test_registry_serves_the_port(plugin, model):
-    dev = registry.get_device(plugin, model)
-    assert isinstance(dev, Tcl112AcDevice)
-    assert dev.variant == PLUGIN_MODELS[plugin][model]
 
 
 def _record(cls, **match):

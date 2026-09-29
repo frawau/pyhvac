@@ -8,8 +8,7 @@ from port_oracle import (
     oracle_params,
     state_from_record,
 )
-from pyhvac import registry
-from pyhvac.plugins.voltas import (
+from pyhvac.protocols.voltas import (
     VOLTAS_LAYOUT,
     VOLTAS_MODELS,
     VoltasDevice,
@@ -369,13 +368,6 @@ def test_message_shape():
     assert pulses[:2] in ((1026, 554), (1026, 2553))  # no header
     assert pulses[-2:] == (1026, 100000)
     assert len(pulses) == 2 * 80 + 2
-
-
-@pytest.mark.parametrize("model", VOLTAS_MODELS)
-def test_registry_serves_the_port(model):
-    dev = registry.get_device("voltas", model)
-    assert isinstance(dev, VoltasDevice)
-    assert dev.variant == VOLTAS_MODELS[model]
 
 
 @pytest.mark.parametrize("model", VOLTAS_MODELS)

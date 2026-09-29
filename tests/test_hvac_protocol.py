@@ -1,9 +1,13 @@
 import pytest
 
+pytest.skip("old API: deleted in Task 6", allow_module_level=True)
+
+import pytest
+
 from pyhvac.ir.codec import encode
 from pyhvac.ir.formats import to_broadlink
 from pyhvac.ir.model import Frame, Protocol, PulseDistance, Section
-from pyhvac.plugins.hvaclib import HVAC
+from pyhvac.protocols.hvaclib import HVAC
 
 TOY = Protocol(
     "toy",

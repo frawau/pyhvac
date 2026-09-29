@@ -10,11 +10,10 @@ from port_oracle import (
     oracle_params,
     state_from_record,
 )
-from pyhvac import registry
 from pyhvac.fields import Joined
 from pyhvac.ir.codec import decode, encode
 from pyhvac.ir.model import Frame
-from pyhvac.plugins.kelvinator import (
+from pyhvac.protocols.kelvinator import (
     KELVINATOR,
     KELVINATOR_GREE_MODELS,
     KELVINATOR_LAYOUT,
@@ -384,11 +383,6 @@ def test_previous_is_ignored():
         target,
     ):
         assert dev.encode(previous, target).signal == dev.encode(None, target).signal
-
-
-@pytest.mark.parametrize("brand, model", ALL_MODELS)
-def test_registry_serves_the_port(brand, model):
-    assert isinstance(registry.get_device(brand, model), KelvinatorDevice)
 
 
 def test_fan_offers_the_five_documented_speeds():

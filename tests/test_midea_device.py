@@ -10,10 +10,9 @@ from port_oracle import (
     sequence_params,
     state_from_record,
 )
-from pyhvac import registry
 from pyhvac.fields import Joined
 from pyhvac.ir.codec import DecodeError, decode, encode
-from pyhvac.plugins.midea import (
+from pyhvac.protocols.midea import (
     MIDEA,
     MIDEA_COMFEE_MODELS,
     MIDEA_DANBY_MODELS,
@@ -479,11 +478,6 @@ def test_message_shape():
     assert pulses[-2:] == (560, 105600)
     assert len(pulses) == 2 * (2 + 2 * 48 + 2)
     assert command.signal.carrier == 38000
-
-
-@pytest.mark.parametrize("plugin, model", SERVED)
-def test_registry_serves_the_port(plugin, model):
-    assert isinstance(registry.get_device(plugin, model), MideaDevice)
 
 
 def test_capabilities_are_the_documented_ones():

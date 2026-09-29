@@ -2,8 +2,7 @@ import pytest
 
 from oracle import load_oracle
 from port_oracle import Defect, assert_matches_oracle, oracle_params, state_from_record
-from pyhvac import registry
-from pyhvac.plugins.daikin import (
+from pyhvac.protocols.daikin import (
     DAIKIN160,
     DAIKIN160_FIRST,
     DAIKIN160_MODELS,
@@ -129,11 +128,6 @@ def test_swing_positions_follow_the_header():
         for v in ("1", "2", "3", "4", "5")
     }
     assert raw == {"1": 5, "2": 4, "3": 3, "4": 2, "5": 1}
-
-
-def test_registry_serves_the_port():
-    for model in DAIKIN160_MODELS:
-        assert isinstance(registry.get_device("daikin", model), Daikin160Device)
 
 
 def test_undeclared_deviation_is_reported():

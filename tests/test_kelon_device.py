@@ -9,8 +9,7 @@ from port_oracle import (
     sequence_params,
     state_from_record,
 )
-from pyhvac import registry
-from pyhvac.plugins.kelon import KELON_LAYOUT, KELON_MODELS, KelonDevice, KELON
+from pyhvac.protocols.kelon import KELON_LAYOUT, KELON_MODELS, KelonDevice, KELON
 from pyhvac.state import HvacState
 
 # The C path deviates from the documented Kelon values here:
@@ -199,11 +198,6 @@ def test_message_shape():
     assert pulses[:2] == (9000, 4600)
     assert pulses[-2:] == (560, 200000)
     assert len(pulses) == 2 + 2 * 48 + 2
-
-
-@pytest.mark.parametrize("model", KELON_MODELS)
-def test_registry_serves_the_port(model):
-    assert isinstance(registry.get_device("kelon", model), KelonDevice)
 
 
 def test_capabilities_are_the_documented_values():

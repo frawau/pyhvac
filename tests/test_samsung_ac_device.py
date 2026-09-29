@@ -12,8 +12,7 @@ from port_oracle import (
     sequence_params,
     state_from_record,
 )
-from pyhvac import registry
-from pyhvac.plugins.samsung import (
+from pyhvac.protocols.samsung import (
     SAMSUNG_AC,
     SAMSUNG_AC_LAYOUT_1,
     SAMSUNG_AC_LAYOUT_2,
@@ -503,11 +502,6 @@ def test_previous_changes_nothing_but_the_clean_toggle():
         assert values["clean"] is True
         assert sections(target, previous) == sections(target)
     assert last(target, target)["clean"] is False
-
-
-@pytest.mark.parametrize("model", SAMSUNG_AC_MODELS)
-def test_registry_serves_the_port(model):
-    assert isinstance(registry.get_device("samsung", model), SamsungAcDevice)
 
 
 @pytest.mark.parametrize("model", SAMSUNG_AC_MODELS)

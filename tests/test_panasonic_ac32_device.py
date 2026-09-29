@@ -7,7 +7,7 @@ from pyhvac.plugins.panasonic import (
     PANASONIC_AC32_HIGH_LAYOUT,
     PANASONIC_AC32_LOW_LAYOUT,
     PANASONIC_AC32_MODELS,
-    PanasonicAc32Doubled,
+    PANASONIC_AC32_DOUBLED,
     PanasonicAc32Device,
 )
 from pyhvac.state import HvacState
@@ -119,9 +119,9 @@ def test_doubled_bytes_hold_no_field():
 
 def test_doubled_bytes_check():
     data = bytearray.fromhex("12003400")
-    assert not PanasonicAc32Doubled().check(data)
-    PanasonicAc32Doubled().apply(data)
-    assert data.hex() == "12123434" and PanasonicAc32Doubled().check(data)
+    assert not PANASONIC_AC32_DOUBLED.check(data)
+    PANASONIC_AC32_DOUBLED.apply(data)
+    assert data.hex() == "12123434" and PANASONIC_AC32_DOUBLED.check(data)
 
 
 def test_off_carries_mode_auto_in_every_mode():

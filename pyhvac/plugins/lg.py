@@ -27,11 +27,10 @@
 ##
 
 import struct
-from dataclasses import dataclass
 
 from .hvaclib import HVAC, PulseBased, GenPluginObject
 from ..device import Device
-from ..fields import Checksum, Field, Layout
+from ..fields import Field, HighNibbleSum, Layout
 from ..ir.model import Frame, Protocol, PulseDistance, Section
 from ..state import Capabilities, Choice, TemperatureRange
 
@@ -611,26 +610,6 @@ LG_AC = Protocol(
 )
 
 
-@dataclass(frozen=True)
-class LgAcChecksum(Checksum):
-    """IRLgAc::calcChecksum: sumNibbles(raw >> 4, 4), i.e. the four nibbles
-    above Sum (Fan, Temp, Mode + unnamed bit, unnamed bits + Power), mod 16,
-    stored in Sum: the top nibble of byte 3 (raw bits 0-3)."""
-
-    start: int = 1
-    end: int = 3
-    at: int = 3
-
-    def compute(self, data):
-        return sum((b >> 4) + (b & 0x0F) for b in self._input(data)) & 0x0F
-
-    def apply(self, data):
-        data[self.at] = (data[self.at] & 0x0F) | self.compute(data) << 4
-
-    def check(self, data):
-        return data[self.at] >> 4 == self.compute(data)
-
-
 LG_AC_SIGNATURE = 0x88  # kLgAcSignature
 LG_AC_TEMP_ADJUST = 15  # kLgAcTempAdjust: Temp = celsius - 15
 LG_AC_MIN_TEMP, LG_AC_MAX_TEMP = 16, 30  # kLgAcMinTemp, kLgAcMaxTemp
@@ -676,7 +655,7 @@ LG_AC_LAYOUT = Layout(
         "temp": Field.at(2, 4, 4),  # raw bits 8-11: celsius - kLgAcTempAdjust
         "fan": Field.at(2, 0, 4, values=LG_AC_FAN),  # raw bits 4-7
     },
-    checksum=LgAcChecksum(),
+    checksum=HighNibbleSum(1, 3, 3),  # IRLgAc::calcChecksum
 )
 
 
@@ -820,20 +799,6 @@ LG2 = Protocol(
 LG2_NBITS = 28  # kLgBits
 
 
-@dataclass(frozen=True)
-class Lg2Checksum(Checksum):
-    """IRLgAc::calcChecksum: sumNibbles(raw >> 4, 4), i.e. the low nibble of
-    the sum of the four nibbles below Sign (bytes 1-2), stored in Sum (the
-    top nibble of byte 3; its low nibble is not sent)."""
-
-    start: int = 1
-    end: int = 3
-    at: int = 3
-
-    def compute(self, data):
-        return (sum((b >> 4) + (b & 0x0F) for b in self._input(data)) & 0x0F) << 4
-
-
 def _lg2_command(code):
     """A 28-bit special word (ir_LG.h constant) -> the 16 bits of bytes 1-2,
     as the "command" field stores them (byte 1 low, byte 2 high)."""
@@ -906,13 +871,13 @@ LG2_LAYOUT = Layout(
         ),
         "fan": Field.at(2, 0, 4, values=LG2_FAN),
     },
-    checksum=Lg2Checksum(),
+    checksum=HighNibbleSum(1, 3, 3),  # IRLgAc::calcChecksum
 )
 # The special words: Sign, a 16-bit command, Sum.
 LG2_COMMAND_LAYOUT = Layout(
     bytes([0x88, 0, 0, 0]),
     {"command": Field.at(1, 0, 16, values=LG2_COMMANDS)},
-    checksum=Lg2Checksum(),
+    checksum=HighNibbleSum(1, 3, 3),  # IRLgAc::calcChecksum
 )
 
 LG2_FAN_BY_VARIANT = {  # canonical fan -> kLgAcFan*, as IRLgAc::setFan stores it

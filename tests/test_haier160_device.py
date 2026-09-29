@@ -9,7 +9,6 @@ from pyhvac.plugins.haier import (
     HAIER160,
     HAIER160_LAYOUT,
     HAIER160_MODELS,
-    Haier160Checksum,
     Haier160Device,
 )
 from pyhvac.state import HvacState
@@ -75,11 +74,11 @@ def test_every_oracle_frame_has_both_section_sums():
         (main,) = decode(HAIER160, record["pulses"], expected=["main"])
         assert Sum8(0, 13, 13).check(main.data)
         assert Sum8(14, 19, 19).check(main.data)
-        assert Haier160Checksum().check(main.data)
+        assert HAIER160_LAYOUT.checksum.check(main.data)
 
 
 def test_checksum_bytes_are_not_fields():
-    assert Haier160Checksum().positions() == {13, 19}
+    assert HAIER160_LAYOUT.checksum.positions() == {13, 19}
     for name, f in HAIER160_LAYOUT.fields.items():
         assert not {b // 8 for b in f.bits} & {13, 19}, name
 

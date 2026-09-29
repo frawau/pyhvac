@@ -1,8 +1,11 @@
 import pytest
 
 from pyhvac.fields import (
+    Checksums,
+    Copy,
     Crc8,
     Field,
+    HighNibbleSum,
     InvertedPairs,
     Layout,
     NibbleSum,
@@ -119,3 +122,88 @@ def test_inverted_pairs():
 
 def test_bit_reverse():
     assert bit_reverse(0x01) == 0x80 and bit_reverse(0xA0) == 0x05
+
+
+def test_split_field_reads_and_writes_scattered_bits():
+    # raw bit 0 -> byte 0 bit 5, raw bit 1 -> byte 1 bit 7, raw bit 2 -> byte 0 bit 0
+    f = Field.over((0, 5), (1, 7), (0, 0))
+    assert tuple(f.bits) == (5, 15, 0) and f.width == 3
+    lay = Layout(b"\x00\x00", {"s": f, "rest": Field.at(0, 1, 4)})
+    data = lay.build(s=0b101)
+    assert data == bytearray(b"\x21\x00")
+    assert lay.read(lay.build(s=0b010))["s"] == 0b010
+
+
+@pytest.mark.parametrize(
+    "kw",
+    [
+        dict(offset=3, width=2, spread=(3, 3)),  # a bit twice
+        dict(offset=3, width=3, spread=(3, 4)),  # width disagrees
+        dict(offset=4, width=2, spread=(3, 9)),  # offset is not the first bit
+        dict(offset=0, width=2, spread=(0, -1)),  # negative bit
+    ],
+)
+def test_split_field_validation(kw):
+    with pytest.raises(ValueError):
+        Field(**kw)
+
+
+def test_split_field_overlap_is_checked_per_bit():
+    with pytest.raises(ValueError, match="overlap"):
+        Layout(b"\x00\x00", {"a": Field.over((0, 1), (1, 2)), "b": Field.at(1, 2, 1)})
+
+
+def test_checksum_bits_default_to_whole_bytes():
+    assert Sum8(0, 1, 1).bits() == set(range(8, 16))
+
+
+def test_high_nibble_sum_shares_its_byte_with_fields():
+    lay = Layout(
+        b"\x00\x00\x00",
+        {"a": Field.at(0, 0, 8), "low": Field.at(2, 0, 4)},
+        checksum=HighNibbleSum(0, 2, 2),
+    )
+    data = lay.build(a=0x12, low=0xF)
+    assert data[2] == 0x3F  # 1 + 2 in the high nibble, the field below it
+    assert lay.checksum.check(data)
+    assert lay.checksum.positions() == {2}
+    assert lay.checksum.bits() == set(range(20, 24))
+    with pytest.raises(ValueError, match="checksum"):
+        Layout(b"\x00\x00\x00", {"a": Field.at(2, 3, 2)}, HighNibbleSum(0, 2, 2))
+
+
+def test_high_nibble_sum_may_count_the_low_nibble_of_its_byte():
+    data = bytearray(b"\x12\x05")
+    HighNibbleSum(0, 1, 1, with_low=True).apply(data)
+    assert data[1] == (1 + 2 + 5) << 4 | 5
+    assert HighNibbleSum(0, 1, 1, with_low=True).check(data)
+    data = bytearray(b"\xff\xff\x00")
+    HighNibbleSum(0, 2, 2).apply(data)
+    assert data[2] == (60 & 0x0F) << 4  # mod 16
+
+
+def test_copy_and_complement_blocks():
+    data = bytearray(b"\x12\x34\x00\x00")
+    Copy(0, 2, 2).apply(data)
+    assert data == bytearray(b"\x12\x34\x12\x34") and Copy(0, 2, 2).check(data)
+    Copy(0, 2, 2, invert=True).apply(data)
+    assert data == bytearray(b"\x12\x34\xed\xcb")
+    assert Copy(0, 2, 2, invert=True).check(data) and not Copy(0, 2, 2).check(data)
+    assert Copy(0, 2, 2).positions() == {2, 3}
+
+
+def test_checksums_apply_every_part():
+    both = Checksums(Sum8(0, 2, 2), Sum8(3, 5, 5))
+    data = bytearray(b"\x01\x02\x00\x03\x04\x00")
+    both.apply(data)
+    assert data == bytearray(b"\x01\x02\x03\x03\x04\x07")
+    assert both.check(data) and both.positions() == {2, 5}
+    data[5] = 0
+    assert not both.check(data)
+    assert both.bits() == set(range(16, 24)) | set(range(40, 48))
+    assert both == Checksums(Sum8(0, 2, 2), Sum8(3, 5, 5))
+
+
+def test_checksum_past_the_skeleton_is_refused():
+    with pytest.raises(ValueError, match="past"):
+        Layout(b"\x00", {}, checksum=HighNibbleSum(0, 1, 1))

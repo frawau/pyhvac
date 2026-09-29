@@ -6,7 +6,6 @@ from pyhvac import registry
 from pyhvac.plugins.daikin import (
     DAIKIN64_LAYOUT,
     DAIKIN64_MODELS,
-    Daikin64Checksum,
     Daikin64Device,
 )
 from pyhvac.state import HvacState
@@ -51,9 +50,9 @@ def test_layout_round_trips_every_oracle_state():
 def test_checksum_is_the_nibble_sum_of_the_known_good_state():
     # kDaikin64KnownGoodState = 0x7C16161607204216, sent LSB first.
     data = bytearray((0x7C16161607204216).to_bytes(8, "little"))
-    assert Daikin64Checksum().check(data)
+    assert DAIKIN64_LAYOUT.checksum.check(data)
     data[7] &= 0x0F
-    Daikin64Checksum().apply(data)
+    DAIKIN64_LAYOUT.checksum.apply(data)
     assert data[7] == 0x7C
 
 

@@ -23,7 +23,6 @@
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
 #
 
-from dataclasses import dataclass
 
 from .hvaclib import PulseBased, GenPluginObject
 from ..device import Device
@@ -342,26 +341,6 @@ MITSUBISHI_HEAVY88 = Protocol(
 )
 
 
-@dataclass(frozen=True)
-class MitsubishiHeavy88SplitField(Field):
-    """A field whose bits are scattered over the frame: raw bit k is frame
-    bit ``spread[k]``, as the header's getters join the struct parts
-    (getSwingVertical: SwingV5 | SwingV7 << 1; getSwingHorizontal:
-    SwingH1 | SwingH2 << 2)."""
-
-    spread: tuple = ()
-
-    @classmethod
-    def over(cls, *positions, **kw):
-        """A field over the (byte, bit) ``positions``, lowest raw bit first."""
-        bits = tuple(byte * 8 + bit for byte, bit in positions)
-        return cls(bits[0], len(bits), spread=bits, **kw)
-
-    @property
-    def bits(self):
-        return self.spread
-
-
 MITSUBISHI_HEAVY88_MODE = {  # kMitsubishiHeavy{Auto,Cool,Dry,Heat}
     "auto": 0,
     "cool": 1,
@@ -400,10 +379,10 @@ MITSUBISHI_HEAVY88_MIN_TEMP = 17  # kMitsubishiHeavyMinTemp
 MITSUBISHI_HEAVY88_LAYOUT = Layout(
     bytes.fromhex("ad513cd92600ff00ff00ff"),
     {
-        "swing_v": MitsubishiHeavy88SplitField.over(
+        "swing_v": Field.over(
             (5, 1), (7, 3), (7, 4), values=MITSUBISHI_HEAVY88_SWING_V
         ),
-        "swing_h": MitsubishiHeavy88SplitField.over(
+        "swing_h": Field.over(
             (5, 2), (5, 3), (5, 6), (5, 7), values=MITSUBISHI_HEAVY88_SWING_H
         ),
         "clean": Field.at(5, 5, 1),

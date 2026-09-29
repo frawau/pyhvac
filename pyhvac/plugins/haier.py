@@ -23,11 +23,10 @@
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
 #
 
-from dataclasses import dataclass
 
 from .hvaclib import PulseBased, GenPluginObject
 from ..device import Device
-from ..fields import Field, Layout, Sum8
+from ..fields import Checksums, Field, Layout, Sum8
 from ..ir.model import Frame, Protocol, PulseDistance, Section
 from ..state import Capabilities, Choice, TemperatureRange
 
@@ -342,26 +341,6 @@ HAIER176 = Protocol(
 )
 
 
-@dataclass(frozen=True)
-class Haier176Checksum:
-    """IRHaierAC176::checksum: two byte sums, one per section.
-
-    Sum (byte 13) = sumBytes(raw[0:13]); Sum2 (byte 21) = sumBytes(raw[14:21]).
-    """
-
-    parts: tuple = (Sum8(0, 13, 13), Sum8(14, 21, 21))
-
-    def positions(self):
-        return {p.at for p in self.parts}
-
-    def apply(self, data):
-        for p in self.parts:
-            p.apply(data)
-
-    def check(self, data):
-        return all(p.check(data) for p in self.parts)
-
-
 HAIER176_MODEL = {"A": 0xA6, "B": 0x59}  # kHaierAcYrw02ModelA/B
 HAIER176_BUTTON = {  # kHaierAcYrw02Button*
     "temp_up": 0b00000,
@@ -447,7 +426,7 @@ HAIER176_LAYOUT = Layout(
         # Fan2: 0 for auto (kHaierAcYrw02FanAuto), else the Fan code.
         "fan2": Field.at(16, 6, 2),
     },
-    checksum=Haier176Checksum(),
+    checksum=Checksums(Sum8(0, 13, 13), Sum8(14, 21, 21)),  # IRHaierAC176::checksum
 )
 
 
@@ -819,24 +798,6 @@ HAIER160 = Protocol(
 )
 
 
-@dataclass(frozen=True)
-class Haier160Checksum:
-    """IRHaierAC160::checksum: Sum = sumBytes(raw, 13) at byte 13, and
-    Sum2 = sumBytes(raw + 14, 5) at byte 19."""
-
-    parts: tuple = (Sum8(0, 13, 13), Sum8(14, 19, 19))
-
-    def positions(self):
-        return set().union(*(p.positions() for p in self.parts))
-
-    def apply(self, data):
-        for part in self.parts:
-            part.apply(data)
-
-    def check(self, data):
-        return all(part.check(data) for part in self.parts)
-
-
 HAIER160_BUTTON = {  # kHaierAcYrw02Button* / kHaierAc160Button*
     "temp_up": 0b00000,
     "temp_down": 0b00001,
@@ -912,7 +873,7 @@ HAIER160_LAYOUT = Layout(
         # setFan: Fan2 is 0 for auto, else the Fan code.
         "fan2": Field.at(16, 5, 3, values={**HAIER160_FAN, "auto": 0}),
     },
-    checksum=Haier160Checksum(),
+    checksum=Checksums(Sum8(0, 13, 13), Sum8(14, 19, 19)),  # IRHaierAC160::checksum
 )
 
 

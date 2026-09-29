@@ -23,11 +23,10 @@
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
 #
 
-from dataclasses import dataclass
 
 from .hvaclib import PulseBased, GenPluginObject
 from ..device import Device
-from ..fields import Checksum, Field, Layout, Sum8
+from ..fields import Copy, Field, Layout, Sum8
 from ..ir.model import Frame, Protocol, PulseDistance, Section
 from ..state import Capabilities, Choice, TemperatureRange
 
@@ -319,26 +318,6 @@ MITSUBISHI136 = Protocol(
 )
 
 
-@dataclass(frozen=True)
-class Mitsubishi136Checksum(Checksum):
-    """IRMitsubishi136::checksum: data[at + i] = ~data[start + i] for the
-    ``end - start`` bytes from kMitsubishi136PowerByte (5..10 -> 11..16)."""
-
-    def positions(self):
-        return set(range(self.at, self.at + self.end - self.start))
-
-    def compute(self, data):
-        return bytes(~b & 0xFF for b in data[self.start : self.end])
-
-    def apply(self, data):
-        data[self.at : self.at + self.end - self.start] = self.compute(data)
-
-    def check(self, data):
-        return bytes(data[self.at : self.at + self.end - self.start]) == (
-            self.compute(data)
-        )
-
-
 MITSUBISHI136_MODE = {  # kMitsubishi136*, as IRMitsubishi136::convertMode
     "fan": 0b000,  # kMitsubishi136Fan
     "cool": 0b001,  # kMitsubishi136Cool
@@ -379,7 +358,7 @@ MITSUBISHI136_LAYOUT = Layout(
         "fan": Field.at(7, 1, 2),
         "swing_v": Field.at(7, 4, 4),
     },
-    checksum=Mitsubishi136Checksum(5, 11, 11),
+    checksum=Copy(5, 11, 11, invert=True),  # IRMitsubishi136::checksum
 )
 
 

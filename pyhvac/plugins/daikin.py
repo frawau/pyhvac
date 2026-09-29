@@ -28,11 +28,10 @@
 ##
 
 import struct
-from dataclasses import dataclass
 
 from .hvaclib import HVAC, PulseBased, GenPluginObject, bit_reverse
 from ..device import Device
-from ..fields import Checksum, Field, Layout, NibbleSum, Sum8
+from ..fields import Field, HighNibbleSum, Layout, NibbleSum, Sum8
 from ..ir.model import Frame, Protocol, PulseDistance, Section
 from ..state import Capabilities, Choice, TemperatureRange
 
@@ -744,26 +743,6 @@ DAIKIN64 = Protocol(
 )
 
 
-class Daikin64Checksum:
-    """kDaikin64ChecksumOffset/Size: the sum of the 15 nibbles below bit 60,
-    mod 16, stored in bits 60-63 (the top nibble of byte 7)."""
-
-    def positions(self):
-        # A nibble, not a byte: byte 7's low nibble holds fields, so Layout's
-        # byte-level overlap check cannot apply. No field uses bits 60-63.
-        return set()
-
-    def compute(self, data):
-        total = sum((b >> 4) + (b & 0x0F) for b in data[:7]) + (data[7] & 0x0F)
-        return total & 0x0F
-
-    def apply(self, data):
-        data[7] = (data[7] & 0x0F) | self.compute(data) << 4
-
-    def check(self, data):
-        return data[7] >> 4 == self.compute(data)
-
-
 # Skeleton from kDaikin64KnownGoodState with the written fields and the sum
 # cleared: byte 0 is 0x16, the clock (07:20, BCD) and both timers (22 h,
 # disabled) are never set by the C path, and byte 7 bit 2 is always set.
@@ -790,7 +769,7 @@ DAIKIN64_LAYOUT = Layout(
         "swing_v": Field.at(7, 0, 1, values={"off": 0, "swing": 1}),
         "power": Field.at(7, 3, 1),  # a toggle
     },
-    checksum=Daikin64Checksum(),
+    checksum=HighNibbleSum(0, 7, 7, with_low=True),  # kDaikin64Checksum*
 )
 
 
@@ -878,30 +857,6 @@ DAIKIN128 = Protocol(
 )
 
 
-@dataclass(frozen=True)
-class Daikin128FirstSum(Checksum):
-    """Daikin128's first checksum: the nibbles of data[start:end] plus the low
-    nibble of data[at], mod 16, written in the top nibble of data[at].
-
-    It shares its byte with data fields (the low nibble), so ``positions`` is
-    empty: Layout checks overlaps per byte. DAIKIN128_FIRST keeps bits 60-63
-    free of fields (tested).
-    """
-
-    def compute(self, data):
-        nibbles = sum((b >> 4) + (b & 0x0F) for b in self._input(data))
-        return (nibbles + (data[self.at] & 0x0F)) & 0x0F
-
-    def positions(self):
-        return set()
-
-    def apply(self, data):
-        data[self.at] = (data[self.at] & 0x0F) | self.compute(data) << 4
-
-    def check(self, data):
-        return data[self.at] >> 4 == self.compute(data)
-
-
 def _bcd(n):
     return (n // 10) << 4 | n % 10
 
@@ -942,7 +897,7 @@ DAIKIN128_FIRST = Layout(
         "sleep": Field.at(7, 1, 1),
         "power": Field.at(7, 3, 1),  # a toggle, not a state
     },
-    checksum=Daikin128FirstSum(0, 7, 7),
+    checksum=HighNibbleSum(0, 7, 7, with_low=True),
 )
 DAIKIN128_SECOND = Layout(
     bytes.fromhex("a100000000000000"),

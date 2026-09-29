@@ -8,7 +8,6 @@ from pyhvac.plugins.mitsubishi_electric import (
     MITSUBISHI136,
     MITSUBISHI136_LAYOUT,
     MITSUBISHI136_MODELS,
-    Mitsubishi136Checksum,
     Mitsubishi136Device,
 )
 from pyhvac.state import HvacState
@@ -64,7 +63,7 @@ def test_every_oracle_frame_has_the_inverted_section():
     for record in load_oracle("MITSUBISHI136"):
         (main,) = decode(MITSUBISHI136, record["pulses"], expected=["main"])
         assert all(main.data[11 + i] == ~main.data[5 + i] & 0xFF for i in range(6))
-        assert Mitsubishi136Checksum(5, 11, 11).check(main.data)
+        assert MITSUBISHI136_LAYOUT.checksum.check(main.data)
 
 
 def test_no_field_overlaps_the_inverted_section():

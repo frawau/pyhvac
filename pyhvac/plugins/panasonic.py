@@ -31,10 +31,9 @@
 
 import struct
 
-from dataclasses import dataclass
 from .hvaclib import HVAC, PulseBased, GenPluginObject, bit_reverse
 from ..device import Device
-from ..fields import Field, Layout, Sum8
+from ..fields import Checksums, Copy, Field, Layout, Sum8
 from ..ir.model import Frame, Protocol, PulseDistance, Section
 from ..state import Capabilities, Choice, TemperatureRange
 
@@ -809,21 +808,10 @@ PANASONIC_AC32 = Protocol(
 )
 
 
-@dataclass(frozen=True)
-class PanasonicAc32Doubled:
-    """sendPanasonicAC32 duplicates every byte: data[1] == data[0] and
-    data[3] == data[2]. Not a checksum, but the same contract: the copies
-    are derived from the fields, which live in bytes 0 and 2 only."""
-
-    def positions(self):
-        return {1, 3}
-
-    def apply(self, data):
-        data[1], data[3] = data[0], data[2]
-
-    def check(self, data):
-        return data[1] == data[0] and data[3] == data[2]
-
+# sendPanasonicAC32 duplicates every byte: data[1] == data[0] and
+# data[3] == data[2]. Not a checksum, but the same contract: the copies are
+# derived from the fields, which live in bytes 0 and 2 only.
+PANASONIC_AC32_DOUBLED = Checksums(Copy(0, 1, 1), Copy(2, 3, 3))
 
 # The upper section, raw bytes 2 and 3 (doubled). Skeleton from
 # kPanasonicAc32KnownGood (0x0AF136FC): byte 3 bits 4-7 are always 0.
@@ -843,7 +831,7 @@ PANASONIC_AC32_HIGH_LAYOUT = Layout(
         # PowerToggle: 0 means toggle, 1 = keep the same.
         "power_toggle": Field.at(2, 3, 1, values={True: 0, False: 1}),
     },
-    checksum=PanasonicAc32Doubled(),
+    checksum=PANASONIC_AC32_DOUBLED,
 )
 
 # The lower section, raw bytes 0 and 1 (doubled). Byte 0 bits 0-2 (0b100)
@@ -859,7 +847,7 @@ PANASONIC_AC32_LOW_LAYOUT = Layout(
             values={"1": 1, "2": 2, "3": 3, "4": 4, "5": 5, "auto": 7},
         ),
     },
-    checksum=PanasonicAc32Doubled(),
+    checksum=PANASONIC_AC32_DOUBLED,
 )
 
 

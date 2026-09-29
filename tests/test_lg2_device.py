@@ -10,7 +10,6 @@ from pyhvac.plugins.lg import (
     LG2_COMMANDS,
     LG2_LAYOUT,
     LG2_MODELS,
-    Lg2Checksum,
     Lg2Device,
 )
 from pyhvac.state import HvacState
@@ -148,21 +147,21 @@ def test_every_oracle_word_has_the_signature_and_checksum():
         for frame in decode(LG2, record["pulses"], expected=["main"] * n):
             assert frame.data[0] == 0x88  # kLgAcSignature
             assert frame.data[3] & 0x0F == 0  # 28 bits: the last nibble unsent
-            assert Lg2Checksum().check(frame.data)
+            assert LG2_LAYOUT.checksum.check(frame.data)
 
 
 def test_checksum_is_the_nibble_sum_below_the_signature():
     # ir_LG_test.cpp: calcChecksum(0x88C0051) == 1, calcChecksum(0x88C0354) == 4.
     for code, total in ((0x88C0051, 1), (0x88C0354, 4)):
         data = bytearray(as_frame(code))
-        assert Lg2Checksum().check(data)
+        assert LG2_LAYOUT.checksum.check(data)
         data[3] = 0
-        Lg2Checksum().apply(data)
+        LG2_LAYOUT.checksum.apply(data)
         assert data[3] >> 4 == total
 
 
 def test_checksum_bits_are_not_fields():
-    assert Lg2Checksum().positions() == {3}
+    assert LG2_LAYOUT.checksum.positions() == {3}
     for layout in (LG2_LAYOUT, LG2_COMMAND_LAYOUT):
         for name, f in layout.fields.items():
             assert not {b // 8 for b in f.bits} & {0, 3}, name

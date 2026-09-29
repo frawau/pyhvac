@@ -5,6 +5,7 @@ from port_oracle import (
     Defect,
     assert_matches_oracle,
     assert_sequence_matches_c,
+    c_sequence,
     oracle_params,
     sequence_params,
     state_from_record,
@@ -330,3 +331,31 @@ def test_layouts_must_cover_every_frame():
     record = load_oracle("CORONA_AC")[0]
     with pytest.raises(AssertionError, match="layout"):
         assert_matches_oracle(dev, record, dev.LAYOUTS[:3], DEFECTS)
+
+
+def test_swing_toggle_matches_c_with_the_glue_fixed(monkeypatch):
+    # With main's glue fix (IRGHVAC.trans_swing passes "on" as kAuto), swing
+    # reaches C and the SwingVToggle rule needs no Defect: fresh and
+    # persistent C objects send exactly the port's frames.
+    pytest.importorskip("pyhvac.irhvac")
+    from pyhvac import irhvac
+    from pyhvac.plugins.corona import Corona
+
+    original = Corona.trans_swing
+
+    def trans_swing(self, swing):
+        return irhvac.swingv_t_kAuto if swing == "on" else original(self, swing)
+
+    monkeypatch.setattr(Corona, "trans_swing", trans_swing)
+    dev = device()
+    record = load_oracle("CORONA_AC")[0]
+    walk = ["off", "on", "on", "off", "off", "on"]
+    states = [
+        {"mode": mode, "temperature": 22, "fan": "auto", "swing": swing}
+        for mode in ("cool", "heat")
+        for swing in walk
+    ]
+    assert_sequence_matches_c(dev, record, states, dev.LAYOUTS)
+    for old in states:
+        (rec,) = c_sequence(record, [old])  # a fresh C object
+        assert_matches_oracle(dev, rec, dev.LAYOUTS)

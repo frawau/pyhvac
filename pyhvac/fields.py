@@ -8,7 +8,7 @@ wire bit order is applied).
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from functools import reduce
 from types import MappingProxyType
 from typing import Callable, Mapping, Optional

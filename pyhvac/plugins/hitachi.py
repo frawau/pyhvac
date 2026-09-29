@@ -29,7 +29,8 @@ from .hvaclib import PulseBased, GenPluginObject
 from ..device import Device
 from ..fields import Checksum, Field, InvertedPairs, Layout, NibbleSum, bit_reverse
 from ..ir.model import Frame, Protocol, PulseDistance, Section
-from ..state import Capabilities, Choice, TemperatureRange
+from ..choices import FAN_3, FAN_5, ON_OFF, SWING, SWING_H_5
+from ..state import Capabilities, TemperatureRange
 
 try:
     from ..irhvac import R_LT0541_HTA_A, R_LT0541_HTA_B
@@ -211,25 +212,6 @@ def _hitachi_ac_protocol(name, lsb_first=True):
     )
 
 
-# The canonical fan scales and the swing toggle of the ports' capabilities.
-_FAN_3 = Choice(
-    ("auto", "1", "2", "3"),
-    {"auto": "auto", "1": "low", "2": "medium", "3": "high"},
-)
-_FAN_5 = Choice(
-    ("auto", "1", "2", "3", "4", "5"),
-    {
-        "auto": "auto",
-        "1": "lowest",
-        "2": "low",
-        "3": "medium",
-        "4": "high",
-        "5": "highest",
-    },
-)
-_SWING = Choice(("off", "swing"), {"off": "off", "swing": "on"})
-
-
 # --------------------------------------------------------------- HitachiAc
 # Layout from IRremoteESP8266's HitachiProtocol (ir_Hitachi.h): one 28-byte
 # frame (kHitachiAcStateLength), sent MSB first (sendHitachiAC), so frame
@@ -295,9 +277,9 @@ class HitachiAcDevice(Device):
     capabilities = Capabilities(
         modes=("auto", "heat", "cool", "dry", "fan"),
         temperature=TemperatureRange(16.0, 32.0),
-        fan=_FAN_3,
-        swing_v=_SWING,
-        swing_h=_SWING,
+        fan=FAN_3,
+        swing_v=SWING,
+        swing_h=SWING,
     )
 
     def frames(self, previous, target, actions):
@@ -442,10 +424,10 @@ class Hitachi1Device(Device):
     capabilities = Capabilities(
         modes=("auto", "heat", "cool", "dry", "fan"),
         temperature=TemperatureRange(16.0, 32.0),
-        fan=_FAN_3,
-        swing_v=_SWING,
-        swing_h=_SWING,
-        features={"sleep": Choice((False, True), {False: "off", True: "on"})},
+        fan=FAN_3,
+        swing_v=SWING,
+        swing_h=SWING,
+        features={"sleep": ON_OFF},
     )
 
     def __init__(self, brand, model, variant=None):
@@ -646,8 +628,8 @@ class Hitachi424Device(Device):
     capabilities = Capabilities(
         modes=("fan", "heat", "cool", "dry"),
         temperature=TemperatureRange(16.0, 32.0),
-        fan=_FAN_5,
-        swing_v=_SWING,
+        fan=FAN_5,
+        swing_v=SWING,
     )
 
     def _values(self, previous, target):
@@ -739,19 +721,9 @@ class Hitachi344Device(Hitachi424Device):
     capabilities = Capabilities(
         modes=("cool", "fan", "dry", "heat"),
         temperature=TemperatureRange(16.0, 32.0),
-        fan=_FAN_5,
-        swing_v=_SWING,
-        swing_h=Choice(
-            ("auto", "1", "2", "3", "4", "5"),
-            {
-                "auto": "auto",
-                "1": "far left",
-                "2": "left",
-                "3": "middle",
-                "4": "right",
-                "5": "far right",
-            },
-        ),
+        fan=FAN_5,
+        swing_v=SWING,
+        swing_h=SWING_H_5,
     )
 
     def frames(self, previous, target, actions):
@@ -806,10 +778,10 @@ class Hitachi264Device(Device):
     capabilities = Capabilities(
         modes=("auto", "cool", "fan", "dry", "heat"),
         temperature=TemperatureRange(16.0, 32.0),
-        fan=_FAN_3,
-        swing_v=_SWING,
+        fan=FAN_3,
+        swing_v=SWING,
         features={
-            name: Choice((False, True), {False: "off", True: "on"})
+            name: ON_OFF
             for name in ("purifier", "powerful", "quiet", "economy", "light")
         },
     )
@@ -905,7 +877,7 @@ class Hitachi296Device(Device):
     capabilities = Capabilities(
         modes=("auto", "cool", "dry", "heat"),
         temperature=TemperatureRange(16.0, 25.0),
-        fan=_FAN_5,
+        fan=FAN_5,
     )
 
     def frames(self, previous, target, actions):

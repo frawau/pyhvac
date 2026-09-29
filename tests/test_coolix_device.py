@@ -1,6 +1,6 @@
-import importlib
-
 import pytest
+
+from c_oracle import c_encode
 
 from oracle import load_oracle
 from port_oracle import (
@@ -564,45 +564,12 @@ def test_registry_serves_the_port(plugin, model):
     assert isinstance(registry.get_device(plugin, model), CoolixDevice)
 
 
-@pytest.mark.parametrize("plugin, model", MODELS)
-def test_every_served_model_is_a_legacy_coolix_model(plugin, model):
-    from pyhvac.plugins.coolix import Coolix
-
-    module = importlib.import_module(f"pyhvac.plugins.{plugin}")
-    assert module.PluginObject.MODELS[model] is Coolix
-
-
 # ------------------------------------------------------ the C swing toggle
 
 
-def _fix_the_glue(monkeypatch):
-    """main's glue fix: IRGHVAC.trans_swing / trans_hswing pass "on" as
-    kAuto."""
-    from pyhvac import irhvac
-    from pyhvac.plugins.coolix import Coolix
-
-    swing, hswing = Coolix.trans_swing, Coolix.trans_hswing
-    monkeypatch.setattr(
-        Coolix,
-        "trans_swing",
-        lambda self, s: irhvac.swingv_t_kAuto if s == "on" else swing(self, s),
-    )
-    monkeypatch.setattr(
-        Coolix,
-        "trans_hswing",
-        lambda self, s: irhvac.swingh_t_kAuto if s == "on" else hswing(self, s),
-    )
-
-
-def test_matches_c_with_the_glue_fixed(monkeypatch):
-    # With swing and swing_h "on" reaching C, a fresh IRac sends exactly
-    # what the port sends without previous.
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.coolix import Coolix
-
-    _fix_the_glue(monkeypatch)
-    legacy = LegacyDevice("coolix", "generic", Coolix)
+def test_matches_c_with_the_glue_fixed():
+    # With swing and swing_h "on" reaching C (glue="fixed"), a fresh IRac
+    # sends exactly what the port sends without previous.
     for power in (True, False):
         for mode in ("cool", "dry", "auto", "heat", "fan"):
             for swing_v in ("off", "swing"):
@@ -618,15 +585,17 @@ def test_matches_c_with_the_glue_fixed(monkeypatch):
                             swing_h=swing_h,
                             features=features,
                         )
-                        c = c_words(legacy.encode(None, target).signal.pulses)
+                        c = c_words(
+                            c_encode(
+                                "coolix", "generic", "Coolix", target, glue="fixed"
+                            )
+                        )
                         assert words(target) == c, target
 
 
-def test_swing_toggle_matches_a_persistent_c_object(monkeypatch):
+def test_swing_toggle_matches_a_persistent_c_object():
     # With the glue fixed, a persistent IRac applies handleToggles' COOLIX
     # rule: the swing word only when swing_v changes, never with an off.
-    pytest.importorskip("pyhvac.irhvac")
-    _fix_the_glue(monkeypatch)
     walk = [
         (True, "off", "off"),
         (True, "on", "on"),
@@ -653,21 +622,19 @@ def test_swing_toggle_matches_a_persistent_c_object(monkeypatch):
     record = load_oracle("COOLIX")[0]
     dev = device()
     previous = None
-    for rec in c_sequence(record, old):
+    for rec in c_sequence(record, old, glue="fixed"):
         target = state_from_record(dev, rec["state"])
         assert words(target, previous) == c_words(rec["pulses"]), rec["state"]
         previous = target
 
 
-def test_swing_h_toggle_deviates_from_a_persistent_c_object(monkeypatch):
+def test_swing_h_toggle_deviates_from_a_persistent_c_object():
     # The deliberate deviation: a persistent IRac sends kCoolixSwing on
     # every message while swing_h is on (handleToggles leaves swingh alone);
     # the port sends it only when swinging changes.
-    pytest.importorskip("pyhvac.irhvac")
-    _fix_the_glue(monkeypatch)
     old = [{"mode": "cool", "temperature": 22, "hswing": "on"}] * 2
     record = load_oracle("COOLIX")[0]
-    first, second = c_sequence(record, old)
+    first, second = c_sequence(record, old, glue="fixed")
     target = state_from_record(device(), second["state"])
     assert c_words(second["pulses"]) == words(target, None)
     assert c_words(second["pulses"]) == words(target, target) + [SWING]

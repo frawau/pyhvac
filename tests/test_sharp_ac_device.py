@@ -153,7 +153,6 @@ def test_cleaning_with_powerful_sends_cs_turbo_frame(variant):
     # and restores mode, setpoint and fan); if (turbo) {send(); setTurbo();}
     # send(). The turbo frame is built from the plain state, not the clean
     # message the port sends before it.
-    pytest.importorskip("pyhvac.irhvac")
     dev = device(variant)
     record = next(
         r for r in load_oracle("SHARP_AC") if dev.variant == device_for(r).variant
@@ -229,7 +228,6 @@ def _extra_states(variant):
 
 @pytest.mark.parametrize("variant", ["A907", "A903", "A705"])
 def test_states_beyond_the_oracle_grid_match_the_c_path(variant):
-    pytest.importorskip("pyhvac.irhvac")
     dev = device(variant)
     record = next(r for r in load_oracle("SHARP_AC") if r["model"] == MODEL[variant])
     for target in _extra_states(variant):
@@ -629,7 +627,6 @@ def test_undeclared_clean_deviation_is_reported(field):
 
 
 def test_undeclared_swing_sequence_deviation_is_reported():
-    pytest.importorskip("pyhvac.irhvac")
     record = _record("Sharp AY-ZP40KR")
     dev = device_for(record)
     states = [

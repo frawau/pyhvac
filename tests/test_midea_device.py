@@ -251,7 +251,6 @@ EXTRA_STATES = (
 
 
 def test_states_beyond_the_oracle_grid_match_the_c_path():
-    pytest.importorskip("pyhvac.irhvac")
     record = load_oracle("MIDEA")[0]
     for old in EXTRA_STATES:
         # One state per C object: a fresh IRac, as previous=None.

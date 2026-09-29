@@ -1,5 +1,7 @@
 import pytest
 
+from c_oracle import c_encode
+
 from oracle import load_oracle
 from port_oracle import (
     Defect,
@@ -356,19 +358,6 @@ def test_registry_serves_the_port(model):
 # ------------------------------------------------------ the C swing toggle
 
 
-def _fix_the_glue(monkeypatch):
-    """main's glue fix: IRGHVAC.trans_swing passes "on" as kAuto."""
-    from pyhvac import irhvac
-    from pyhvac.plugins.transcold import Transcold
-
-    original = Transcold.trans_swing
-
-    def trans_swing(self, swing):
-        return irhvac.swingv_t_kAuto if swing == "on" else original(self, swing)
-
-    monkeypatch.setattr(Transcold, "trans_swing", trans_swing)
-
-
 def _c_words(pulses):
     return [
         f.data
@@ -376,21 +365,16 @@ def _c_words(pulses):
     ]
 
 
-def test_swing_matches_c_with_the_glue_fixed(monkeypatch):
-    # With swing "on" reaching C, a fresh and a persistent IRac send exactly
+def test_swing_matches_c_with_the_glue_fixed():
+    # With swing "on" reaching C (glue="fixed"), a fresh and a persistent IRac send exactly
     # what the port sends: the toggle word when the swing changes (with
     # previous) or is on (without), never with an off.
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.transcold import Transcold
-
-    _fix_the_glue(monkeypatch)
     dev = device()
-    legacy = LegacyDevice("transcold", "generic", Transcold)
     for power in (True, False):
         for swing in ("off", "swing"):
             target = state(power, "cool", 22.0, fan="2", swing_v=swing)
-            assert words(target) == _c_words(legacy.encode(None, target).signal.pulses)
+            pulses = c_encode("transcold", "generic", "Transcold", target, glue="fixed")
+            assert words(target) == _c_words(pulses)
     walk = [
         (True, "off"),
         (True, "on"),
@@ -415,7 +399,7 @@ def test_swing_matches_c_with_the_glue_fixed(monkeypatch):
     ]
     record = load_oracle("TRANSCOLD")[0]
     previous = None
-    for rec in c_sequence(record, old):
+    for rec in c_sequence(record, old, glue="fixed"):
         target = state_from_record(dev, rec["state"])
         assert words(target, previous) == _c_words(rec["pulses"]), rec["state"]
         previous = target

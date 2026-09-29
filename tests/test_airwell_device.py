@@ -26,6 +26,7 @@ from pathlib import Path
 
 import pytest
 
+from c_oracle import c_frozen
 from oracle import load_oracle
 from port_oracle import (
     assert_matches_oracle,
@@ -111,10 +112,16 @@ def read(state, previous=None):
 
 
 def c_raws(states):
+    """The AirwellProtocol words C built for ``states`` sent in order through
+    one legacy object; frozen in tests/fixtures/oracle_extra."""
+    return c_frozen(["c_raws", states], lambda: _c_raws_live(states))
+
+
+def _c_raws_live(states):
     """C-gated: the AirwellProtocol word the C path builds for each
     old-vocabulary state, sent in order through one legacy Airwell object
     (its IRac keeps the last message sent, as in c_sequence)."""
-    irhvac = pytest.importorskip("pyhvac.irhvac")
+    from pyhvac import irhvac
     import ctypes
 
     from pyhvac.plugins.airwell import Airwell

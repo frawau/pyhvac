@@ -604,7 +604,6 @@ def _first_record(cls):
 
 @pytest.mark.parametrize("variant", VARIANTS)
 def test_states_beyond_the_oracle_grid_match_the_c_path(variant):
-    pytest.importorskip("pyhvac.irhvac")
     record = _first_record(LEGACY[variant])
     dev = record_device(record)
     for rec in c_sequence(record, _extra_states(dev.capabilities.features)):

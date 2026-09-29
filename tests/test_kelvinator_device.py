@@ -504,26 +504,16 @@ EXTRA_STATES = (
 
 
 def test_states_beyond_the_oracle_grid_match_the_c_path():
-    pytest.importorskip("pyhvac.irhvac")
     dev = device()
     record = load_oracle("KELVINATOR")[0]
     for rec in c_sequence(record, EXTRA_STATES):
         assert_matches_oracle(dev, rec, dev.LAYOUTS, DEFECTS)
 
 
-def test_swing_h_matches_c_once_the_glue_passes_it(monkeypatch):
-    # With an "on" in trans_hswing (IRac's kAuto), C sets SwingH, and
-    # setSwingHorizontal sets SwingAuto: the swing_h Defects are the glue's.
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac import irhvac
-    from pyhvac.plugins.hvaclib import IRGHVAC
-
-    trans = IRGHVAC.trans_hswing
-    monkeypatch.setattr(
-        IRGHVAC,
-        "trans_hswing",
-        lambda self, v: irhvac.swingh_t_kAuto if v == "on" else trans(self, v),
-    )
+def test_swing_h_matches_c_once_the_glue_passes_it():
+    # With an "on" in trans_hswing (IRac's kAuto, glue="fixed"), C sets
+    # SwingH, and setSwingHorizontal sets SwingAuto: the swing_h Defects are
+    # the glue's.
     dev = device()
     record = load_oracle("KELVINATOR")[0]
     states = [
@@ -532,7 +522,7 @@ def test_swing_h_matches_c_once_the_glue_passes_it(monkeypatch):
         for s in ("off", "auto", "45°", "0°")
     ]
     others = tuple(d for d in DEFECTS if d.field not in ("swing_h", "swing_auto"))
-    for rec in c_sequence(record, states):
+    for rec in c_sequence(record, states, glue="fixed"):
         assert_matches_oracle(dev, rec, dev.LAYOUTS, others)
 
 

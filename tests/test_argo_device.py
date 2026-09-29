@@ -500,7 +500,6 @@ WREM2_EXTRA_STATES = [
     ids=["WREM2", "WREM3"],
 )
 def test_new_values_match_the_c_path(model, states):
-    pytest.importorskip("pyhvac.irhvac")
     record = next(r for r in load_oracle("ARGO") if r["model"] == model)
     dev = device(model)
     for rec in c_sequence(record, states):

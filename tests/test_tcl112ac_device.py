@@ -196,7 +196,6 @@ EXTRA_STATES = (
 
 @pytest.mark.parametrize("model", ["DSB-F0934ELH-V", "LBS-TOR07"])
 def test_states_beyond_the_oracle_grid_match_the_c_path(model):
-    pytest.importorskip("pyhvac.irhvac")
     record = next(r for r in load_oracle("TCL112AC") if r["model"] == model)
     dev = device_for(record)
     for rec in c_sequence(record, EXTRA_STATES):
@@ -273,7 +272,6 @@ def test_sequence_matches_a_persistent_c_object(record, states):
 def test_sequence_needs_the_quiet_change_rule():
     # Without the adaptation, C's second quiet-on message (quiet stays on)
     # has a special message the port does not send.
-    pytest.importorskip("pyhvac.irhvac")
     record = next(r for r in load_oracle("TCL112AC") if r["class"] == "Tclv1")
     dev = device_for(record)
     with pytest.raises(DecodeError, match="expected end of signal"):

@@ -106,7 +106,6 @@ EXTRA_HSWING = [
 
 @pytest.mark.parametrize("model", ["generic", "122LZF 4011252"])
 def test_states_beyond_the_oracle_grid_match_the_c_path(model):
-    pytest.importorskip("pyhvac.irhvac")
     dev = device(model)
     record = next(r for r in load_oracle("VOLTAS") if r["model"] == model)
     extra = EXTRA_STATES + (EXTRA_HSWING if model == "generic" else [])

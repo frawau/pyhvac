@@ -119,7 +119,6 @@ EXTRA_STATES = [
 
 
 def test_states_beyond_the_oracle_grid_match_the_c_path():
-    pytest.importorskip("pyhvac.irhvac")
     dev = device()
     record = load_oracle("TOSHIBA_AC")[0]
     for rec in c_sequence(record, EXTRA_STATES):

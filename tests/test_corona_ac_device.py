@@ -1,5 +1,7 @@
 import pytest
 
+from c_oracle import c_encode
+
 from oracle import load_oracle
 from port_oracle import (
     Defect,
@@ -294,14 +296,10 @@ def test_registry_serves_the_port(model):
 @pytest.mark.parametrize("economy", [False, True])
 def test_off_with_economy_matches_the_c_path(mode, economy):
     # The oracle grid has no off record with economy: compare with C directly.
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.corona import Corona
-
     dev = device()
     target = HvacState(False, mode, 26.0, fan="3", features={"economy": economy})
-    pulses = LegacyDevice("corona", "generic", Corona).encode(None, target)
-    theirs = decode(CORONA_AC, pulses.signal.pulses, expected=NAMES)
+    pulses = c_encode("corona", "generic", "Corona", target)
+    theirs = decode(CORONA_AC, pulses, expected=NAMES)
     assert [f.data for f in theirs] == [
         f.data for f in dev.frames(None, dev.normalise(target), ())
     ]
@@ -323,20 +321,10 @@ def test_layouts_must_cover_every_frame():
         assert_matches_oracle(dev, record, dev.LAYOUTS[:3], DEFECTS)
 
 
-def test_swing_toggle_matches_c_with_the_glue_fixed(monkeypatch):
+def test_swing_toggle_matches_c_with_the_glue_fixed():
     # With main's glue fix (IRGHVAC.trans_swing passes "on" as kAuto), swing
     # reaches C and the SwingVToggle rule needs no Defect: fresh and
     # persistent C objects send exactly the port's frames.
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac import irhvac
-    from pyhvac.plugins.corona import Corona
-
-    original = Corona.trans_swing
-
-    def trans_swing(self, swing):
-        return irhvac.swingv_t_kAuto if swing == "on" else original(self, swing)
-
-    monkeypatch.setattr(Corona, "trans_swing", trans_swing)
     dev = device()
     record = load_oracle("CORONA_AC")[0]
     walk = ["off", "on", "on", "off", "off", "on"]
@@ -345,9 +333,9 @@ def test_swing_toggle_matches_c_with_the_glue_fixed(monkeypatch):
         for mode in ("cool", "heat")
         for swing in walk
     ]
-    assert_sequence_matches_c(dev, record, states, dev.LAYOUTS)
+    assert_sequence_matches_c(dev, record, states, dev.LAYOUTS, glue="fixed")
     for old in states:
-        (rec,) = c_sequence(record, [old])  # a fresh C object
+        (rec,) = c_sequence(record, [old], glue="fixed")  # a fresh C object
         assert_matches_oracle(dev, rec, dev.LAYOUTS)
 
 

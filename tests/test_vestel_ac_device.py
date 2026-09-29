@@ -105,7 +105,6 @@ EXTRA_STATES = (
 
 
 def test_states_beyond_the_oracle_grid_match_the_c_path():
-    pytest.importorskip("pyhvac.irhvac")
     dev = device()
     record = load_oracle("VESTEL_AC")[0]
     for rec in c_sequence(record, EXTRA_STATES):
@@ -334,7 +333,6 @@ def test_undeclared_deviation_is_reported(defect, match):
 
 
 def test_undeclared_heat_17_deviation_is_reported():
-    pytest.importorskip("pyhvac.irhvac")
     dev = device()
     record = load_oracle("VESTEL_AC")[0]
     old = {"mode": "heat", "temperature": 17, "fan": "medium", "swing": "off"}

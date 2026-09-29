@@ -187,7 +187,6 @@ def extra_states(variant):
 
 @pytest.mark.parametrize("variant", VARIANTS)
 def test_states_beyond_the_oracle_grid_match_the_c_path(variant):
-    pytest.importorskip("pyhvac.irhvac")
     record = next(
         r for r in load_oracle("FUJITSU_AC") if r["class"] == LEGACY_CLASS[variant]
     )
@@ -411,7 +410,6 @@ def test_other_variants_snap_to_whole_degrees(variant):
 def test_arrew4e_half_degrees_match_the_c_path():
     # The old glue passes the setpoint through; IRac::fujitsu's setTemp
     # encodes the half degree.
-    pytest.importorskip("pyhvac.irhvac")
     record = next(r for r in load_oracle("FUJITSU_AC") if r["class"] == "Fujitsuv6")
     dev = AsC(device("ARREW4E"))
     states = [

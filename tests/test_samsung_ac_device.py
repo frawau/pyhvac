@@ -179,7 +179,6 @@ EXTRA_STATES = (
 
 
 def test_states_beyond_the_oracle_grid_match_the_c_path():
-    pytest.importorskip("pyhvac.irhvac")
     dev = device()
     record = load_oracle("SAMSUNG_AC")[0]
     for target in EXTRA_STATES:
@@ -571,7 +570,6 @@ def test_undeclared_deviation_is_reported(defect, match):
     ],
 )
 def test_undeclared_c_only_deviation_is_reported(defect, old):
-    pytest.importorskip("pyhvac.irhvac")
     dev = device()
     (rec,) = c_sequence(load_oracle("SAMSUNG_AC")[0], [old])
     defects = [d for d in DEFECTS if d != defect]

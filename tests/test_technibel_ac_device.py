@@ -1,5 +1,7 @@
 import pytest
 
+from c_oracle import c_encode, c_frozen
+
 from oracle import load_oracle
 from port_oracle import Defect, assert_matches_oracle, oracle_params, state_from_record
 from pyhvac import registry
@@ -343,11 +345,7 @@ def test_registry_serves_the_port(brand, model):
     assert isinstance(registry.get_device(brand, model), TechnibelAcDevice)
 
 
-def _legacy_class(brand):
-    from pyhvac.plugins.teco import Teco
-    from pyhvac.plugins.technibel import Technibel
-
-    return Technibel if brand == "technibel" else Teco
+LEGACY_CLASS = {"technibel": "Technibel", "teco": "Teco"}
 
 
 # -------------------------------------------------------------- the C path
@@ -364,10 +362,6 @@ def test_matches_the_c_path_beyond_the_oracle_grid(brand):
     # every mode, every setpoint, every fan (dry included) against the C
     # path. Swing and sleep stay off (DEFECTS). The legacy Teco entity
     # clamps 31 C to 30, so its check stops at 30.
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-
-    legacy = LegacyDevice(brand, "generic", _legacy_class(brand))
     dev = device(brand)
     caps = dev.capabilities
     top = 30 if brand == "teco" else 31
@@ -376,25 +370,32 @@ def test_matches_the_c_path_beyond_the_oracle_grid(brand):
             for t in range(16, top + 1):
                 for fan in caps.fan.values:
                     target = HvacState(power, mode, float(t), fan=fan)
-                    theirs = _c_word(legacy.encode(None, target).signal.pulses)
+                    pulses = c_encode(brand, "generic", LEGACY_CLASS[brand], target)
+                    theirs = _c_word(pulses)
                     assert data(target, brand=brand) == theirs, target
 
 
 def test_swing_and_sleep_match_c_with_the_glue_bypassed():
     # With swing and sleep set on IRac directly (the glue drops them), C
     # sets the Swing and Sleep bits exactly as the port does.
-    irhvac = pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.plugins.technibel import Technibel
+
+    def live(swing, sleep):
+        from pyhvac import irhvac
+        from pyhvac.plugins.technibel import Technibel
+
+        legacy = Technibel()
+        legacy.irac.next.swingv = (
+            irhvac.swingv_t_kAuto if swing == "swing" else irhvac.swingv_t_kOff
+        )
+        legacy.irac.next.sleep = 0 if sleep else -1
+        legacy.to_set = {"mode": "heat", "temperature": 24, "fan": "high"}
+        return [int(x) for x in legacy.to_lirc(legacy.build_ircode())]
 
     for swing in ("off", "swing"):
         for sleep in (False, True):
-            legacy = Technibel()
-            legacy.irac.next.swingv = (
-                irhvac.swingv_t_kAuto if swing == "swing" else irhvac.swingv_t_kOff
+            pulses = c_frozen(
+                ["glue bypassed", swing, sleep], lambda: live(swing, sleep)
             )
-            legacy.irac.next.sleep = 0 if sleep else -1
-            legacy.to_set = {"mode": "heat", "temperature": 24, "fan": "high"}
-            pulses = [int(x) for x in legacy.to_lirc(legacy.build_ircode())]
             if len(pulses) % 2:
                 pulses.append(100000)
             target = on("heat", 24.0, fan="3", swing=swing, sleep=sleep)

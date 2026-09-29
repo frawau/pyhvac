@@ -164,7 +164,6 @@ def _extra_states(variant):
 
 @pytest.mark.parametrize("variant", VARIANTS)
 def test_states_beyond_the_oracle_grid_match_the_c_path(variant):
-    pytest.importorskip("pyhvac.irhvac")
     dev = device(variant)
     cls = {"KKG9AC1": "Miragev1", "KKG29AC1": "Miragev2"}[variant]
     record = next(r for r in load_oracle("MIRAGE") if r["class"] == cls)

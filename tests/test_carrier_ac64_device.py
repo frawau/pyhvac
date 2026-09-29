@@ -1,5 +1,7 @@
 import pytest
 
+from c_oracle import c_encode
+
 from oracle import load_oracle
 from port_oracle import assert_matches_oracle, oracle_params, state_from_record
 from pyhvac import registry
@@ -237,13 +239,9 @@ def test_registry_serves_the_port(model):
 def test_off_in_every_mode_matches_the_c_path(mode, t, fan):
     # The oracle's off records only say "off" (read as cool); the C path
     # sends the same off message whatever the target mode.
-    pytest.importorskip("pyhvac.irhvac")
     from pyhvac.ir.codec import decode
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.carrier import Carrier
 
-    legacy = LegacyDevice("carrier", "generic", Carrier)
     target = HvacState(False, mode, t, fan=fan)
-    pulses = legacy.encode(None, target).signal.pulses
+    pulses = c_encode("carrier", "generic", "Carrier", target)
     theirs = decode(device().PROTOCOL, pulses, expected=["main"])
     assert device().frames(None, device().normalise(target), ()) == theirs

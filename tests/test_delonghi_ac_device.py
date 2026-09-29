@@ -1,5 +1,7 @@
 import pytest
 
+from c_oracle import c_encode
+
 from oracle import load_oracle
 from port_oracle import assert_matches_oracle, oracle_params, state_from_record
 from pyhvac import registry
@@ -238,15 +240,12 @@ def test_registry_serves_the_port(model):
 def test_states_outside_the_oracle_match_the_c_path(power, mode, t, powerful):
     # C-only: off messages with boost, 17 C and boost in every mode, which the
     # oracle grid lacks, against the legacy C encoder.
-    pytest.importorskip("pyhvac.irhvac")
     from pyhvac.ir.codec import decode
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.delonghi import Delonghi
 
     dev = device()
     target = HvacState(power, mode, t, features={"powerful": powerful})
-    pulses = LegacyDevice("delonghi", "PAC A95", Delonghi).encode(None, target)
-    (theirs,) = decode(dev.PROTOCOL, list(pulses.signal.pulses), expected=["main"])
+    pulses = c_encode("delonghi", "PAC A95", "Delonghi", target)
+    (theirs,) = decode(dev.PROTOCOL, pulses, expected=["main"])
     (ours,) = dev.frames(None, dev.normalise(target), ())
     assert ours.data == theirs.data
 

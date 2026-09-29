@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from pyhvac.plugins.sharp import JTech, JTechDevice
+from pyhvac.plugins.sharp import JTechDevice
 from pyhvac.state import HvacState
 
 GOLDEN = Path(__file__).parent / "fixtures" / "golden" / "sharp.json.gz"
@@ -15,8 +15,23 @@ SWING_V.update({"60°": "3", "45°": "4", "30°": "5"})
 SWING_H = {"left": "1", "middle": "2", "right": "3", "swing": "swing"}
 
 
+# The status of a fresh 0.1.x JTech object (what the golden records were
+# built from).
+FRESH_JTECH = {
+    "mode": "off",
+    "temperature": 25,
+    "fan": "auto",
+    "swing": "auto",
+    "hswing": "middle",
+    "target": "off",
+    "purifier": "off",
+    "economy": "off",
+    "powerful": "off",
+}
+
+
 def from_old(old):
-    old = {**JTech().status, **old}
+    old = {**FRESH_JTECH, **old}
     return HvacState(
         power=old["mode"] != "off",
         mode="cool" if old["mode"] == "off" else old["mode"],

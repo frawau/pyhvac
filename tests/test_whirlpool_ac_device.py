@@ -1,5 +1,7 @@
 import pytest
 
+from c_oracle import c_frozen
+
 from oracle import load_oracle
 from port_oracle import (
     Defect,
@@ -182,7 +184,6 @@ EXTRA_STATES = (
 
 @pytest.mark.parametrize("model", [V1, V2])
 def test_states_beyond_the_oracle_grid_match_the_c_path(model):
-    pytest.importorskip("pyhvac.irhvac")
     dev = device(model)
     record = first_record(model)
     for old in EXTRA_STATES:
@@ -191,20 +192,26 @@ def test_states_beyond_the_oracle_grid_match_the_c_path(model):
         assert_matches_oracle(dev, rec, LAYOUTS, DEFECTS)
 
 
-def _glue_fixed_c(model, cls, target):
+def _glue_fixed_c(model, cls_name, target):
     """C's bytes for ``target`` with sleep and swing "on" set on IRac
-    directly (the two keys the legacy glue drops)."""
-    from pyhvac import irhvac
-    from pyhvac.legacy import LegacyDevice
+    directly (the two keys the legacy glue drops); frozen."""
 
-    legacy = cls()
-    old = LegacyDevice("whirlpool", model, cls).to_old(target)
-    legacy.to_set = {k: v for k, v in old.items() if k not in ("swing", "sleep")}
-    legacy.irac.next.sleep = 0 if target.features["sleep"] else -1
-    legacy.irac.next.swingv = (
-        irhvac.swingv_t_kAuto if target.swing_v == "swing" else irhvac.swingv_t_kOff
-    )
-    return c_data(int(x) for x in legacy.to_lirc(legacy.build_ircode()))
+    def live():
+        from pyhvac import irhvac
+        from pyhvac.legacy import LegacyDevice
+        from pyhvac.plugins import whirlpool
+
+        cls = getattr(whirlpool, cls_name)
+        legacy = cls()
+        old = LegacyDevice("whirlpool", model, cls).to_old(target)
+        legacy.to_set = {k: v for k, v in old.items() if k not in ("swing", "sleep")}
+        legacy.irac.next.sleep = 0 if target.features["sleep"] else -1
+        legacy.irac.next.swingv = (
+            irhvac.swingv_t_kAuto if target.swing_v == "swing" else irhvac.swingv_t_kOff
+        )
+        return [int(x) for x in legacy.to_lirc(legacy.build_ircode())]
+
+    return c_data(c_frozen(["glue fixed", model, target], live))
 
 
 @pytest.mark.parametrize("model", [V1, V2])
@@ -214,10 +221,7 @@ def test_sleep_and_swing_match_c_once_they_reach_it(model, mode, fan):
     # SWING, SLEEP and SLEEP_FAN are glue defects: with sleep and swing set
     # on IRac directly, C sends exactly the port's frames (Sleep, fan low,
     # Swing1/Swing2).
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.plugins.whirlpool import Whirlpool, Whirlpoolv2
-
-    cls = {V1: Whirlpool, V2: Whirlpoolv2}[model]
+    cls = {V1: "Whirlpool", V2: "Whirlpoolv2"}[model]
     for sleep in (False, True):
         for swing in ("off", "swing"):
             target = state(
@@ -553,15 +557,6 @@ def test_registry_serves_the_port(model):
     assert dev.variant == WHIRLPOOL_AC_MODELS[model]
 
 
-def test_every_legacy_model_is_served_by_the_port():
-    from pyhvac.plugins.whirlpool import PluginObject
-
-    assert set(WHIRLPOOL_AC_MODELS) == set(PluginObject.MODELS)
-    variant = {"Whirlpool": "DG11J13A", "Whirlpoolv2": "DG11J191"}
-    for model, cls in PluginObject.MODELS.items():
-        assert WHIRLPOOL_AC_MODELS[model] == variant[cls.__name__]
-
-
 @pytest.mark.parametrize(
     "model, low, high",
     [
@@ -626,7 +621,6 @@ def test_undeclared_deviation_is_reported(defect, match):
 
 @pytest.mark.parametrize("defect", SLEEP_FAN[1:])
 def test_undeclared_sleep_fan_deviation_is_reported(defect):
-    pytest.importorskip("pyhvac.irhvac")
     record = load_oracle("WHIRLPOOL_AC")[0]
     fan = {"2": "medium", "3": "high"}[defect.theirs]
     old = {"mode": "cool", "temperature": 22, "fan": fan, "sleep": "on"}

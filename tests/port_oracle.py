@@ -6,11 +6,11 @@ declared as a ``Defect``: a field where the C library is known to deviate
 from the documented protocol.
 """
 
-import importlib
 from dataclasses import dataclass
 
 import pytest
 
+from c_oracle import c_sequence  # noqa: F401 (re-exported)
 from oracle import check_against_oracle, load_oracle
 from pyhvac.fields import Joined
 from pyhvac.ir.codec import decode
@@ -123,34 +123,8 @@ def assert_matches_oracle(device, record, layouts, defects=(), previous=None):
         check_against_oracle(device.PROTOCOL, record, ours)
 
 
-def c_sequence(record, states):
-    """C-gated: the records one persistent legacy (C) object produces for
-    ``states`` (old vocabulary), sent in order. IRac keeps the last message
-    sent (its _prev), so toggle protocols toggle as on a real remote.
-
-    ``record`` is an oracle record naming the legacy plugin and class.
-    """
-    pytest.importorskip("pyhvac.irhvac")
-    module = importlib.import_module(f"pyhvac.plugins.{record['plugin']}")
-    cls = getattr(module, record["class"])
-    legacy = cls()
-    status = dict(legacy.status)
-    out = []
-    for old in states:
-        # Only IRac's memory of the last message sent carries over: the
-        # glue's status and IRac's next state (which keep keys a state does
-        # not mention) start fresh, as for a new object.
-        legacy.status = dict(status)
-        legacy.irac.next = cls().irac.next
-        # Bypass the setters, as tools/oracle_generate.py does.
-        legacy.to_set = dict(old)
-        pulses = [int(x) for x in legacy.to_lirc(legacy.build_ircode())]
-        out.append({**record, "state": old, "pulses": pulses})
-    return out
-
-
 def assert_sequence_matches_c(
-    device, record, states, layouts, defects=(), adapt=lambda rec: rec
+    device, record, states, layouts, defects=(), adapt=lambda rec: rec, glue=None
 ):
     """Send ``states`` in order through one persistent C object and through
     the port, each message with the one before it as ``previous``; every
@@ -158,7 +132,7 @@ def assert_sequence_matches_c(
     C record to the one the port is compared against (as the test's
     oracle comparison does)."""
     previous = None
-    for rec in c_sequence(record, states):
+    for rec in c_sequence(record, states, glue=glue):
         rec = adapt(rec)
         assert_matches_oracle(device, rec, layouts, defects, previous=previous)
         previous = state_from_record(device, rec["state"])

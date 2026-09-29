@@ -1,5 +1,7 @@
 import pytest
 
+from c_oracle import c_encode
+
 from oracle import load_oracle
 from port_oracle import (
     Defect,
@@ -205,15 +207,10 @@ def test_off_carries_mode_auto_and_the_setpoint(mode, t):
 
 @pytest.mark.parametrize("mode", MODES)
 def test_off_matches_the_c_path_in_every_mode(mode):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.electra import Electra
-
-    legacy = LegacyDevice("electra", "generic", Electra)
     for t in (16.0, 25.0, 32.0):
         for fan in ("auto", "1", "2", "3"):
             target = state(False, mode, t, fan=fan, features=features(quiet=1))
-            pulses = legacy.encode(None, target).signal.pulses
+            pulses = c_encode("electra", "generic", "Electra", target)
             (theirs,) = decode(device().PROTOCOL, list(pulses), expected=["main"])
             (ours,) = device().frames(None, target, ())
             assert ours.data == theirs.data

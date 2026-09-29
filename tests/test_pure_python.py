@@ -26,3 +26,12 @@ def test_no_old_api_or_c_left():
 def test_nothing_compiled_is_shipped():
     assert not list((ROOT / "pyhvac").rglob("*.so"))
     assert not (ROOT / "setup.py").exists()
+
+
+def test_the_pypi_upload_keeps_the_trusted_publishers_workflow_file():
+    # PyPI's trusted publisher for pyhvac (environment AutoPublish) is bound
+    # to .github/workflows/build_wheels.yml: renaming it breaks the upload.
+    workflow = ROOT / ".github" / "workflows" / "build_wheels.yml"
+    assert workflow.exists()
+    text = workflow.read_text()
+    assert "AutoPublish" in text and "gh-action-pypi-publish" in text

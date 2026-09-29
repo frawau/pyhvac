@@ -207,3 +207,13 @@ def test_checksums_apply_every_part():
 def test_checksum_past_the_skeleton_is_refused():
     with pytest.raises(ValueError, match="past"):
         Layout(b"\x00", {}, checksum=HighNibbleSum(0, 1, 1))
+
+
+def test_sum8_init_base_and_xor():
+    data = b"\x10\x20\x00"
+    assert Sum8(0, 2, 2, init=5).compute(data) == 0x35  # Truma: 5 + sum
+    assert Sum8(0, 2, 2, base=0).compute(data) == -0x30 & 0xFF  # ~sum + 1
+    assert Sum8(0, 2, 2, base=0xFF).compute(data) == ~0x30 & 0xFF  # ~sum
+    assert Sum8(0, 2, 2, base=0x7F, xor=0x2C).compute(data) == (0x7F - 0x30) ^ 0x2C
+    assert Sum8(0, 2, 2, init=1, base=0x9B).compute(data) == 0x9B - 0x31
+    assert Sum8(0, 2, 2, base=0xFF).check(b"\x10\x20\xcf")

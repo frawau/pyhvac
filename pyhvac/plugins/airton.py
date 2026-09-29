@@ -24,11 +24,10 @@
 ##
 # Description of the various ": Greev1, devices supported. Can be a remote control name
 
-from dataclasses import dataclass
 
 from .hvaclib import PulseBased, GenPluginObject
 from ..device import Device
-from ..fields import Checksum, Field, Layout
+from ..fields import Field, Layout, Sum8
 from ..ir.model import Frame, Protocol, PulseDistance, Section
 from ..choices import FAN_5, ON_OFF, SWING
 from ..state import Capabilities, TemperatureRange
@@ -76,15 +75,6 @@ AIRTON = Protocol(
 )
 
 
-@dataclass(frozen=True)
-class AirtonChecksum(Checksum):
-    """IRAirtonAc::calcChecksum: 0x7F minus the sum of the bytes before
-    ``at``, XORed with 0x2C."""
-
-    def compute(self, data):
-        return ((0x7F - sum(self._input(data))) & 0xFF) ^ 0x2C
-
-
 # Skeleton: stateReset writes the header (0x11D3) and clears every other
 # bit, so the unused bits of bytes 3, 4 and 5 are always 0.
 AIRTON_LAYOUT = Layout(
@@ -112,7 +102,8 @@ AIRTON_LAYOUT = Layout(
         "health": Field.at(5, 6, 1),
         "light": Field.at(5, 7, 1),
     },
-    AirtonChecksum(0, 6, 6),
+    # IRAirtonAc::calcChecksum: (0x7F - sum) ^ 0x2C
+    Sum8(0, 6, 6, base=0x7F, xor=0x2C),
 )
 
 # The temperature IRAirtonAc::setTemp forces in mode auto (kAirtonMaxTemp).

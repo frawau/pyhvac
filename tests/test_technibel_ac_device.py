@@ -12,7 +12,6 @@ from pyhvac.plugins.technibel import (
     TECHNIBEL_AC_MODELS,
     TECHNIBEL_AC_RESET_STATE,
     TECHNIBEL_AC_TECO_MODELS,
-    TechnibelAcChecksum,
     TechnibelAcDevice,
 )
 from pyhvac.state import HvacState
@@ -168,10 +167,10 @@ def test_reset_state_is_the_skeleton():
 def test_checksum_is_the_negated_sum_of_bytes_1_to_4():
     # calcChecksum: ~sum + 1 over TimerHours, Temp, the fan and mode bytes;
     # the Header and Footer are left out.
-    assert TechnibelAcChecksum(1, 5, 6).compute(KNOWN_STATE) == 0x4B
+    assert TECHNIBEL_AC_LAYOUT.checksum.compute(KNOWN_STATE) == 0x4B
     word = bytearray(KNOWN_STATE)
     word[0] = word[5] = 0xFF
-    assert TechnibelAcChecksum(1, 5, 6).check(word)
+    assert TECHNIBEL_AC_LAYOUT.checksum.check(word)
 
 
 # ------------------------------------------------------------------- rules

@@ -23,14 +23,13 @@
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
 #
 
-from dataclasses import dataclass
 
 from .hvaclib import PulseBased, GenPluginObject
-from ..choices import FAN_3, ON_OFF, SWING
+from ..choices import FAN_3, FAN_3_FIXED, ON_OFF, SWING
 from ..device import Device
 from ..fields import Field, Layout, Sum8
 from ..ir.model import Frame, Protocol, PulseDistance, Section
-from ..state import Capabilities, Choice, TemperatureRange
+from ..state import Capabilities, TemperatureRange
 
 
 class Technibel(PulseBased):
@@ -89,15 +88,6 @@ TECHNIBEL_AC_FAN = {"1": 0b001, "2": 0b010, "3": 0b100}  # kTechnibelAcFan*
 TECHNIBEL_AC_RESET_STATE = 0x180101140000EA  # kTechnibelAcResetState
 
 
-@dataclass(frozen=True)
-class TechnibelAcChecksum(Sum8):
-    """IRTechnibelAc::calcChecksum: the two's complement (~sum + 1) of the
-    sum of data[start:end]."""
-
-    def compute(self, data):
-        return -super().compute(data) & 0xFF
-
-
 # Skeleton: kTechnibelAcResetState, which stateReset loads whole (no stale
 # memory): Header 0x18, cool, power off, fan low, 20 C, Footer 0, the sum.
 TECHNIBEL_AC_LAYOUT = Layout(
@@ -127,14 +117,14 @@ TECHNIBEL_AC_LAYOUT = Layout(
     },
     # calcChecksum: the bytes from kTechnibelAcTimerHoursOffset up to
     # kTechnibelAcHeaderOffset (TimerHours, Temp, the fan and mode bytes).
-    checksum=TechnibelAcChecksum(1, 5, 6),
+    checksum=Sum8(1, 5, 6, base=0),  # IRTechnibelAc::calcChecksum: ~sum + 1
 )
 
 TECHNIBEL_AC_CAPABILITIES = {  # variant -> the legacy entity (old class)
     "technibel": Capabilities(  # Technibel
         modes=("cool", "dry", "fan", "heat"),
         temperature=TemperatureRange(16.0, 31.0),
-        fan=Choice(FAN_3.values[1:], {v: FAN_3.labels[v] for v in FAN_3.values[1:]}),
+        fan=FAN_3_FIXED,
         swing_v=SWING,
         features={"sleep": ON_OFF},
     ),

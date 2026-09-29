@@ -23,11 +23,10 @@
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
 #
 
-from dataclasses import dataclass
 
 from .hvaclib import PulseBased, GenPluginObject
 from ..device import Device
-from ..fields import Checksum, Field, Layout, Sum8
+from ..fields import Field, Layout, Sum8
 from ..ir.model import Frame, Protocol, PulseDistance, Section
 from ..choices import FAN_4, ON_OFF, SWING, SWING_V_ANGLES
 from ..state import Capabilities, TemperatureRange
@@ -109,17 +108,6 @@ TCL112AC = Protocol(
 )
 
 
-@dataclass(frozen=True)
-class Tcl112AcSpecialSum(Checksum):
-    """IRTcl112Ac::calcChecksum for a special message (byte 3 is 0x02): the
-    sum of data[start:end] plus ``offset`` (0xF), mod 256."""
-
-    offset: int = 0xF
-
-    def compute(self, data):
-        return (sum(self._input(data)) + self.offset) & 0xFF
-
-
 TCL112AC_MSG_TYPE = {"normal": 0b01, "special": 0b10}  # kTcl112AcNormal/Special
 # tcl_ac_remote_model_t -> isTcl, as IRTcl112Ac::setModel writes it.
 TCL112AC_MODEL = {"TAC09CHSD": 1, "GZ055BE1": 0}
@@ -175,7 +163,7 @@ TCL112AC_QUIET_LAYOUT = Layout(
         "msg_type": Field.at(3, 0, 2, values=TCL112AC_MSG_TYPE),
         "quiet": Field.at(5, 5, 1),
     },
-    Tcl112AcSpecialSum(0, 13, 13),  # IRTcl112Ac::calcChecksum, special
+    Sum8(0, 13, 13, init=0xF),  # IRTcl112Ac::calcChecksum, special: sum + 0xF
 )
 
 TCL112AC_MIN = 16  # kTcl112AcTempMin

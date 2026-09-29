@@ -23,7 +23,6 @@
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
 #
 
-from dataclasses import dataclass
 
 from .hvaclib import PulseBased, GenPluginObject
 from ..device import Device
@@ -102,15 +101,6 @@ VOLTAS = Protocol(
 )
 
 
-@dataclass(frozen=True)
-class VoltasChecksum(Sum8):
-    """IRVoltas::calcChecksum: the complement of the sum of
-    data[start:end]."""
-
-    def compute(self, data):
-        return ~super().compute(data) & 0xFF
-
-
 # Skeleton: stateReset's kReset {0x33, 0x28, 0x00, 0x17, 0x3B, 0x3B, 0x3B,
 # 0x11, 0x00} with the sum cleared. stateReset writes every byte, so nothing
 # comes from stale memory. The timers (disabled, bytes 4-8) and the unnamed
@@ -152,7 +142,7 @@ VOLTAS_LAYOUT = Layout(
         "off_timer_enable": Field.at(8, 6, 1),
         "on_timer_enable": Field.at(8, 7, 1),
     },
-    VoltasChecksum(0, 9, 9),
+    Sum8(0, 9, 9, base=0xFF),  # IRVoltas::calcChecksum: ~sum
 )
 
 VOLTAS_MIN_TEMP = 16  # kVoltasMinTemp

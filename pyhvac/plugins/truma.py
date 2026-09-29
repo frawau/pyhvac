@@ -23,14 +23,13 @@
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
 #
 
-from dataclasses import dataclass
 
 from .hvaclib import PulseBased, GenPluginObject
 from ..device import Device
 from ..fields import Field, Layout, Sum8
 from ..ir.model import Frame, Protocol, PulseWidth, Section
-from ..choices import ON_OFF
-from ..state import Capabilities, Choice, TemperatureRange
+from ..choices import FAN_3_FIXED, ON_OFF
+from ..state import Capabilities, TemperatureRange
 
 
 class Truma(PulseBased):
@@ -75,15 +74,6 @@ TRUMA = Protocol(
 )
 
 
-@dataclass(frozen=True)
-class TrumaChecksum(Sum8):
-    """IRTrumaAc::calcChecksum: kTrumaChecksumInit (5) plus the sum of
-    data[start:end]."""
-
-    def compute(self, data):
-        return (5 + super().compute(data)) & 0xFF
-
-
 # Skeleton: kTrumaDefaultState (0x50FFFFFFE6E781) with the written fields
 # and the sum cleared: byte 0 is 0x81, the top bits of bytes 1 (0b11) and 2
 # (0b111) are set, bytes 3-5 are 0xFF.
@@ -99,7 +89,7 @@ TRUMA_LAYOUT = Layout(
             2, 0, 5, values={t: t - 10 for t in range(16, 32)}
         ),
     },
-    TrumaChecksum(0, 6, 6),
+    Sum8(0, 6, 6, init=5),  # IRTrumaAc::calcChecksum: kTrumaChecksumInit + sum
 )
 
 
@@ -125,7 +115,7 @@ class TrumaDevice(Device):
     capabilities = Capabilities(
         modes=("auto", "cool", "fan"),
         temperature=TemperatureRange(16.0, 31.0),
-        fan=Choice(("1", "2", "3"), {"1": "low", "2": "medium", "3": "high"}),
+        fan=FAN_3_FIXED,
         features={"quiet": ON_OFF},
     )
 

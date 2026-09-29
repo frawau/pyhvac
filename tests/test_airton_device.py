@@ -6,7 +6,6 @@ from pyhvac import registry
 from pyhvac.plugins.airton import (
     AIRTON_LAYOUT,
     AIRTON_MODELS,
-    AirtonChecksum,
     AirtonDevice,
 )
 from pyhvac.state import HvacState
@@ -92,9 +91,9 @@ def test_layout_reads_the_real_captures(value, fields):
 
 def test_checksum_rejects_the_bad_capture():
     # TestIRAirtonAcClass.Checksums: 0x551400090C11D3 is invalid, 0x5E valid.
-    assert not AirtonChecksum(0, 6, 6).check((0x551400090C11D3).to_bytes(7, "little"))
+    assert not AIRTON_LAYOUT.checksum.check((0x551400090C11D3).to_bytes(7, "little"))
     good = (0x5E1400090C11D3).to_bytes(7, "little")
-    assert AirtonChecksum(0, 6, 6).compute(good) == 0x5E
+    assert AIRTON_LAYOUT.checksum.compute(good) == 0x5E
 
 
 @pytest.mark.parametrize(

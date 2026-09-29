@@ -23,11 +23,10 @@
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
 #
 
-from dataclasses import dataclass
 
 from .hvaclib import PulseBased, GenPluginObject
 from ..device import Device
-from ..fields import Checksum, Copy, Field, Layout
+from ..fields import Copy, Field, Layout, Sum8
 from ..ir.model import Frame, Protocol, PulseDistance, Section
 from ..choices import FAN_4, ON_OFF, SWING
 from ..state import Capabilities, TemperatureRange
@@ -211,17 +210,6 @@ FUJITSU_AC_CMD = {
 FUJITSU_AC_MIN_TEMP, FUJITSU_AC_MAX_TEMP = 16, 30  # kFujitsuAcMinTemp / MaxTemp
 
 
-@dataclass(frozen=True)
-class FujitsuAcChecksum(Checksum):
-    """IRFujitsuAC::checkSum for long codes: ``complement`` minus the sum of
-    data[start:end], mod 256."""
-
-    complement: int = 0
-
-    def compute(self, data):
-        return (self.complement - sum(self._input(data))) & 0xFF
-
-
 def _fujitsu_ac_header_fields():
     return {
         "id": Field.at(2, 4, 2),  # Id (IRac never sets it)
@@ -263,7 +251,7 @@ FUJITSU_AC_LONG_LAYOUT = Layout(
         "unknown": Field.at(14, 5, 1),
         "outside_quiet": Field.at(14, 7, 1),
     },
-    checksum=FujitsuAcChecksum(7, 15, 15),
+    checksum=Sum8(7, 15, 15, base=0),  # IRFujitsuAC::checkSum: 0 - sum
 )
 
 # The long code of the ARDB1 and ARJW2 remotes, 15 bytes (RestLength 8, Cmd
@@ -272,7 +260,7 @@ FUJITSU_AC_LONG_LAYOUT = Layout(
 FUJITSU_AC_LONG15_LAYOUT = Layout(
     bytes.fromhex("14630010 10fc0830 00000000 000000"),
     _fujitsu_ac_state_fields(),
-    checksum=FujitsuAcChecksum(0, 14, 14, complement=0x9B),
+    checksum=Sum8(0, 14, 14, base=0x9B),  # IRFujitsuAC::checkSum: 0x9B - sum
 )
 
 # The short code, 7 bytes: the long code's bytes 0-5 (Cmd a command), then

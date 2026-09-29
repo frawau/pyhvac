@@ -185,8 +185,18 @@ class Checksum:
 
 @dataclass(frozen=True)
 class Sum8(Checksum):
+    """``init`` plus the sum of the bytes, mod 256; with ``base``, ``base``
+    minus that; then XORed with ``xor``."""
+
+    init: int = 0
+    base: Optional[int] = None
+    xor: int = 0
+
     def compute(self, data):
-        return sum(self._input(data)) & 0xFF
+        total = self.init + sum(self._input(data))
+        if self.base is not None:
+            total = self.base - total
+        return (total & 0xFF) ^ self.xor
 
 
 @dataclass(frozen=True)

@@ -10,7 +10,6 @@ from pyhvac.plugins.truma import (
     TRUMA,
     TRUMA_LAYOUT,
     TRUMA_MODELS,
-    TrumaChecksum,
     TrumaDevice,
 )
 from pyhvac.state import HvacState
@@ -140,7 +139,7 @@ def test_port_reproduces_the_synthetic_pulses():
 
 def test_checksum_is_the_byte_sum_plus_five():
     # ir_Truma_test.cpp Checksums: 0x52 for 0x52FFFFFFEFE081.
-    checksum = TrumaChecksum(0, 6, 6)
+    checksum = TRUMA_LAYOUT.checksum
     assert checksum.compute(raw(0x52FFFFFFEFE081)) == 0x52
     assert checksum.check(raw(0x52FFFFFFEFE081))
     assert not checksum.check(raw(0x51FFFFFFEFE081))

@@ -14,6 +14,7 @@ import pytest
 from oracle import check_against_oracle, load_oracle
 from pyhvac.fields import Joined
 from pyhvac.ir.codec import decode
+from pyhvac.ir.formats import to_broadlink
 from pyhvac.state import HvacState
 
 
@@ -177,3 +178,13 @@ def sequence_params(name):
         )
         for cls, recs in by_class.items()
     ]
+
+
+def assert_matches_golden(device, record, state, previous=None):
+    """Assert the port sends what a 0.1.x pure-Python class sent: ``record``
+    is a golden fixture record (tests/fixtures/golden), ``state`` the
+    HvacState its old-vocabulary state stands for, ``previous`` the state of
+    the fresh legacy object it was built from (or None)."""
+    command = device.encode(previous, state)
+    assert list(command.signal.pulses) == record["pulses"], record["state"]
+    assert to_broadlink(command.signal).hex() == record["broadlink"], record["state"]

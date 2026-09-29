@@ -128,3 +128,26 @@ def test_joined_layout_must_cover_every_frame(monkeypatch):
         po.assert_matches_oracle(
             _TwoFrameDevice(3), _joined_record(3), (Joined(_JOINED, 1),)
         )
+
+
+def test_golden_helper_checks_pulses_and_broadlink():
+    # A golden record is what a 0.1.x pure-Python class sent for its state.
+    import gzip
+    import json
+    from pathlib import Path
+
+    from port_oracle import assert_matches_golden
+    from test_jtech_device import PREVIOUS, from_old
+    from pyhvac.plugins.sharp import JTechDevice
+
+    path = Path(__file__).parent / "fixtures" / "golden" / "sharp.json.gz"
+    record = next(
+        r
+        for r in json.loads(gzip.decompress(path.read_bytes()))
+        if r["class"] == "JTech" and r["state"]["mode"] == "cool"
+    )
+    dev = JTechDevice("sharp", "j-tech")
+    assert_matches_golden(dev, record, from_old(record["state"]), PREVIOUS)
+    broken = {**record, "broadlink": "00" + record["broadlink"][2:]}
+    with pytest.raises(AssertionError):
+        assert_matches_golden(dev, broken, from_old(record["state"]), PREVIOUS)

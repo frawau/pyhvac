@@ -317,6 +317,190 @@ MITSUBISHI_HEAVY152_MODELS = (
 DEVICES.update({m: MitsubishiHeavy152Device for m in MITSUBISHI_HEAVY152_MODELS})
 
 
+# ---------------------------------------------------- MitsubishiHeavy88
+# Layout from IRremoteESP8266's Mitsubishi88Protocol (ir_MitsubishiHeavy.h):
+# 11 bytes sent LSB first in one frame (sendMitsubishiHeavy88: sendGeneric
+# with MSBfirst false). Bytes 0-4 are kMitsubishiHeavyZjsSig; from byte 3 on,
+# every second byte is the complement of the one before it
+# (IRMitsubishiHeavy88Ac::checksum, invertBytePairs from byte 3). stateReset
+# zeroes bytes 5-10, so no bit is left to stale memory. The vertical and
+# horizontal swing codes are split across the struct (SwingV5/SwingV7,
+# SwingH1/SwingH2).
+
+MITSUBISHI_HEAVY88 = Protocol(
+    "mitsubishi-heavy88",
+    {
+        "main": Section(
+            # kMitsubishiHeavyBitMark/ZeroSpace/OneSpace: a one is the short space
+            PulseDistance(370, 1220, 420),
+            header=(3140, 1630),  # kMitsubishiHeavyHdrMark/HdrSpace
+            footer=(370,),
+            gap=100000,  # kMitsubishiHeavyGap = kDefaultMessageGap
+        ),
+    },
+    carrier=38000,  # sendMitsubishiHeavy88: 38 kHz
+)
+
+
+@dataclass(frozen=True)
+class MitsubishiHeavy88SplitField(Field):
+    """A field whose bits are scattered over the frame: raw bit k is frame
+    bit ``spread[k]``, as the header's getters join the struct parts
+    (getSwingVertical: SwingV5 | SwingV7 << 1; getSwingHorizontal:
+    SwingH1 | SwingH2 << 2)."""
+
+    spread: tuple = ()
+
+    @classmethod
+    def over(cls, *positions, **kw):
+        """A field over the (byte, bit) ``positions``, lowest raw bit first."""
+        bits = tuple(byte * 8 + bit for byte, bit in positions)
+        return cls(bits[0], len(bits), spread=bits, **kw)
+
+    @property
+    def bits(self):
+        return self.spread
+
+
+MITSUBISHI_HEAVY88_MODE = {  # kMitsubishiHeavy{Auto,Cool,Dry,Heat}
+    "auto": 0,
+    "cool": 1,
+    "dry": 2,
+    "heat": 4,
+}
+MITSUBISHI_HEAVY88_FAN = {  # canonical fan -> kMitsubishiHeavy88Fan*, as convertFan
+    "auto": 0,  # Auto: not in the entity; what C falls back to (see the device)
+    "1": 7,  # lowest (kMin): Econo
+    "2": 2,  # Low
+    "3": 3,  # Med
+    "4": 6,  # highest (kMax): Turbo
+}
+MITSUBISHI_HEAVY88_SWING_V = {  # canonical -> kMitsubishiHeavy88SwingV*
+    "off": 0b000,
+    "auto": 0b100,
+    "1": 0b110,  # Highest
+    "2": 0b001,  # High
+    "3": 0b011,  # Middle
+    "4": 0b101,  # Low
+    "5": 0b111,  # Lowest
+}
+MITSUBISHI_HEAVY88_SWING_H = {  # canonical -> kMitsubishiHeavy88SwingH*
+    "off": 0b0000,
+    "auto": 0b1000,
+    "1": 0b0001,  # LeftMax
+    "2": 0b0101,  # Left
+    "3": 0b1001,  # Middle
+    "4": 0b1101,  # Right
+    "5": 0b0010,  # RightMax
+}
+MITSUBISHI_HEAVY88_MIN_TEMP = 17  # kMitsubishiHeavyMinTemp
+
+# Skeleton: IRMitsubishiHeavy88Ac::stateReset (signature, then zeroes) with
+# the inverted bytes filled in.
+MITSUBISHI_HEAVY88_LAYOUT = Layout(
+    bytes.fromhex("ad513cd92600ff00ff00ff"),
+    {
+        "swing_v": MitsubishiHeavy88SplitField.over(
+            (5, 1), (7, 3), (7, 4), values=MITSUBISHI_HEAVY88_SWING_V
+        ),
+        "swing_h": MitsubishiHeavy88SplitField.over(
+            (5, 2), (5, 3), (5, 6), (5, 7), values=MITSUBISHI_HEAVY88_SWING_H
+        ),
+        "clean": Field.at(5, 5, 1),
+        "fan": Field.at(7, 5, 3, values=MITSUBISHI_HEAVY88_FAN),
+        "mode": Field.at(9, 0, 3, values=MITSUBISHI_HEAVY88_MODE),
+        "power": Field.at(9, 3, 1),
+        "temperature": Field.at(9, 4, 4),  # whole °C - kMitsubishiHeavyMinTemp
+    },
+    checksum=InvertedPairs(3, 11),
+)
+
+
+class MitsubishiHeavy88Device(Device):
+    """Mitsubishi Heavy 88-bit (RKX502A001C): a full-state protocol with an
+    explicit power bit and no toggles, so ``previous`` is ignored.
+
+    Powerful and economy are fan codes (Turbo, Econo), not separate bits:
+    as IRac::mitsubishiHeavy88 calls setFan, then setTurbo, then setEcono,
+    powerful overrides the fan speed and economy overrides both.
+
+    Fan lowest and highest send the documented Econo and Turbo codes that
+    convertFan maps them to. The C path sends auto instead: IRac's
+    setTurbo(false) / setEcono(false) reset a Turbo / Econo fan to auto.
+    Vertical swing positions count down from the topmost documented one
+    (Highest); the C path sends High for "90°" and Off for "60°"
+    (kUpperMiddle has no case in convertSwingV).
+    """
+
+    PROTOCOL = MITSUBISHI_HEAVY88
+    LAYOUTS = (MITSUBISHI_HEAVY88_LAYOUT,)
+    capabilities = Capabilities(
+        modes=("auto", "cool", "dry", "heat"),
+        temperature=TemperatureRange(17.0, 31.0),
+        fan=Choice(
+            ("1", "2", "3", "4"),
+            {"1": "lowest", "2": "low", "3": "medium", "4": "highest"},
+        ),
+        swing_v=Choice(
+            ("off", "auto", "1", "2", "3", "4", "5"),
+            {
+                "off": "off",
+                "auto": "auto",
+                "1": "90°",
+                "2": "60°",
+                "3": "45°",
+                "4": "30°",
+                "5": "0°",
+            },
+        ),
+        swing_h=Choice(
+            ("off", "auto", "1", "2", "3", "4", "5"),
+            {
+                "off": "off",
+                "auto": "auto",
+                "1": "far left",
+                "2": "left",
+                "3": "middle",
+                "4": "right",
+                "5": "far right",
+            },
+        ),
+        features={
+            "cleaning": Choice((False, True), {False: "off", True: "on"}),
+            "powerful": Choice((False, True), {False: "off", True: "on"}),
+            "economy": Choice((False, True), {False: "off", True: "on"}),
+        },
+    )
+
+    def frames(self, previous, target, actions):
+        # setTurbo(true) stores the Turbo fan code ("4"), then setEcono(true)
+        # the Econo code ("1"), whatever the requested speed.
+        fan = target.fan
+        if target.features["powerful"]:
+            fan = "4"
+        if target.features["economy"]:
+            fan = "1"
+        data = MITSUBISHI_HEAVY88_LAYOUT.build(
+            power=target.power,
+            # As the C path: an off message carries mode auto (IRac passes
+            # mode "off", which convertMode maps to kMitsubishiHeavyAuto).
+            mode=target.mode if target.power else "auto",
+            # setTemp clamps to 17-31 and stores the offset from 17.
+            temperature=int(target.temperature) - MITSUBISHI_HEAVY88_MIN_TEMP,
+            fan=fan,
+            swing_v=target.swing_v,
+            swing_h=target.swing_h,
+            clean=target.features["cleaning"],
+        )
+        return [Frame("main", bytes(data))]
+
+
+MITSUBISHI_HEAVY88_MODELS = ("RKX502A001C remote", "SRKxxZJ-S A/C", "generic 88")
+
+
+DEVICES.update({m: MitsubishiHeavy88Device for m in MITSUBISHI_HEAVY88_MODELS})
+
+
 # Now the match between models and objects
 class PluginObject(GenPluginObject):
     MODELS = {

@@ -917,8 +917,16 @@ class _ReversedSum8(Sum8):
         return bit_reverse(super().compute(data))
 
 
+# The 0.1.x Panasonic class's frame parts.
+PANASONIC_NATIVE_HEADER = b"\x40\x04\x07\x20\x00"  # FHEADER
+PANASONIC_NATIVE_FILLER = b"\x01"  # FILLER
+PANASONIC_NATIVE_COMMON1 = b"\x00\x00\x70\x07"  # F2COMMON1
+PANASONIC_NATIVE_COMMON2 = b"\x00\x91\x00"  # F2COMMON2
+PANASONIC_NATIVE_ECONOMY = b"\x40\x04\x07\x20\x01\xa1\xac"  # FECON
+PANASONIC_NATIVE_ODOUR = b"\x40\x04\x07\x20\x01\xd9\x4c"  # FODOUR
+
 PANASONIC_NATIVE_SHORT = Layout(  # the 8-byte frames: FHEADER + 2 bytes + crc
-    Panasonic.FHEADER + b"\x00\x00\x00",
+    PANASONIC_NATIVE_HEADER + b"\x00\x00\x00",
     {
         # Bytes 4-6 (byte 4 lowest): F1BODY after FHEADER's zero, or the
         # tail of FECON / FODOUR.
@@ -928,8 +936,8 @@ PANASONIC_NATIVE_SHORT = Layout(  # the 8-byte frames: FHEADER + 2 bytes + crc
             24,
             values={
                 "first": 0,  # FHEADER + F1BODY
-                "economy": int.from_bytes(Panasonic.FECON[4:], "little"),
-                "cleaning": int.from_bytes(Panasonic.FODOUR[4:], "little"),
+                "economy": int.from_bytes(PANASONIC_NATIVE_ECONOMY[4:], "little"),
+                "cleaning": int.from_bytes(PANASONIC_NATIVE_ODOUR[4:], "little"),
             },
         ),
     },
@@ -971,13 +979,13 @@ PANASONIC_NATIVE_PROFILE = {  # code_profile; no legacy class offers profile
 PANASONIC_NATIVE_MIN_TEMP = 16  # Panasonic.base_temp
 PANASONIC_NATIVE_FAN_TEMP = 27  # set_mode/build_code: fan mode sends 27 °C
 PANASONIC_NATIVE_MAIN = Layout(
-    Panasonic.FHEADER
+    PANASONIC_NATIVE_HEADER
     + b"\x00\x00"
-    + Panasonic.FILLER
+    + PANASONIC_NATIVE_FILLER
     + b"\x00"
-    + Panasonic.F2COMMON1
+    + PANASONIC_NATIVE_COMMON1
     + b"\x00"
-    + Panasonic.F2COMMON2
+    + PANASONIC_NATIVE_COMMON2
     + b"\x00\x00",
     {
         "power": Field.at(5, 7, 1),

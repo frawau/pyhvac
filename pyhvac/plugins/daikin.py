@@ -1581,8 +1581,12 @@ DAIKIN_NATIVE_MODE = {"auto": 0x0, "heat": 0x2, "dry": 0x4, "fan": 0x6, "cool": 
 DAIKIN_NATIVE_FAN = {"auto": 0x5}
 DAIKIN_NATIVE_FAN.update({str(n): _bit_reverse_nibble(n + 2) for n in range(1, 6)})
 
+# The 0.1.x Daikinth.FBODY frame body.
+DAIKIN_NATIVE_BODY = (
+    b"\x88\x5b\xe4\x00\x00\x0c\x00\x00\x00\x00\x00\x00\x00\x00\x00\xa3\x00\x10"
+)
 DAIKIN_NATIVE_LAYOUT = Layout(
-    bytes(Daikinth.FBODY) + b"\x00",
+    DAIKIN_NATIVE_BODY + b"\x00",
     {
         # byte 5: power 0x80 | mode (code_mode; FBODY holds cool, 0x0C)
         "mode": Field.at(5, 0, 4, values=DAIKIN_NATIVE_MODE),

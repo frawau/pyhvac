@@ -362,6 +362,16 @@ class Airspool(HVAC):
 
 # Canonical fan level -> airflow enum (byte 8, bits 0-2); see Airspool.FAN_ENUM.
 AIRSPOOL_FAN = {"auto": 0, "1": 2, "2": 4, "3": 3, "4": 6, "5": 5}
+# From the 0.1.x Airspool class: the frame body (FBODY), the mode nibbles
+# (MODE_NIBBLE) and the sleep fan value (SLEEP_ENUM).
+AIRSPOOL_BODY = b"\x23\xcb\x26\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+AIRSPOOL_MODE_NIBBLE = {"heat": 0x01, "dry": 0x02, "cool": 0x03}
+AIRSPOOL_SLEEP_ENUM = 1
+
+
+def airspool_c_to_f(temp_c):
+    """Airspool.c_to_f: the unit is °F-native; the nearest whole °F."""
+    return round(temp_c * 9 / 5 + 32)
 
 
 class AirspoolDevice(Device):
@@ -387,9 +397,9 @@ class AirspoolDevice(Device):
     )
 
     def frames(self, previous, target, actions):
-        body = bytearray(Airspool.FBODY)
+        body = bytearray(AIRSPOOL_BODY)
         feat = target.features
-        temp_f = Airspool.c_to_f(target.temperature)
+        temp_f = airspool_c_to_f(target.temperature)
         body[4] = ((temp_f // 10) << 4) | (temp_f % 10)
         if target.power:
             body[5] |= 0x04
@@ -398,14 +408,14 @@ class AirspoolDevice(Device):
         if feat["powerful"]:
             body[5] |= 0x40
             body[8] |= 0x40
-        body[6] |= Airspool.MODE_NIBBLE[target.mode]
+        body[6] |= AIRSPOOL_MODE_NIBBLE[target.mode]
         if target.mode == "heat":
             body[6] |= 0xE0
         if feat["light"]:
             body[6] |= 0x20
         if "se_step" in actions:
             body[6] |= 0x40
-        body[8] |= Airspool.SLEEP_ENUM if feat["sleep"] else AIRSPOOL_FAN[target.fan]
+        body[8] |= AIRSPOOL_SLEEP_ENUM if feat["sleep"] else AIRSPOOL_FAN[target.fan]
         if target.swing_v == "swing":
             body[8] |= 0x38
         if target.swing_h != "swing":

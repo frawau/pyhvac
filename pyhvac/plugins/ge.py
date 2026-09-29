@@ -31,9 +31,6 @@ DEVICES.update({m: LgAcDevice for m in LG_AC_GE_MODELS})
 
 
 # Now the match between models and objects
-
-
-# Now the match between models and objects
 class PluginObject(GenPluginObject):
     MODELS = {
         "AG1BH09AW101": LGv1,

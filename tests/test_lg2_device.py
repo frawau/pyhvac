@@ -53,6 +53,13 @@ DEFECTS = (
 # Words the port sends that C drops altogether, as (canonical swing_v,
 # command): AKB74955603's swing "2" (60°), which C turns into
 # kLgAcSwingVOff and so never sends.
+# C_DROPS, SWING_60_AFTER_SWING and AsC are NOT artifacts of the 0.1.7 glue's
+# missing swing "on": they come from IRLgAc::convertSwingV having no
+# kUpperMiddle case (a C-library behaviour), reached because the glue maps
+# 60° to kUpperMiddle, which main's glue still does. They stay when the
+# fixtures are regenerated from a C path with main's glue fixes. Only the
+# swing_h "swing" Defect above is a 0.1.7-glue artifact (trans_hswing had no
+# "on"); drop that one on regeneration.
 C_DROPS = {("2", "swing_v_high")}
 # ... unless C's previous swing was another position: then it sends Off.
 SWING_60_AFTER_SWING = (
@@ -109,7 +116,9 @@ def layouts(frames):
 
 
 class AsC:
-    """The device minus the words C drops (C_DROPS): C's frame list."""
+    """The device minus the words C drops (C_DROPS): C's frame list.
+
+    Not a glue artifact (see C_DROPS): it outlives regenerated fixtures."""
 
     def __init__(self, dev, drops=C_DROPS):
         self.dev, self.drops = dev, drops

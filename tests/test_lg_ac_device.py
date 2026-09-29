@@ -31,6 +31,12 @@ from pyhvac.state import HvacState
 #   word after the state word. The defect is a whole extra word, not a
 #   field, so it is checked by assert_matches below rather than by a layout
 #   field diff.
+# SWING_TOGGLE (and _StateWordOnly, test_undeclared_deviation_is_reported and
+# test_toggle_word_is_not_silently_dropped_by_the_plain_helper, which serve
+# it) exists only because the oracle was recorded through the 0.1.7 Python
+# glue. Remove them when the LG fixtures are regenerated from a C path with
+# main's glue fixes (trans_swing passes "on" through as kAuto, so C sends
+# the toggle word too).
 SWING_TOGGLE = Defect(
     "swing_toggle_word", "sent", "absent", "C glue has no 'on' swing: no toggle"
 )
@@ -60,7 +66,10 @@ def read(state, previous=None):
 
 
 class _StateWordOnly:
-    """The device, minus the trailing swing toggle word."""
+    """The device, minus the trailing swing toggle word.
+
+    A 0.1.7-glue artifact (see SWING_TOGGLE): remove it when the fixtures
+    are regenerated with swing "on" passed through to C."""
 
     def __init__(self, dev):
         self.dev = dev

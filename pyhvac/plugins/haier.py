@@ -562,6 +562,238 @@ HAIER176_MODELS = {  # model -> remote variant (haier_ac176_remote_model_t)
 DEVICES.update({m: Haier176Device for m in HAIER176_MODELS})
 
 
+# ------------------------------------------------------------ HaierYrw02
+# Layout from IRremoteESP8266's HaierAc176Protocol (ir_Haier.h): the YR-W02
+# message is its first 14 bytes (kHaierACYRW02StateLength; IRHaierACYRW02
+# derives from IRHaierAC176), each sent MSB first (sendHaierAC: sendGeneric
+# with MSBfirst). sendHaierAC opens with a kHaierAcHdr mark and space before
+# sendGeneric's kHaierAcHdr/kHaierAcHdrGap header; bits kHaierAcBitMark/
+# ZeroSpace/OneSpace, gap kHaierAcMinGap, 38 kHz, no repeat
+# (kHaierAcYrw02DefaultRepeat = kNoRepeat).
+
+HAIER_YRW02 = Protocol(
+    "haier_yrw02",
+    {
+        "main": Section(
+            PulseDistance(520, 650, 1650),
+            header=(3000, 3000, 3000, 4300),
+            footer=(520,),
+            gap=150000,
+            lsb_first=False,
+        )
+    },
+    carrier=38000,
+)
+
+HAIER_YRW02_BUTTON = {  # kHaierAcYrw02Button*
+    "temp_up": 0b00000,
+    "temp_down": 0b00001,
+    "swing_v": 0b00010,
+    "swing_h": 0b00011,
+    "fan": 0b00100,
+    "power": 0b00101,
+    "mode": 0b00110,
+    "health": 0b00111,
+    "turbo": 0b01000,
+    "sleep": 0b01011,
+    "timer": 0b10000,
+    "lock": 0b10100,
+    "cfab": 0b11010,
+}
+HAIER_YRW02_SWING_V = {  # kHaierAcYrw02SwingV*
+    "off": 0x0,
+    "top": 0x1,
+    "middle": 0x2,  # not available in heat mode
+    "bottom": 0x3,  # only available in heat mode
+    "down": 0xA,
+    "auto": 0xC,
+}
+# Canonical swing_v -> documented position, from the top down (Top, Middle,
+# Down, Bottom: IRHaierAC176::toCommonSwingV's Highest, Middle, Low, Lowest).
+HAIER_YRW02_SWING_V_POSITION = {
+    "off": "off",
+    "auto": "auto",
+    "1": "top",
+    "2": "middle",
+    "3": "down",
+    "4": "bottom",
+}
+HAIER_YRW02_SWING_H = {  # kHaierAcYrw02SwingH*
+    "middle": 0x0,
+    "left_max": 0x3,
+    "left": 0x4,
+    "right": 0x5,
+    "right_max": 0x6,
+    "auto": 0x7,
+}
+HAIER_YRW02_SWING_H_POSITION = {  # canonical swing_h -> position, as convertSwingH
+    "auto": "auto",
+    "1": "left_max",
+    "2": "left",
+    "3": "middle",
+    "4": "right",
+    "5": "right_max",
+}
+HAIER_YRW02_MIN_TEMP, HAIER_YRW02_MAX_TEMP = 16, 30  # kHaierAcYrw02Min/MaxTempC
+
+HAIER_YRW02_LAYOUT = Layout(
+    # IRHaierAC176::stateReset clears the whole state (memset) and every
+    # byte it then sets is a field below: no stale padding.
+    bytes(14),
+    {
+        "model": Field.at(0, 0, 8, values={"A": 0xA6, "B": 0x59}),  # Model A/B
+        "swing_v": Field.at(1, 0, 4, values=HAIER_YRW02_SWING_V),
+        "temperature": Field.at(  # celsius - kHaierAcYrw02MinTempC
+            1,
+            4,
+            4,
+            values={
+                t: t - HAIER_YRW02_MIN_TEMP
+                for t in range(HAIER_YRW02_MIN_TEMP, HAIER_YRW02_MAX_TEMP + 1)
+            },
+        ),
+        "swing_h": Field.at(2, 5, 3, values=HAIER_YRW02_SWING_H),
+        "health": Field.at(3, 1, 1),
+        "timer_mode": Field.at(3, 5, 3),  # kHaierAcYrw02*Timer*: never set
+        "power": Field.at(4, 6, 1),
+        "off_timer_hrs": Field.at(5, 0, 5),
+        "fan": Field.at(  # kHaierAcYrw02Fan*, as IRHaierAC176::convertFan
+            5, 5, 3, values={"auto": 0b101, "1": 0b011, "2": 0b010, "3": 0b001}
+        ),
+        "off_timer_mins": Field.at(6, 0, 6),
+        "turbo": Field.at(6, 6, 1),
+        "quiet": Field.at(6, 7, 1),
+        "on_timer_hrs": Field.at(7, 0, 5),
+        "mode": Field.at(  # kHaierAcYrw02{Auto,Cool,Dry,Heat,Fan}
+            7,
+            5,
+            3,
+            values={
+                "auto": 0b000,
+                "cool": 0b001,
+                "dry": 0b010,
+                "heat": 0b100,
+                "fan": 0b110,
+            },
+        ),
+        "on_timer_mins": Field.at(8, 0, 6),
+        "sleep": Field.at(8, 7, 1),
+        "extra_degree_f": Field.at(10, 0, 1),
+        "use_fahrenheit": Field.at(10, 5, 1),
+        "button": Field.at(12, 0, 5, values=HAIER_YRW02_BUTTON),
+        "lock": Field.at(12, 5, 1),
+    },
+    checksum=Sum8(0, 13, 13),  # IRHaierAC176::checksum: Sum
+)
+
+
+class HaierYrw02Device(Device):
+    """Haier YR-W02 (HAIER_AC_YRW02, remote variants A and B): full state in
+    one 14-byte frame.
+
+    The variant ("A" or "B", kHaierAcYrw02ModelA/B in byte 0) comes from the
+    model (HAIER_YRW02_MODELS) unless given, so the registry's
+    ``cls(brand, model)`` call picks it; unknown models get A, as
+    IRHaierAC176::setModel does.
+
+    The Button field (the key the remote reports as pressed) is always
+    kHaierAcYrw02ButtonPower, as the C path sends: IRac::haierYrwo2 calls
+    setPower last, on a fresh object, whatever changed. IRac::sendAc uses no
+    previous state for HAIER_AC_YRW02 and IRac::handleToggles has no case
+    for it, and the struct has no toggle bits (power, swing and the features
+    are states), so ``previous`` is ignored, with or without it.
+    """
+
+    PROTOCOL = HAIER_YRW02
+    LAYOUTS = (HAIER_YRW02_LAYOUT,)
+    capabilities = Capabilities(
+        modes=("auto", "cool", "dry", "heat", "fan"),
+        temperature=TemperatureRange(16.0, 30.0),
+        fan=Choice(
+            ("auto", "1", "2", "3"),
+            {"auto": "auto", "1": "low", "2": "medium", "3": "high"},
+        ),
+        swing_v=Choice(
+            ("off", "auto", "1", "2", "3", "4"),
+            {
+                "off": "off",
+                "auto": "auto",
+                "1": "ceiling",
+                "2": "45°",
+                "3": "30°",
+                "4": "0°",
+            },
+        ),
+        swing_h=Choice(
+            ("auto", "1", "2", "3", "4", "5"),
+            {
+                "auto": "auto",
+                "1": "far left",
+                "2": "left",
+                "3": "middle",
+                "4": "right",
+                "5": "far right",
+            },
+        ),
+        features={
+            "purifier": Choice((False, True), {False: "off", True: "on"}),
+            "sleep": Choice((False, True), {False: "off", True: "on"}),
+            "powerful": Choice((False, True), {False: "off", True: "on"}),
+            "quiet": Choice((False, True), {False: "off", True: "on"}),
+        },
+    )
+
+    def __init__(self, brand, model, variant=None):
+        super().__init__(brand, model)
+        self.variant = variant or HAIER_YRW02_MODELS.get(model, "A")
+        if self.variant not in ("A", "B"):
+            raise ValueError(f"unknown Haier YR-W02 variant {self.variant!r}")
+
+    def frames(self, previous, target, actions):
+        # As the C path: an off message carries mode auto (IRac passes mode
+        # "off", which convertMode maps to auto).
+        mode = target.mode if target.power else "auto"
+        swing_v = HAIER_YRW02_SWING_V_POSITION[target.swing_v]
+        # IRHaierAC176::setSwingV: heat has no Middle (Bottom instead), and
+        # Bottom exists in heat only (Middle instead).
+        if swing_v == "middle" and mode == "heat":
+            swing_v = "bottom"
+        elif swing_v == "bottom" and mode != "heat":
+            swing_v = "middle"
+        # setQuiet then setTurbo, both only in cool and heat (setMode clears
+        # them elsewhere); turbo on clears quiet.
+        features = target.features
+        boost = mode in ("cool", "heat")
+        turbo = boost and features["powerful"]
+        quiet = boost and features["quiet"] and not turbo
+        data = HAIER_YRW02_LAYOUT.build(
+            model=self.variant,
+            swing_v=swing_v,
+            temperature=int(target.temperature),
+            swing_h=HAIER_YRW02_SWING_H_POSITION[target.swing_h],
+            health=features["purifier"],
+            power=target.power,
+            fan=target.fan,
+            turbo=turbo,
+            quiet=quiet,
+            mode=mode,
+            sleep=features["sleep"],
+            button="power",
+        )
+        return [Frame("main", bytes(data))]
+
+
+HAIER_YRW02_MODELS = {  # model -> remote variant (haier_ac176_remote_model_t)
+    "YR-W02 remote": "A",
+    "HSU-09HMC203": "A",
+    "YR-W02 Code A": "A",
+    "YR-W02 Code B": "B",
+}
+
+
+DEVICES.update({m: HaierYrw02Device for m in HAIER_YRW02_MODELS})
+
+
 # Now the match between models and objects
 class PluginObject(GenPluginObject):
     MODELS = {

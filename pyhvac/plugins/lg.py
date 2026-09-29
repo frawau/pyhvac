@@ -32,7 +32,8 @@ from .hvaclib import HVAC, PulseBased, GenPluginObject
 from ..device import Device
 from ..fields import Field, HighNibbleSum, Layout
 from ..ir.model import Frame, Protocol, PulseDistance, Section
-from ..state import Capabilities, Choice, TemperatureRange
+from ..choices import FAN_4, FAN_5, ON_OFF, SWING, SWING_V_ANGLES
+from ..state import Capabilities, TemperatureRange
 
 try:
     from ..irhvac import (
@@ -698,35 +699,17 @@ def _lg_layout(sign=None, *, power, unnamed, mode, temp, fan):
     )
 
 
-def _lg_capabilities(fan_names, swing_v):
+def _lg_capabilities(fan, swing_v):
     """The legacy LG entities' capabilities: they differ in fan levels and
     vertical swing only."""
     return Capabilities(
         modes=("auto", "cool", "fan", "dry", "heat"),
         temperature=TemperatureRange(16.0, 25.0),
-        fan=Choice(
-            ("auto",) + tuple(str(i) for i in range(1, len(fan_names) + 1)),
-            {"auto": "auto", **{str(i): n for i, n in enumerate(fan_names, 1)}},
-        ),
+        fan=fan,
         swing_v=swing_v,
-        swing_h=Choice(("off", "swing"), {"off": "off", "swing": "on"}),
-        features={"light": Choice((False, True), {False: "off", True: "on"})},
+        swing_h=SWING,
+        features={"light": ON_OFF},
     )
-
-
-LG_SWING_TOGGLE = Choice(("off", "swing"), {"off": "off", "swing": "on"})
-LG_SWING_POSITIONS = Choice(
-    ("off", "auto", "1", "2", "3", "4", "5"),
-    {
-        "off": "off",
-        "auto": "auto",
-        "1": "90°",
-        "2": "60°",
-        "3": "45°",
-        "4": "30°",
-        "5": "0°",
-    },
-)
 
 
 class _LgWordDevice(Device):
@@ -775,12 +758,11 @@ LG_AC_LAYOUT = _lg_layout(
 )
 
 
-_LG_AC_FANS = ("lowest", "low", "medium", "high")
 LG_AC_CAPABILITIES = {  # variant -> the legacy entity (LGv2 / LGv1)
-    "LG6711A20083V": _lg_capabilities(_LG_AC_FANS, LG_SWING_TOGGLE),
+    "LG6711A20083V": _lg_capabilities(FAN_4, SWING),
     # The legacy LGv1 entity offers swing positions, but IRLgAc::send sends
     # no swing word for GE6711AR2853M (its default case): they send nothing.
-    "GE6711AR2853M": _lg_capabilities(_LG_AC_FANS, LG_SWING_POSITIONS),
+    "GE6711AR2853M": _lg_capabilities(FAN_4, SWING_V_ANGLES),
 }
 
 LG_AC_MODEL_VARIANT = {  # model -> remote variant (lg_ac_remote_model_t)
@@ -942,11 +924,9 @@ LG2_VANE = {  # canonical swing -> kLgAcVaneSwingV* (AKB73757604)
 }
 
 LG2_CAPABILITIES = {
-    "AKB75215403": _lg_capabilities(
-        ("lowest", "low", "medium", "high", "highest"), LG_SWING_POSITIONS
-    ),
-    "AKB74955603": _lg_capabilities(_LG_AC_FANS, LG_SWING_POSITIONS),
-    "AKB73757604": _lg_capabilities(_LG_AC_FANS, LG_SWING_POSITIONS),
+    "AKB75215403": _lg_capabilities(FAN_5, SWING_V_ANGLES),
+    "AKB74955603": _lg_capabilities(FAN_4, SWING_V_ANGLES),
+    "AKB73757604": _lg_capabilities(FAN_4, SWING_V_ANGLES),
 }
 
 LG2_MODELS = {  # model -> remote (lg_ac_remote_model_t), as the old LG2v1-3

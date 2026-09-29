@@ -158,3 +158,28 @@ def test_capture_with_short_final_silence():
     pulses = list(encode(NEC_ONLY, frames).pulses[:-1]) + [8000]
     assert decode(NEC_ONLY, pulses, expected=["nec"]) == frames
     assert decode(NEC_ONLY, pulses) == frames
+
+
+# IRrecv::matchMark(measured, desired, tol, excess) matches measured against
+# (desired + excess) * (1 +- tol); matchSpace against (desired - excess).
+C_MATCH = Protocol(
+    "c_match",
+    {"s": Section(None, header=(580, 1000, 580), gap=20000)},
+    tolerance=0.37,
+    mark_excess=50,
+)
+
+
+def test_mark_tolerance_applies_to_nominal_plus_excess():
+    # 858 is within 37 % of 630 (580 + 50), not of 580 once 50 is removed:
+    # decodeGoodweather takes it (RealExampleDecode's rawData_71DD9105).
+    assert decode(C_MATCH, [858, 1000, 580, 20000], expected=["s"])
+    with pytest.raises(DecodeError):
+        decode(C_MATCH, [864, 1000, 580, 20000], expected=["s"])  # > 630 * 1.37
+
+
+def test_space_tolerance_applies_to_nominal_minus_excess():
+    # 950 +- 37 %: 599..1301.
+    assert decode(C_MATCH, [580, 1301, 580, 20000], expected=["s"])
+    with pytest.raises(DecodeError):
+        decode(C_MATCH, [580, 598, 580, 20000], expected=["s"])

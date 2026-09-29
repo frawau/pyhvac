@@ -120,7 +120,7 @@ class _Cursor:
 
     def __init__(self, protocol, pulses):
         self.tol = protocol.tolerance
-        excess = protocol.mark_excess
+        self.excess = excess = protocol.mark_excess
         self.p = [
             d - excess if i % 2 == 0 else d + excess for i, d in enumerate(pulses)
         ]
@@ -144,7 +144,11 @@ class _Cursor:
         return self.at_end() or (self.i == len(self.p) - 1 and not self.is_mark())
 
     def match(self, measured, nominal):
-        return abs(measured - nominal) <= self.tol * nominal
+        """``measured`` is compensated; the tolerance applies, as in
+        IRrecv::matchMark / matchSpace, to the nominal plus the excess for a
+        mark and minus it for a space."""
+        base = nominal + self.excess if self.is_mark() else nominal - self.excess
+        return abs(measured - nominal) <= self.tol * base
 
     def _advance(self):
         self.i += 1

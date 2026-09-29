@@ -24,6 +24,10 @@
 #
 
 from .hvaclib import PulseBased, GenPluginObject
+from ..device import Device
+from ..fields import Field, Layout, NibbleSum
+from ..ir.model import Frame, Protocol, PulseDistance, Section
+from ..state import Capabilities, Choice, TemperatureRange
 
 
 class Sanyo(PulseBased):
@@ -61,6 +65,9 @@ class Sanyo88(PulseBased):
             "purifier": ["off", "on"],
             "sleep": ["off", "on"],
         }
+
+
+DEVICES = {}
 
 
 # Now the match between models and objects

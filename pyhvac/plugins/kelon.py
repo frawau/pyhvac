@@ -24,6 +24,10 @@
 #
 
 from .hvaclib import PulseBased, GenPluginObject
+from ..device import Device
+from ..fields import Field, Layout
+from ..ir.model import Frame, Protocol, PulseDistance, Section
+from ..state import Capabilities, Choice, TemperatureRange
 
 
 class Kelon(PulseBased):
@@ -58,6 +62,9 @@ class Kelon168(PulseBased):
             "fan": ["auto", "high", "medium", "low"],
             "sleep": ["off", "on"],
         }
+
+
+DEVICES = {}
 
 
 # Now the match between models and objects

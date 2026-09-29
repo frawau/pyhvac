@@ -31,8 +31,12 @@
 
 import struct
 
+from dataclasses import dataclass
 from .hvaclib import HVAC, PulseBased, GenPluginObject, bit_reverse
-from ..ir.model import Protocol, PulseDistance, Section
+from ..device import Device
+from ..fields import Field, Layout, Sum8
+from ..ir.model import Frame, Protocol, PulseDistance, Section
+from ..state import Capabilities, Choice, TemperatureRange
 
 try:
     from ..irhvac import (
@@ -480,6 +484,9 @@ class Panasonic32(PulseBased):
             "swing": ["auto", "90°", "60°", "45°", "30°", "0°"],
             "hswing": ["off", "on"],
         }
+
+
+DEVICES = {}
 
 
 class PluginObject(GenPluginObject):

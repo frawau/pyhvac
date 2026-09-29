@@ -25,6 +25,10 @@
 
 from .hvaclib import PulseBased, GenPluginObject
 from .midea import Midea
+from ..device import Device
+from ..fields import Field, Layout, Sum8
+from ..ir.model import Frame, Protocol, PulseDistance, Section
+from ..state import Capabilities, Choice, TemperatureRange
 
 
 class Trotech(PulseBased):
@@ -58,6 +62,9 @@ class Trotech3550(PulseBased):
             "fan": ["high", "medium", "low"],
             "swing": ["off", "on"],
         }
+
+
+DEVICES = {}
 
 
 # Now the match between models and objects

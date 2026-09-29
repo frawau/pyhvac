@@ -12,6 +12,7 @@ from dataclasses import dataclass
 import pytest
 
 from oracle import check_against_oracle, load_oracle
+from pyhvac.fields import Joined
 from pyhvac.ir.codec import decode
 from pyhvac.state import HvacState
 
@@ -69,22 +70,38 @@ def assert_matches_oracle(device, record, layouts, defects=(), previous=None):
     """Assert the port reproduces ``record``.
 
     ``layouts`` gives one Layout (or None for bitless frames) per frame of the
-    message, in order. Frames must be byte-identical, except for fields listed
-    in ``defects`` (and the checksums they change). ``previous`` is the port's
+    message, in order (a ``Joined`` entry covers several frames), or is a
+    function of the port's frames returning them (for messages whose frame
+    count varies). Frames must be byte-identical, except for fields listed in
+    ``defects`` (and the checksums they change). ``previous`` is the port's
     previous state (None: a fresh C object, as the fixtures were recorded).
     """
     state = state_from_record(device, record["state"])
     ours = device.frames(previous, state, ())
     names = [f.section for f in ours]
     theirs = decode(device.PROTOCOL, record["pulses"], expected=names)
-    assert len(layouts) == len(ours), "one layout (or None) per frame is required"
+    if callable(layouts):
+        layouts = layouts(ours)
+    groups = []  # (first frame index, frame count, layout)
+    first = 0
+    for layout in layouts:
+        if isinstance(layout, Joined):
+            count, layout = layout.count, layout.layout
+        else:
+            count = 1
+        groups.append((first, count, layout))
+        first += count
+    assert first == len(ours), "one layout (or None) per frame is required"
     allowed = {(d.field, d.ours, d.theirs) for d in defects}
     deviated = False
-    for i, (a, b, layout) in enumerate(zip(ours, theirs, layouts)):
-        if a.data == b.data:
+    for i, count, layout in groups:
+        a, b = (
+            b"".join(f.data for f in side[i : i + count]) for side in (ours, theirs)
+        )
+        if a == b:
             continue
-        assert layout is not None, f"frame {i}: {a.data.hex()} != {b.data.hex()}"
-        read_a, read_b = layout.read(a.data), layout.read(b.data)
+        assert layout is not None, f"frame {i}: {a.hex()} != {b.hex()}"
+        read_a, read_b = layout.read(a), layout.read(b)
         diffs = [k for k in read_a if read_a[k] != read_b[k]]
         unexplained = {
             k: (read_a[k], read_b[k])
@@ -94,12 +111,12 @@ def assert_matches_oracle(device, record, layouts, defects=(), previous=None):
         assert not unexplained, f"frame {i}: {unexplained} for {record['state']}"
         # With C's values in the declared fields (and the checksum redone),
         # our frame must be exactly C's: nothing else may differ.
-        expected = bytearray(a.data)
+        expected = bytearray(a)
         for k in diffs:
-            layout.write_raw(expected, k, layout.read_raw(b.data, k))
+            layout.write_raw(expected, k, layout.read_raw(b, k))
         if layout.checksum is not None:
             layout.checksum.apply(expected)
-        assert bytes(expected) == b.data, f"frame {i}: more than {diffs} differs"
+        assert bytes(expected) == b, f"frame {i}: more than {diffs} differs"
         deviated = True
     if not deviated:
         check_against_oracle(device.PROTOCOL, record, ours)

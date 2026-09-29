@@ -310,3 +310,14 @@ class Checksums:
 
     def check(self, data):
         return all(part.check(data) for part in self.parts)
+
+
+@dataclass(frozen=True)
+class Joined:
+    """One Layout over ``count`` consecutive frames, their data concatenated
+    (whole bytes, in order): the layout of a message whose checksums or
+    copied bytes span several frames. A device's ``LAYOUTS`` may hold one in
+    place of ``count`` per-frame layouts."""
+
+    layout: Layout
+    count: int

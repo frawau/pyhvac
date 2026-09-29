@@ -25,7 +25,13 @@
 
 from .hvaclib import PulseBased, GenPluginObject
 from .kelvinator import Kelvinator
-from ..irhvac import YAW1F, YBOFB, YX1FSF
+
+try:
+    from ..irhvac import YAW1F, YBOFB, YX1FSF
+except ImportError:
+    # Only the C-backed classes use these; keep the modules importing this
+    # one (soleus serves ported models) importable.
+    YAW1F = YBOFB = YX1FSF = None
 
 
 class Greev1(PulseBased):

@@ -230,7 +230,8 @@ def test_variant_comes_from_the_model(model, variant):
 
 
 def test_unknown_model_gets_122lzf_and_bad_variant_raises():
-    assert VoltasDevice("voltas", "whatever").variant == "122LZF"
+    with pytest.raises(ValueError, match="unknown model"):
+        VoltasDevice("voltas", "whatever")
     assert VoltasDevice("voltas", "whatever", variant="Unknown").variant == "Unknown"
     with pytest.raises(ValueError, match="variant"):
         VoltasDevice("voltas", "whatever", variant="Other")

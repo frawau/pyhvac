@@ -154,7 +154,8 @@ def test_variant_comes_from_the_model(model, variant, byte0):
 
 
 def test_unknown_model_gets_variant_a_and_bad_variant_raises():
-    assert Haier176Device("haier", "whatever").variant == "A"
+    with pytest.raises(ValueError, match="unknown model"):
+        Haier176Device("haier", "whatever")
     assert Haier176Device("haier", "whatever", variant="B").variant == "B"
     with pytest.raises(ValueError):
         Haier176Device("haier", "whatever", variant="C")

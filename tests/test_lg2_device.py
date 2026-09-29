@@ -548,7 +548,8 @@ def test_encode_is_one_burst_per_word():
 
 
 def test_variant_argument_and_unknown_models():
-    assert Lg2Device("lg", "whatever").variant == V1
+    with pytest.raises(ValueError, match="unknown model"):
+        Lg2Device("lg", "whatever")
     assert Lg2Device("lg", "whatever", variant=V3).variant == V3
     with pytest.raises(ValueError):
         Lg2Device("lg", "whatever", variant="GE6711AR2853M")

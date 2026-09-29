@@ -416,9 +416,8 @@ def test_message_shape():
 
 
 def test_unknown_model_is_jke_and_unknown_variant_fails():
-    # setModel ignores an unknown model; getModel reads the untouched
-    # kPanasonicKnownGoodState as JKE.
-    assert PanasonicAcDevice("panasonic", "nope").variant == "JKE"
+    with pytest.raises(ValueError, match="unknown model"):
+        PanasonicAcDevice("panasonic", "nope")
     assert PanasonicAcDevice("panasonic", "nope", variant="RKR").variant == "RKR"
     with pytest.raises(ValueError, match="variant"):
         PanasonicAcDevice("panasonic", "nope", variant="LKE")

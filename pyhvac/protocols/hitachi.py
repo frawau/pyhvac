@@ -288,7 +288,13 @@ class Hitachi1Device(Device):
 
     def __init__(self, brand, model, variant=None):
         super().__init__(brand, model)
-        self.variant = variant or HITACHI1_MODELS.get(model, "A")
+        # The registry always passes the variant; the table maps the 0.1.x
+        # model names (oracle records, direct use) to theirs.
+        self.variant = variant or HITACHI1_MODELS.get(model)
+        if self.variant is None:
+            raise ValueError(
+                f"unknown model {model!r}: pass variant= (see pyhvac.brands)"
+            )
         if self.variant not in ("A", "B"):
             raise ValueError(f"unknown Hitachi1 variant {self.variant!r}")
 

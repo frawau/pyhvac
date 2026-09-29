@@ -169,7 +169,13 @@ class VoltasDevice(Device):
 
     def __init__(self, brand, model, variant=None):
         super().__init__(brand, model)
-        self.variant = variant or VOLTAS_MODELS.get(model, "122LZF")
+        # The registry always passes the variant; the table maps the 0.1.x
+        # model names (oracle records, direct use) to theirs.
+        self.variant = variant or VOLTAS_MODELS.get(model)
+        if self.variant is None:
+            raise ValueError(
+                f"unknown model {model!r}: pass variant= (see pyhvac.brands)"
+            )
         if self.variant not in VOLTAS_CAPABILITIES:
             raise ValueError(f"unknown Voltas variant {self.variant!r}")
         self.capabilities = VOLTAS_CAPABILITIES[self.variant]

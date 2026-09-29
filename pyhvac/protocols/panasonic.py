@@ -236,7 +236,13 @@ class PanasonicAcDevice(Device):
 
     def __init__(self, brand, model, variant=None):
         super().__init__(brand, model)
-        self.variant = variant or PANASONIC_AC_MODELS.get(model, "JKE")
+        # The registry always passes the variant; the table maps the 0.1.x
+        # model names (oracle records, direct use) to theirs.
+        self.variant = variant or PANASONIC_AC_MODELS.get(model)
+        if self.variant is None:
+            raise ValueError(
+                f"unknown model {model!r}: pass variant= (see pyhvac.brands)"
+            )
         if self.variant not in PANASONIC_AC_VARIANTS:
             raise ValueError(f"unknown PanasonicAc variant {self.variant!r}")
         self.capabilities = _panasonic_ac_capabilities(self.variant)
@@ -627,7 +633,13 @@ class PanasonicNativeDevice(Device):
 
     def __init__(self, brand, model, variant=None):
         super().__init__(brand, model)
-        self.variant = variant or PANASONIC_NATIVE_MODELS.get(model, "generic")
+        # The registry always passes the variant; the table maps the 0.1.x
+        # model names (oracle records, direct use) to theirs.
+        self.variant = variant or PANASONIC_NATIVE_MODELS.get(model)
+        if self.variant is None:
+            raise ValueError(
+                f"unknown model {model!r}: pass variant= (see pyhvac.brands)"
+            )
         if self.variant not in PANASONIC_NATIVE_VARIANTS:
             raise ValueError(f"unknown Panasonic native variant {self.variant!r}")
         self.capabilities = PANASONIC_NATIVE_VARIANTS[self.variant]

@@ -327,7 +327,8 @@ def test_variant_comes_from_the_model(model, variant):
 
 
 def test_unknown_model_gets_yaw1f_and_bad_variant_raises():
-    assert GreeDevice("gree", "nope").variant == "YAW1F"
+    with pytest.raises(ValueError, match="unknown model"):
+        GreeDevice("gree", "nope")
     with pytest.raises(ValueError, match="variant"):
         GreeDevice("gree", "gemeric", "YAA")
 

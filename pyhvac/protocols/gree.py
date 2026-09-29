@@ -237,7 +237,13 @@ class GreeDevice(Device):
 
     def __init__(self, brand, model, variant=None):
         super().__init__(brand, model)
-        self.variant = variant or GREE_MODEL_VARIANT.get(model, "YAW1F")
+        # The registry always passes the variant; the table maps the 0.1.x
+        # model names (oracle records, direct use) to theirs.
+        self.variant = variant or GREE_MODEL_VARIANT.get(model)
+        if self.variant is None:
+            raise ValueError(
+                f"unknown model {model!r}: pass variant= (see pyhvac.brands)"
+            )
         if self.variant not in GREE_CAPABILITIES:
             raise ValueError(f"unknown Gree variant {self.variant!r}")
         self.capabilities = GREE_CAPABILITIES[self.variant]

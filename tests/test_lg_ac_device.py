@@ -399,7 +399,8 @@ def test_variant_comes_from_the_model(model, variant):
 
 
 def test_unknown_model_gets_lg6711a20083v_and_bad_variant_raises():
-    assert LgAcDevice("lg", "whatever").variant == "LG6711A20083V"
+    with pytest.raises(ValueError, match="unknown model"):
+        LgAcDevice("lg", "whatever")
     assert LgAcDevice("lg", "whatever", variant="GE6711AR2853M").variant == (
         "GE6711AR2853M"
     )

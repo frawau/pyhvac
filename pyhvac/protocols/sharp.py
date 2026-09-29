@@ -405,7 +405,13 @@ class SharpAcDevice(Device):
 
     def __init__(self, brand, model, variant=None):
         super().__init__(brand, model)
-        self.variant = variant or SHARP_AC_MODEL_VARIANT.get(model, "A907")
+        # The registry always passes the variant; the table maps the 0.1.x
+        # model names (oracle records, direct use) to theirs.
+        self.variant = variant or SHARP_AC_MODEL_VARIANT.get(model)
+        if self.variant is None:
+            raise ValueError(
+                f"unknown model {model!r}: pass variant= (see pyhvac.brands)"
+            )
         if self.variant not in SHARP_AC_CAPABILITIES:
             raise ValueError(f"unknown {self.NAME} variant {self.variant!r}")
         self.capabilities = SHARP_AC_CAPABILITIES[self.variant]

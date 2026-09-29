@@ -196,7 +196,13 @@ class _LgWordDevice(Device):
 
     def __init__(self, brand, model, variant=None):
         super().__init__(brand, model)
-        self.variant = variant or self.MODEL_VARIANT.get(model, self.DEFAULT_VARIANT)
+        # The registry always passes the variant; the table maps the 0.1.x
+        # model names (oracle records, direct use) to theirs.
+        self.variant = variant or self.MODEL_VARIANT.get(model)
+        if self.variant is None:
+            raise ValueError(
+                f"unknown model {model!r}: pass variant= (see pyhvac.brands)"
+            )
         if self.variant not in self.VARIANT_CAPABILITIES:
             raise ValueError(f"unknown {self.NAME} variant {self.variant!r}")
         self.capabilities = self.VARIANT_CAPABILITIES[self.variant]
@@ -735,7 +741,13 @@ class LgNativeDevice(Device):
 
     def __init__(self, brand, model, variant=None):
         super().__init__(brand, model)
-        self.variant = variant or LG_NATIVE_MODELS.get(model, "generic")
+        # The registry always passes the variant; the table maps the 0.1.x
+        # model names (oracle records, direct use) to theirs.
+        self.variant = variant or LG_NATIVE_MODELS.get(model)
+        if self.variant is None:
+            raise ValueError(
+                f"unknown model {model!r}: pass variant= (see pyhvac.brands)"
+            )
         if self.variant not in LG_NATIVE_VARIANTS:
             raise ValueError(f"unknown LG native variant {self.variant!r}")
         self.capabilities = LG_NATIVE_VARIANTS[self.variant]

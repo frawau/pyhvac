@@ -54,3 +54,19 @@ def test_hitachi_ac3_and_sharp_generic_are_gone():
         with pytest.raises(KeyError):
             registry.get_device(brand, model)
     assert ("sharp", "generic") not in brands.ALIASES
+
+
+@pytest.mark.parametrize(
+    "row",
+    [row for row in brands.MODELS if row[4] is not None],
+    ids=lambda row: f"{row[0]}/{row[1]}",
+)
+def test_direct_construction_never_picks_a_wrong_variant(row):
+    # A Device built without variant= must not guess one from a model name
+    # it does not know (the registry always passes the variant).
+    brand, model, kind, cls, variant = row
+    try:
+        dev = cls(brand, model)
+    except ValueError:
+        return
+    assert dev.variant == variant

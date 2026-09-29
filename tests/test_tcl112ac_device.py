@@ -332,9 +332,7 @@ def test_port_reproduces_real_captures_but_timer_indicator(target, model, captur
     assert bytes(ours) == capture
 
 
-@pytest.mark.parametrize(
-    "plugin, model", SERVED + [("tcl", "whatever")], ids=lambda x: str(x)
-)
+@pytest.mark.parametrize("plugin, model", SERVED, ids=lambda x: str(x))
 def test_variant_comes_from_the_model(plugin, model):
     variant = PLUGIN_MODELS.get(plugin, {}).get(model, "TAC09CHSD")
     dev = Tcl112AcDevice(plugin, model)
@@ -604,3 +602,8 @@ RAW_1528 = (
 def test_real_raw_captures_decode(raw, section, data):
     (frame,) = decode(TCL112AC, wire(raw), expected=[section])
     assert frame.data == data
+
+
+def test_unknown_model_needs_a_variant():
+    with pytest.raises(ValueError, match="unknown model"):
+        Tcl112AcDevice("tcl", "whatever")

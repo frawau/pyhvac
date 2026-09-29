@@ -348,7 +348,8 @@ def test_model_byte_follows_the_variant():
     assert frame(HvacState(True, "cool", 22.0), dev=dev_b)[0] == 0x59
     explicit = HaierYrw02Device("haier", "YR-W02 remote", variant="B")
     assert read(HvacState(True, "cool", 22.0), dev=explicit)["model"] == "B"
-    assert HaierYrw02Device("haier", "unknown").variant == "A"
+    with pytest.raises(ValueError, match="unknown model"):
+        HaierYrw02Device("haier", "unknown")
     with pytest.raises(ValueError):
         HaierYrw02Device("haier", "x", variant="C")
 

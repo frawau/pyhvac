@@ -587,7 +587,8 @@ def test_cleaning_and_powerful_turbo_follows_the_plain_state():
 
 
 def test_unknown_model_gets_the_a907_and_bad_variants_are_refused():
-    assert SharpAcDevice("sharp", "nope").variant == "A907"
+    with pytest.raises(ValueError, match="unknown model"):
+        SharpAcDevice("sharp", "nope")
     with pytest.raises(ValueError, match="variant"):
         SharpAcDevice("sharp", "nope", variant="A999")
 

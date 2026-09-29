@@ -215,7 +215,8 @@ def test_variant_comes_from_the_model(model, variant, section):
 
 
 def test_unknown_model_gets_wrem2_and_bad_variant_raises():
-    assert ArgoDevice("argo", "whatever").variant == "WREM2"
+    with pytest.raises(ValueError, match="unknown model"):
+        ArgoDevice("argo", "whatever")
     assert ArgoDevice("argo", "whatever", variant="WREM3").variant == "WREM3"
     with pytest.raises(ValueError):
         ArgoDevice("argo", "whatever", variant="WREM4")

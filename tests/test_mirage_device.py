@@ -522,8 +522,10 @@ def test_unknown_variant_is_rejected():
         MirageDevice("mirage", "generic", variant="KKG1")
 
 
-def test_unknown_model_gets_kkg9ac1():
-    assert MirageDevice("mirage", "something else").variant == "KKG9AC1"
+def test_unknown_model_needs_a_variant():
+    with pytest.raises(ValueError, match="unknown model"):
+        MirageDevice("mirage", "something else")
+    assert MirageDevice("mirage", "x", variant="KKG9AC1").variant == "KKG9AC1"
 
 
 def _record(cls, **match):

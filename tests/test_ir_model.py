@@ -35,6 +35,14 @@ def test_pulse_width_needs_distinct_marks():
         PulseWidth(600, 600, 600)
 
 
+def test_pulse_width_one_space_defaults_to_space():
+    assert PulseWidth(600, 1200, 600).space_after(1) == 600
+    assert PulseWidth(600, 1500, 1500, one_space=600).space_after(1) == 600
+    assert PulseWidth(600, 1500, 1500, one_space=600).space_after(0) == 1500
+    with pytest.raises(ValueError):
+        PulseWidth(600, 1500, 1500, one_space=0)
+
+
 def test_manchester_rejects_zero_half():
     with pytest.raises(ValueError):
         Manchester(0)

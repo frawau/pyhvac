@@ -23,10 +23,18 @@ NEC_MSB = Section(
 NEC_NO_GAP = Section(PulseDistance(560, 560, 1690), header=(9000, 4500), footer=(560,))
 PW = Section(PulseWidth(600, 1200, 600), header=(2400, 600), gap=25000, lsb_first=False)
 MAN = Section(Manchester(500))
+PWC = Section(PulseWidth(600, 1500, 1500, one_space=600), footer=(1900,), gap=34300)
 
 P = Protocol(
     "test",
-    {"nec": NEC, "nec_msb": NEC_MSB, "nec_no_gap": NEC_NO_GAP, "pw": PW, "man": MAN},
+    {
+        "nec": NEC,
+        "nec_msb": NEC_MSB,
+        "nec_no_gap": NEC_NO_GAP,
+        "pw": PW,
+        "man": MAN,
+        "pwc": PWC,
+    },
     carrier=36000,
 )
 
@@ -139,3 +147,9 @@ def test_unknown_section():
 def test_no_frames():
     with pytest.raises(ValueError):
         encode(P, [])
+
+
+def test_pulse_width_with_a_one_space_varies_the_space_with_the_bit():
+    assert pulses(Frame("pwc", b"\x05", 3)) == (
+        (1500, 600, 600, 1500, 1500, 600) + (1900, 34300)
+    )

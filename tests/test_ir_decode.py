@@ -24,6 +24,13 @@ NEC_MSB = Section(
 )
 PW = Section(PulseWidth(600, 1200, 600), header=(2400, 600), gap=25000, lsb_first=False)
 MAN = Section(Manchester(500), header=(3000, 1000), gap=20000)
+# Complementary pulses: a one is a long mark and a short space, a zero the reverse.
+PWC = Section(
+    PulseWidth(600, 1500, 1500, one_space=600),
+    header=(8200, 4200),
+    footer=(1900,),
+    gap=34300,
+)
 LEADER = Section(PulseDistance(430, 430, 1300), footer=(430,), gap=25000)
 DAIKIN_FRAME = Section(
     PulseDistance(430, 430, 1300), header=(3500, 1700), footer=(430,), gap=35000
@@ -36,6 +43,7 @@ ALL = Protocol(
         "nec_msb": NEC_MSB,
         "pw": PW,
         "man": MAN,
+        "pwc": PWC,
         "leader": LEADER,
         "frame": DAIKIN_FRAME,
     },
@@ -48,6 +56,7 @@ CASES = [
     [Frame("nec", b"\x05", 3)],
     [Frame("pw", b"\xc5\x80", 9)],
     [Frame("man", b"\xa5\x3c")],
+    [Frame("pwc", b"\x01\x41\x36\x00"), Frame("pwc", b"\x01\x41\x36\x00")],
     # first bit is 0: its first (space) half merges with the header's last space
     [Frame("man", b"\x02", 2)],
     [

@@ -44,7 +44,7 @@ def _section_levels(section, bits):
         if isinstance(enc, PulseDistance):
             levels += [enc.mark, -(enc.one_space if bit else enc.zero_space)]
         elif isinstance(enc, PulseWidth):
-            levels += [enc.one_mark if bit else enc.zero_mark, -enc.space]
+            levels += [enc.one_mark if bit else enc.zero_mark, -enc.space_after(bit)]
         else:
             mark_first = (bit == 1) == enc.one_is_mark_first
             levels += [enc.half, -enc.half] if mark_first else [-enc.half, enc.half]
@@ -223,7 +223,7 @@ def _read_bit(cur, enc):
         return cur.classify(False, enc.zero_space, enc.one_space)
     if isinstance(enc, PulseWidth):
         bit = cur.classify(True, enc.zero_mark, enc.one_mark)
-        cur.take(False, enc.space, partial=True)
+        cur.take(False, enc.space_after(bit), partial=True)
         return bit
     if cur.at_end():
         raise DecodeError(cur.i, "Manchester bit", "end of signal")

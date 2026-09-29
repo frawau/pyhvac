@@ -33,17 +33,26 @@ class PulseDistance:
 
 @dataclass(frozen=True)
 class PulseWidth:
-    """The mark carries the bit; constant space."""
+    """The mark carries the bit; the space is constant, unless ``one_space``
+    gives a different space after a one's mark (``space`` then follows a
+    zero's mark), as in complementary-pulse protocols (e.g. AMCOR)."""
 
     zero_mark: int
     one_mark: int
     space: int
+    one_space: Optional[int] = None
 
     def __post_init__(self):
         for name in ("zero_mark", "one_mark", "space"):
             _check_int(name, getattr(self, name), "µs")
+        if self.one_space is not None:
+            _check_int("one_space", self.one_space, "µs")
         if self.zero_mark == self.one_mark:
             raise ValueError("zero_mark and one_mark must differ")
+
+    def space_after(self, bit):
+        """The space that follows a mark carrying ``bit``."""
+        return self.one_space if bit and self.one_space is not None else self.space
 
 
 @dataclass(frozen=True)

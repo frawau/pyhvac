@@ -24,7 +24,10 @@
 #
 
 from .hvaclib import PulseBased, GenPluginObject
-from .tcl import Tclv2
+from .tcl import TCL112AC_DAEWOO_MODELS, Tclv2, Tcl112AcDevice
+
+DEVICES = {}
+DEVICES.update({m: Tcl112AcDevice for m in TCL112AC_DAEWOO_MODELS})
 
 
 # Now the match between models and objects

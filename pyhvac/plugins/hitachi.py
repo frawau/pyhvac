@@ -188,25 +188,55 @@ class Hitachi296(PulseBased):
 DEVICES = {}
 
 
+# ------------------------------------------------------------ shared parts
+# Every Hitachi remote but the AC1 and the 424 is sent by sendHitachiAC with
+# the same timings; only the bit order changes (MSB first for
+# kHitachiAcStateLength only).
+
+
+def _hitachi_ac_protocol(name, lsb_first=True):
+    """The sendHitachiAC message: one frame, 38 kHz."""
+    return Protocol(
+        name,
+        {
+            "main": Section(
+                PulseDistance(400, 500, 1250),  # kHitachiAcBitMark/ZeroSpace/OneSpace
+                header=(3300, 1700),  # kHitachiAcHdrMark/HdrSpace
+                footer=(400,),
+                gap=100000,  # kHitachiAcMinGap = kDefaultMessageGap
+                lsb_first=lsb_first,
+            ),
+        },
+        carrier=38000,  # kHitachiAcFreq
+    )
+
+
+# The canonical fan scales and the swing toggle of the ports' capabilities.
+_FAN_3 = Choice(
+    ("auto", "1", "2", "3"),
+    {"auto": "auto", "1": "low", "2": "medium", "3": "high"},
+)
+_FAN_5 = Choice(
+    ("auto", "1", "2", "3", "4", "5"),
+    {
+        "auto": "auto",
+        "1": "lowest",
+        "2": "low",
+        "3": "medium",
+        "4": "high",
+        "5": "highest",
+    },
+)
+_SWING = Choice(("off", "swing"), {"off": "off", "swing": "on"})
+
+
 # --------------------------------------------------------------- HitachiAc
 # Layout from IRremoteESP8266's HitachiProtocol (ir_Hitachi.h): one 28-byte
 # frame (kHitachiAcStateLength), sent MSB first (sendHitachiAC), so frame
 # byte n is struct byte n. Every field holds its value bit-reversed
 # (IRHitachiAc stores reverseBits(value, 8)), and so do the value tables.
 
-HITACHI_AC = Protocol(
-    "hitachi-ac",
-    {
-        "main": Section(
-            PulseDistance(400, 500, 1250),  # kHitachiAcBitMark/ZeroSpace/OneSpace
-            header=(3300, 1700),  # kHitachiAcHdrMark/HdrSpace
-            footer=(400,),
-            gap=100000,  # kHitachiAcMinGap = kDefaultMessageGap
-            lsb_first=False,
-        ),
-    },
-    carrier=38000,  # kHitachiAcFreq
-)
+HITACHI_AC = _hitachi_ac_protocol("hitachi-ac", lsb_first=False)
 
 
 @dataclass(frozen=True)
@@ -265,12 +295,9 @@ class HitachiAcDevice(Device):
     capabilities = Capabilities(
         modes=("auto", "heat", "cool", "dry", "fan"),
         temperature=TemperatureRange(16.0, 32.0),
-        fan=Choice(
-            ("auto", "1", "2", "3"),
-            {"auto": "auto", "1": "low", "2": "medium", "3": "high"},
-        ),
-        swing_v=Choice(("off", "swing"), {"off": "off", "swing": "on"}),
-        swing_h=Choice(("off", "swing"), {"off": "off", "swing": "on"}),
+        fan=_FAN_3,
+        swing_v=_SWING,
+        swing_h=_SWING,
     )
 
     def frames(self, previous, target, actions):
@@ -415,12 +442,9 @@ class Hitachi1Device(Device):
     capabilities = Capabilities(
         modes=("auto", "heat", "cool", "dry", "fan"),
         temperature=TemperatureRange(16.0, 32.0),
-        fan=Choice(
-            ("auto", "1", "2", "3"),
-            {"auto": "auto", "1": "low", "2": "medium", "3": "high"},
-        ),
-        swing_v=Choice(("off", "swing"), {"off": "off", "swing": "on"}),
-        swing_h=Choice(("off", "swing"), {"off": "off", "swing": "on"}),
+        fan=_FAN_3,
+        swing_v=_SWING,
+        swing_h=_SWING,
         features={"sleep": Choice((False, True), {False: "off", True: "on"})},
     )
 
@@ -484,11 +508,90 @@ HITACHI1_MODELS = {  # model -> remote variant (hitachi_ac1_remote_model_t)
 DEVICES.update({m: Hitachi1Device for m in HITACHI1_MODELS})
 
 
+# ------------------------------------------------- the Hitachi424 family
+# Layouts from IRremoteESP8266's Hitachi424Protocol (ir_Hitachi.h), which
+# IRHitachiAc344 and IRHitachiAc264 (both derived from IRHitachiAc424) share,
+# and HitachiAC296Protocol, whose fields sit at the same offsets. Each byte is
+# sent LSB first. From byte 3 on, every even byte is the complement of the
+# byte before it (IRHitachiAc424::setInvertedStates, and
+# IRHitachiAc296::setInvertedStates), so every field sits in an odd byte.
+
+HITACHI424_MODE = {  # kHitachiAc424{Fan,Cool,Dry,Heat}, = kHitachiAc264*
+    "fan": 1,
+    "cool": 3,
+    "dry": 5,
+    "heat": 6,
+}
+HITACHI424_BUTTON = {  # kHitachiAc424Button*, = kHitachiAc344Button*
+    "power_mode": 0x13,
+    "fan": 0x42,
+    "temp_down": 0x43,
+    "temp_up": 0x44,
+    "swing_v": 0x81,
+    "swing_h": 0x8C,
+}
+HITACHI424_FAN = {  # canonical fan -> kHitachiAc424Fan*, = kHitachiAc344Fan*
+    "auto": 5,  # Auto
+    "1": 1,  # Min
+    "2": 2,  # Low
+    "3": 3,  # Medium
+    "4": 4,  # High
+    "5": 6,  # Max
+}
+# IRHitachiAc424::stateReset, odd bytes only (the complements follow).
+HITACHI424_RESET = {
+    0: 0x01,
+    1: 0x10,
+    3: 0x40,
+    5: 0xFF,
+    7: 0xCC,
+    27: 0xE1,
+    33: 0x80,
+    35: 0x03,
+    37: 0x01,
+    39: 0x88,
+    45: 0xFF,
+    47: 0xFF,
+    49: 0xFF,
+    51: 0xFF,
+}
+
+
+def _reset_state(length, raw):
+    """``length`` bytes: ``raw`` (byte -> value) over zeros, with the
+    complements of the inverted pairs from byte 3 filled in."""
+    data = bytearray(length)
+    for i, value in raw.items():
+        if i < length:
+            data[i] = value
+    InvertedPairs(3, length).apply(data)
+    return bytes(data)
+
+
+def _hitachi424_layout(
+    reset, length, modes, fans, buttons=None, temp_width=6, fan_width=4, **fields
+):
+    """A Hitachi424Protocol-shaped layout over ``length`` bytes of the reset
+    state ``reset``: temperature (byte 13), mode and fan (byte 25) and power
+    (byte 27), the button (byte 11) if ``buttons`` is given, plus ``fields``.
+    """
+    common = {
+        "temperature": Field.at(13, 2, temp_width, encode=int),  # whole °C
+        "mode": Field.at(25, 0, 4, values=modes),
+        "fan": Field.at(25, 4, fan_width, values=fans),
+        "power": Field.at(27, 4, 1),
+    }
+    if buttons is not None:
+        common["button"] = Field.at(11, 0, 8, values=buttons)
+    return Layout(
+        _reset_state(length, reset),
+        {**common, **fields},
+        checksum=InvertedPairs(3, length),
+    )
+
+
 # ------------------------------------------------------------- Hitachi424
-# Layout from IRremoteESP8266's Hitachi424Protocol (ir_Hitachi.h): 53 bytes,
-# each sent LSB first, after a bitless leader (kHitachiAc424LdrMark/Space).
-# From byte 3 on, every even byte is the complement of the byte before it
-# (IRHitachiAc424::setInvertedStates), so every field sits in an odd byte.
+# 53 bytes after a bitless leader (kHitachiAc424LdrMark/Space).
 
 HITACHI424 = Protocol(
     "hitachi424",
@@ -504,43 +607,24 @@ HITACHI424 = Protocol(
     carrier=38000,  # kHitachiAcFreq
 )
 
-HITACHI424_BUTTON = {  # kHitachiAc424Button*
-    "power_mode": 0x13,
-    "fan": 0x42,
-    "temp_down": 0x43,
-    "temp_up": 0x44,
-    "swing_v": 0x81,
-    "swing_h": 0x8C,
-}
-HITACHI424_FAN = {  # canonical fan -> kHitachiAc424Fan*
-    "auto": 5,  # Auto
-    "1": 1,  # Min
-    "2": 2,  # Low
-    "3": 3,  # Medium
-    "4": 4,  # High
-    "5": 6,  # Max
+# raw[9] and raw[29] are not in the struct (padding), but
+# IRHitachiAc424::setFan writes them: 0x92/0x00, 0x98 for FanMin, and
+# 0xA9/0x30 for FanMax.
+_FAN_BYTES = {
+    "fan_byte9": Field.at(9, 0, 8),
+    "fan_byte29": Field.at(29, 0, 8),
 }
 
-# Skeleton: IRHitachiAc424::stateReset's bytes, pairs inverted, with every
-# field cleared. Bytes 9 and 29 are struct padding, but setFan writes them.
-HITACHI424_LAYOUT = Layout(
-    bytes.fromhex(
-        "01100040bfff00cc3300ff00ff00ff00ff00ff00ff00ff00ff00ff"
-        "e11e00ff00ff807f03fc01fe887700ff00ffff00ff00ff00ff00"
-    ),
-    {
-        "fan_aux9": Field.at(9, 0, 8),  # 0x98 fan Min, 0xA9 Max, else 0x92
-        "button": Field.at(11, 0, 8, values=HITACHI424_BUTTON),
-        "temperature": Field.at(13, 2, 6),  # whole °C
-        "mode": Field.at(25, 0, 4, values={"fan": 1, "cool": 3, "dry": 5, "heat": 6}),
-        "fan": Field.at(25, 4, 4, values=HITACHI424_FAN),
-        "power": Field.at(27, 4, 1),
-        "fan_aux29": Field.at(29, 0, 8),  # 0x30 fan Max, else 0x00
-        # IRHitachiAc344 only: the 424 class has no setter, skeleton kept.
-        "swing_h_344": Field.at(35, 0, 3),
-        "swing_v_344": Field.at(37, 5, 1),
-    },
-    checksum=InvertedPairs(3, 53),
+HITACHI424_LAYOUT = _hitachi424_layout(
+    HITACHI424_RESET,
+    53,  # kHitachiAc424StateLength
+    HITACHI424_MODE,
+    HITACHI424_FAN,
+    HITACHI424_BUTTON,
+    **_FAN_BYTES,
+    # IRHitachiAc344 only: the 424 class has no setter, skeleton kept.
+    swing_h_344=Field.at(35, 0, 3),
+    swing_v_344=Field.at(37, 5, 1),
 )
 
 
@@ -562,21 +646,12 @@ class Hitachi424Device(Device):
     capabilities = Capabilities(
         modes=("fan", "heat", "cool", "dry"),
         temperature=TemperatureRange(16.0, 32.0),
-        fan=Choice(
-            ("auto", "1", "2", "3", "4", "5"),
-            {
-                "auto": "auto",
-                "1": "lowest",
-                "2": "low",
-                "3": "medium",
-                "4": "high",
-                "5": "highest",
-            },
-        ),
-        swing_v=Choice(("off", "swing"), {"off": "off", "swing": "on"}),
+        fan=_FAN_5,
+        swing_v=_SWING,
     )
 
-    def frames(self, previous, target, actions):
+    def _values(self, previous, target):
+        """The fields IRHitachiAc424 writes, shared with IRHitachiAc344."""
         # As the C path: an off message carries mode cool (IRac passes mode
         # "off", which convertMode maps to cool).
         mode = target.mode if target.power else "cool"
@@ -591,8 +666,8 @@ class Hitachi424Device(Device):
             swing = target.swing_v != "off"
         else:
             swing = (target.swing_v != "off") != (previous.swing_v != "off")
-        data = HITACHI424_LAYOUT.build(
-            fan_aux9={"1": 0x98, "5": 0xA9}.get(fan, 0x92),
+        return dict(
+            fan_byte9={"1": 0x98, "5": 0xA9}.get(fan, 0x92),
             button="swing_v" if swing else "power_mode",
             # IRac's setTemp(degrees) comes after setMode, so fan mode's
             # kHitachiAc424FanTemp never survives.
@@ -600,8 +675,11 @@ class Hitachi424Device(Device):
             mode=mode,
             fan=fan,
             power=target.power,
-            fan_aux29=0x30 if fan == "5" else 0x00,
+            fan_byte29=0x30 if fan == "5" else 0x00,
         )
+
+    def frames(self, previous, target, actions):
+        data = HITACHI424_LAYOUT.build(**self._values(previous, target))
         return [Frame("leader", b""), Frame("main", bytes(data))]
 
 
@@ -612,43 +690,14 @@ DEVICES.update({m: Hitachi424Device for m in HITACHI424_MODELS})
 
 
 # ------------------------------------------------------------- Hitachi344
-# Layout from IRremoteESP8266's Hitachi424Protocol (ir_Hitachi.h), which
-# IRHitachiAc344 reuses for its 43 bytes (kHitachiAc344StateLength), with the
-# kHitachiAc344* values and the 344-only SwingH (byte 35) and SwingV (byte 37)
-# fields. Sent by sendHitachiAC: one frame, LSB first (MSBfirst is false for
-# kHitachiAc344StateLength), closed by kHitachiAcMinGap. From byte 3 on,
-# every second byte is the complement of the one before it
-# (IRHitachiAc424::setInvertedStates).
+# IRHitachiAc344 reuses Hitachi424Protocol for its 43 bytes
+# (kHitachiAc344StateLength), with the kHitachiAc344* values and the
+# 344-only SwingH (byte 35) and SwingV (byte 37) fields. Sent by
+# sendHitachiAC: one frame, LSB first (MSBfirst is false for
+# kHitachiAc344StateLength), closed by kHitachiAcMinGap.
 
-HITACHI344 = Protocol(
-    "hitachi344",
-    {
-        "main": Section(
-            PulseDistance(400, 500, 1250),  # kHitachiAcBitMark/ZeroSpace/OneSpace
-            header=(3300, 1700),  # kHitachiAcHdrMark/HdrSpace
-            footer=(400,),
-            gap=100000,  # kHitachiAcMinGap = kDefaultMessageGap
-        )
-    },
-    carrier=38000,  # kHitachiAcFreq
-)
+HITACHI344 = _hitachi_ac_protocol("hitachi344")
 
-HITACHI344_BUTTON = {  # kHitachiAc344Button*
-    "power_mode": 0x13,
-    "fan": 0x42,
-    "temp_down": 0x43,
-    "temp_up": 0x44,
-    "swing_v": 0x81,
-    "swing_h": 0x8C,
-}
-HITACHI344_FAN = {  # canonical fan -> kHitachiAc344Fan*
-    "1": 1,  # lowest: kHitachiAc344FanMin
-    "2": 2,  # kHitachiAc344FanLow
-    "3": 3,  # kHitachiAc344FanMedium
-    "4": 4,  # kHitachiAc344FanHigh
-    "auto": 5,  # kHitachiAc344FanAuto
-    "5": 6,  # highest: kHitachiAc344FanMax
-}
 HITACHI344_SWING_H = {  # canonical position -> kHitachiAc344SwingH*
     "auto": 0,  # kHitachiAc344SwingHAuto
     "1": 5,  # far left: kHitachiAc344SwingHLeftMax
@@ -658,42 +707,31 @@ HITACHI344_SWING_H = {  # canonical position -> kHitachiAc344SwingH*
     "5": 1,  # far right: kHitachiAc344SwingHRightMax
 }
 
-# Skeleton from IRHitachiAc344::stateReset with the written fields cleared
-# (the complements are recomputed by the checksum).
-HITACHI344_LAYOUT = Layout(
-    bytes.fromhex(
-        "01100040bfff00cc3300ff00ff00ff00ff00ff00ff00ff00ff00ffe11e00ff00ff807f00ff00ff00ff00ff"
-    ),
-    {
-        # raw[9] and raw[29] are not in the struct: IRHitachiAc424::setFan
-        # writes 0x92/0x00, 0x98 for FanMin, and 0xA9/0x30 for FanMax.
-        "fan_byte9": Field.at(9, 0, 8),
-        "button": Field.at(11, 0, 8, values=HITACHI344_BUTTON),
-        "temperature": Field.at(13, 2, 6, encode=int),  # whole °C
-        "mode": Field.at(25, 0, 4, values={"fan": 1, "cool": 3, "dry": 5, "heat": 6}),
-        "fan": Field.at(25, 4, 4, values=HITACHI344_FAN),
-        "power": Field.at(27, 4, 1),
-        "fan_byte29": Field.at(29, 0, 8),
-        "swing_h": Field.at(35, 0, 3, values=HITACHI344_SWING_H),
-        # The SwingV state bit (IRHitachiAc344::setSwingV). IRac::hitachi344
-        # never calls setSwingV, only setSwingVToggle (the button), so the C
-        # path always sends it clear; the port does too.
-        "swing_v": Field.at(37, 5, 1),
-    },
-    checksum=InvertedPairs(3, 43),
+HITACHI344_LAYOUT = _hitachi424_layout(
+    # IRHitachiAc344::stateReset: IRHitachiAc424's, then raw[37] and raw[39]
+    # cleared.
+    {**HITACHI424_RESET, 37: 0x00, 39: 0x00},
+    43,  # kHitachiAc344StateLength
+    HITACHI424_MODE,
+    HITACHI424_FAN,
+    HITACHI424_BUTTON,
+    **_FAN_BYTES,
+    swing_h=Field.at(35, 0, 3, values=HITACHI344_SWING_H),
+    # The SwingV state bit (IRHitachiAc344::setSwingV). IRac::hitachi344
+    # never calls setSwingV, only setSwingVToggle (the button), so the C
+    # path always sends it clear; the port does too.
+    swing_v=Field.at(37, 5, 1),
 )
 
 
-class Hitachi344Device(Device):
-    """Hitachi344 (RAS-22NK, RF11T1): full state, plus a swing toggle.
+class Hitachi344Device(Hitachi424Device):
+    """Hitachi344 (RAS-22NK, RF11T1): Hitachi424's state and swing button
+    (IRHitachiAc344 derives from IRHitachiAc424), plus horizontal swing
+    positions, in one frame without the leader.
 
-    Vertical swing is sent as a button press (``button`` = swing_v, byte 11),
-    which toggles the louvre. With ``previous`` the button is pressed only
-    when swing_v changes, as IRac::handleToggles does for HITACHI_AC344 with
-    a previous state. With ``previous=None`` it is pressed when swing_v is
-    "swing", as a fresh IRac sends. Otherwise the button is power/mode:
-    IRac::hitachi344 calls setPower last, and setSwingVToggle only replaces
-    the button when swing is asked for.
+    The swing button follows Hitachi424Device's rule, as IRac::handleToggles
+    does for HITACHI_AC344: with ``previous`` it is pressed only when swing_v
+    changes, with ``previous=None`` whenever swing_v is "swing".
     """
 
     PROTOCOL = HITACHI344
@@ -701,18 +739,8 @@ class Hitachi344Device(Device):
     capabilities = Capabilities(
         modes=("cool", "fan", "dry", "heat"),
         temperature=TemperatureRange(16.0, 32.0),
-        fan=Choice(
-            ("auto", "1", "2", "3", "4", "5"),
-            {
-                "auto": "auto",
-                "1": "lowest",
-                "2": "low",
-                "3": "medium",
-                "4": "high",
-                "5": "highest",
-            },
-        ),
-        swing_v=Choice(("off", "swing"), {"off": "off", "swing": "on"}),
+        fan=_FAN_5,
+        swing_v=_SWING,
         swing_h=Choice(
             ("auto", "1", "2", "3", "4", "5"),
             {
@@ -727,32 +755,8 @@ class Hitachi344Device(Device):
     )
 
     def frames(self, previous, target, actions):
-        # As the C path: an off message carries mode cool (IRac passes mode
-        # "off", which convertMode maps to cool).
-        mode = target.mode if target.power else "cool"
-        # IRHitachiAc424::setFan: dry allows auto or up to low; fan mode has
-        # no auto and falls back to min.
-        fan = HITACHI344_FAN[target.fan]
-        if mode == "dry" and fan != HITACHI344_FAN["auto"]:
-            fan = min(fan, 2)  # kHitachiAc424FanMaxDry
-        elif mode == "fan" and fan == HITACHI344_FAN["auto"]:
-            fan = 1  # kHitachiAc424FanMin
-        if previous is None:
-            press = target.swing_v != "off"
-        else:
-            press = target.swing_v != previous.swing_v
         data = HITACHI344_LAYOUT.build(
-            fan_byte9={1: 0x98, 6: 0xA9}.get(fan, 0x92),
-            button="swing_v" if press else "power_mode",
-            # IRac's setTemp comes after setMode, so fan mode keeps the
-            # setpoint rather than kHitachiAc424FanTemp.
-            temperature=int(target.temperature),
-            mode=mode,
-            fan=HITACHI344_LAYOUT.fields["fan"].from_int(fan),
-            power=target.power,
-            fan_byte29=0x30 if fan == 6 else 0x00,
-            swing_h=target.swing_h,
-            swing_v=0,
+            **self._values(previous, target), swing_h=target.swing_h, swing_v=0
         )
         return [Frame("main", bytes(data))]
 
@@ -764,53 +768,22 @@ DEVICES.update({m: Hitachi344Device for m in HITACHI344_MODELS})
 
 
 # --------------------------------------------------------------- Hitachi264
-# Layout from IRremoteESP8266's HitachiAC264Protocol (ir_Hitachi.h): 33 bytes,
-# one frame sent LSB first (sendHitachiAC: MSBfirst is false for
-# kHitachiAc264StateLength) with the kHitachiAcHdrMark/HdrSpace header,
-# kHitachiAcBitMark/OneSpace/ZeroSpace bits and kHitachiAcMinGap
-# (kDefaultMessageGap). Bytes 3-32 are inverted pairs
-# (IRHitachiAc424::setInvertedStates: invertBytePairs(raw + 3, ...)). The
-# field offsets equal Hitachi424Protocol's, which IRHitachiAc264 really
-# writes (it derives from IRHitachiAc424 and shares its state).
+# IRHitachiAc264 derives from IRHitachiAc424 and writes Hitachi424Protocol's
+# field offsets into its 33 bytes (kHitachiAc264StateLength), with the
+# kHitachiAc264* values. One frame sent LSB first (sendHitachiAC: MSBfirst
+# is false for kHitachiAc264StateLength).
 
-HITACHI264 = Protocol(
-    "hitachi264",
-    {
-        "main": Section(
-            PulseDistance(400, 500, 1250),
-            header=(3300, 1700),
-            footer=(400,),
-            gap=100000,
-        ),
-    },
-    carrier=38000,  # kHitachiAcFreq
-)
+HITACHI264 = _hitachi_ac_protocol("hitachi264")
 
-HITACHI264_BUTTON = {  # kHitachiAc264Button*
-    "power_mode": 0x13,
-    "fan": 0x42,
-    "temp_down": 0x43,
-    "temp_up": 0x44,
-    "swing_v": 0x81,
-}
-
-# Skeleton: IRHitachiAc264::stateReset (IRHitachiAc424::stateReset, then
-# raw[9] = 0x92 and raw[27] = 0xC1) with the fields cleared; the inverted
-# bytes are recomputed by the checksum.
-HITACHI264_LAYOUT = Layout(
-    bytes.fromhex("0110004000ff00cc0092000000000000ff00ff00ff00ff00ff0000c10000ff00ff"),
-    {
-        "button": Field.at(11, 0, 8, values=HITACHI264_BUTTON),
-        "temperature": Field.at(13, 2, 6, encode=int),  # whole °C
-        "mode": Field.at(  # kHitachiAc264{Fan,Cool,Dry,Heat}
-            25, 0, 4, values={"fan": 1, "cool": 3, "dry": 5, "heat": 6}
-        ),
-        "fan": Field.at(  # kHitachiAc264Fan{Low,Medium,High,Auto}
-            25, 4, 4, values={"1": 1, "2": 3, "3": 4, "auto": 5}
-        ),
-        "power": Field.at(27, 4, 1),
-    },
-    checksum=InvertedPairs(3, 33),
+HITACHI264_LAYOUT = _hitachi424_layout(
+    # IRHitachiAc264::stateReset: IRHitachiAc424::stateReset, then
+    # raw[9] = 0x92 and raw[27] = 0xC1.
+    {**HITACHI424_RESET, 9: 0x92, 27: 0xC1},
+    33,  # kHitachiAc264StateLength
+    HITACHI424_MODE,  # kHitachiAc264{Fan,Cool,Dry,Heat}
+    {"1": 1, "2": 3, "3": 4, "auto": 5},  # kHitachiAc264Fan{Low,Medium,High,Auto}
+    # kHitachiAc264Button*: kHitachiAc424's, without SwingH.
+    {k: v for k, v in HITACHI424_BUTTON.items() if k != "swing_h"},
 )
 
 
@@ -833,11 +806,8 @@ class Hitachi264Device(Device):
     capabilities = Capabilities(
         modes=("auto", "cool", "fan", "dry", "heat"),
         temperature=TemperatureRange(16.0, 32.0),
-        fan=Choice(
-            ("auto", "1", "2", "3"),
-            {"auto": "auto", "1": "low", "2": "medium", "3": "high"},
-        ),
-        swing_v=Choice(("off", "swing"), {"off": "off", "swing": "on"}),
+        fan=_FAN_3,
+        swing_v=_SWING,
         features={
             name: Choice((False, True), {False: "off", True: "on"})
             for name in ("purifier", "powerful", "quiet", "economy", "light")
@@ -866,23 +836,12 @@ DEVICES.update({m: Hitachi264Device for m in HITACHI264_MODELS})
 
 
 # ----------------------------------------------------------- Hitachi296
-# Layout from IRremoteESP8266's HitachiAC296Protocol (ir_Hitachi.h): 37 bytes
-# sent LSB first in one frame (sendHitachiAC with MSBfirst false for
-# kHitachiAc296StateLength). After the 3-byte header, every second byte is
-# the complement of the one before it (IRHitachiAc296::setInvertedStates).
+# HitachiAC296Protocol: 37 bytes (kHitachiAc296StateLength) sent LSB first
+# in one frame (sendHitachiAC with MSBfirst false for
+# kHitachiAc296StateLength), fields at Hitachi424Protocol's offsets but a
+# 5-bit Temp and a 3-bit Fan.
 
-HITACHI296 = Protocol(
-    "hitachi296",
-    {
-        "main": Section(
-            PulseDistance(400, 500, 1250),  # kHitachiAcBitMark/ZeroSpace/OneSpace
-            header=(3300, 1700),  # kHitachiAcHdrMark/HdrSpace
-            footer=(400,),
-            gap=100000,  # kHitachiAcMinGap (kDefaultMessageGap)
-        ),
-    },
-    carrier=38000,  # sendHitachiAC: 38 kHz
-)
+HITACHI296 = _hitachi_ac_protocol("hitachi296")
 
 HITACHI296_MODE = {  # kHitachiAc296*, as IRHitachiAc296::convertMode
     "cool": 0b0011,  # kHitachiAc296Cool
@@ -901,24 +860,30 @@ HITACHI296_FAN = {  # canonical fan -> kHitachiAc296Fan*, as convertFan
 HITACHI296_TEMP_AUTO = 1  # kHitachiAc296TempAuto
 HITACHI296_MIN_TEMP = 16  # kHitachiAc296MinTemp
 
-# Skeleton: IRHitachiAc296::stateReset with the parity bytes left for the
-# checksum. Byte 13 bits 0-1 ("unset_low") and bit 7 ("unset_high"), and
-# byte 25 bit 7 ("unset") are never written by stateReset; see
-# Hitachi296Device.
-HITACHI296_LAYOUT = Layout(
-    bytes.fromhex(
-        "0110004000ff00cc00920043000000000000000000000000000000f1000000000000000300"
-    ),
-    {
-        "unset_low": Field.at(13, 0, 2),  # padding the C path never initialises
-        "temperature": Field.at(13, 2, 5),  # whole °C, or kHitachiAc296TempAuto
-        "unset_high": Field.at(13, 7, 1),  # padding the C path never initialises
-        "mode": Field.at(25, 0, 4, values=HITACHI296_MODE),
-        "fan": Field.at(25, 4, 3),
-        "unset": Field.at(25, 7, 1),  # padding bit the C path never initialises
-        "power": Field.at(27, 4, 1),
-    },
-    checksum=InvertedPairs(3, 37),
+# IRHitachiAc296::stateReset, odd bytes only (the complements follow).
+# Byte 13 bits 0-1 ("unset_low") and bit 7 ("unset_high"), and byte 25
+# bit 7 ("unset") are never written by stateReset; see Hitachi296Device.
+HITACHI296_RESET = {
+    0: 0x01,
+    1: 0x10,
+    3: 0x40,
+    5: 0xFF,
+    7: 0xCC,
+    9: 0x92,
+    11: 0x43,
+    27: 0xF1,
+    35: 0x03,
+}
+HITACHI296_LAYOUT = _hitachi424_layout(
+    HITACHI296_RESET,
+    37,  # kHitachiAc296StateLength
+    HITACHI296_MODE,
+    None,  # raw: HITACHI296_FAN is not one-to-one
+    temp_width=5,  # whole °C, or kHitachiAc296TempAuto
+    fan_width=3,
+    unset_low=Field.at(13, 0, 2),  # padding the C path never initialises
+    unset_high=Field.at(13, 7, 1),  # padding the C path never initialises
+    unset=Field.at(25, 7, 1),  # padding bit the C path never initialises
 )
 
 
@@ -940,17 +905,7 @@ class Hitachi296Device(Device):
     capabilities = Capabilities(
         modes=("auto", "cool", "dry", "heat"),
         temperature=TemperatureRange(16.0, 25.0),
-        fan=Choice(
-            ("auto", "1", "2", "3", "4", "5"),
-            {
-                "auto": "auto",
-                "1": "lowest",
-                "2": "low",
-                "3": "medium",
-                "4": "high",
-                "5": "highest",
-            },
-        ),
+        fan=_FAN_5,
     )
 
     def frames(self, previous, target, actions):

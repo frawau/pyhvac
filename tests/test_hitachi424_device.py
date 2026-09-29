@@ -82,13 +82,13 @@ def test_skeleton_is_the_reset_state():
     }
     _, main = decode(HITACHI424, record["pulses"], expected=["leader", "main"])
     data = HITACHI424_LAYOUT.build(
-        fan_aux9=0x92,
+        fan_byte9=0x92,
         button="power_mode",
         temperature=16,
         mode="cool",
         fan="auto",
         power=0,
-        fan_aux29=0,
+        fan_byte29=0,
     )
     assert bytes(data) == main.data
 

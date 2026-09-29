@@ -27,7 +27,8 @@ from .hvaclib import PulseBased, GenPluginObject
 from ..device import Device
 from ..fields import Field, Layout
 from ..ir.model import Frame, Protocol, PulseDistance, Section
-from ..state import Capabilities, Choice, TemperatureRange
+from ..choices import FAN_3, ON_OFF
+from ..state import Capabilities, TemperatureRange
 
 
 class Kelon(PulseBased):
@@ -163,11 +164,8 @@ class KelonDevice(Device):
     capabilities = Capabilities(
         modes=("auto", "cool", "fan", "dry", "heat"),
         temperature=TemperatureRange(18.0, 32.0),
-        fan=Choice(
-            ("auto", "1", "2", "3"),
-            {"auto": "auto", "1": "low", "2": "medium", "3": "high"},
-        ),
-        features={"sleep": Choice((False, True), {False: "off", True: "on"})},
+        fan=FAN_3,
+        features={"sleep": ON_OFF},
     )
 
     def frames(self, previous, target, actions):

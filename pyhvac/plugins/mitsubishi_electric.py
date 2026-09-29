@@ -28,6 +28,7 @@ from .hvaclib import PulseBased, GenPluginObject
 from ..device import Device
 from ..fields import Copy, Field, Layout, Sum8
 from ..ir.model import Frame, Protocol, PulseDistance, Section
+from ..choices import FAN_5, ON_OFF, SWING_H_6, SWING_V_ANGLES
 from ..state import Capabilities, Choice, TemperatureRange
 
 
@@ -216,41 +217,9 @@ class MitsubishiAcDevice(Device):
     capabilities = Capabilities(
         modes=("auto", "cool", "fan", "dry", "heat"),
         temperature=TemperatureRange(16.0, 31.0, decimals=(0, 5)),
-        fan=Choice(
-            ("auto", "1", "2", "3", "4", "5"),
-            {
-                "auto": "auto",
-                "1": "lowest",
-                "2": "low",
-                "3": "medium",
-                "4": "high",
-                "5": "highest",
-            },
-        ),
-        swing_v=Choice(
-            ("off", "auto", "1", "2", "3", "4", "5"),
-            {
-                "off": "off",
-                "auto": "auto",
-                "1": "90°",
-                "2": "60°",
-                "3": "45°",
-                "4": "30°",
-                "5": "0°",
-            },
-        ),
-        swing_h=Choice(
-            ("auto", "1", "2", "3", "4", "5", "6"),
-            {
-                "auto": "auto",
-                "1": "far left",
-                "2": "left",
-                "3": "middle",
-                "4": "right",
-                "5": "far right",
-                "6": "wide",
-            },
-        ),
+        fan=FAN_5,
+        swing_v=SWING_V_ANGLES,
+        swing_h=SWING_H_6,
     )
 
     def frames(self, previous, target, actions):
@@ -385,17 +354,7 @@ class Mitsubishi136Device(Device):
     capabilities = Capabilities(
         modes=("auto", "cool", "fan", "dry", "heat"),
         temperature=TemperatureRange(16.0, 25.0),
-        fan=Choice(
-            ("auto", "1", "2", "3", "4", "5"),
-            {
-                "auto": "auto",
-                "1": "lowest",
-                "2": "low",
-                "3": "medium",
-                "4": "high",
-                "5": "highest",
-            },
-        ),
+        fan=FAN_5,
         swing_v=Choice(
             ("off", "auto", "1", "2", "3", "4"),
             {
@@ -407,7 +366,7 @@ class Mitsubishi136Device(Device):
                 "4": "0°",
             },
         ),
-        features={"quiet": Choice((False, True), {False: "off", True: "on"})},
+        features={"quiet": ON_OFF},
     )
 
     def frames(self, previous, target, actions):
@@ -525,31 +484,9 @@ class Mitsubishi112Device(Device):
             ("1", "2", "3", "4"),
             {"1": "lowest", "2": "low", "3": "medium", "4": "highest"},
         ),
-        swing_v=Choice(
-            ("off", "auto", "1", "2", "3", "4", "5"),
-            {
-                "off": "off",
-                "auto": "auto",
-                "1": "90°",
-                "2": "60°",
-                "3": "45°",
-                "4": "30°",
-                "5": "0°",
-            },
-        ),
-        swing_h=Choice(
-            ("auto", "1", "2", "3", "4", "5", "6"),
-            {
-                "auto": "auto",
-                "1": "far left",
-                "2": "left",
-                "3": "middle",
-                "4": "right",
-                "5": "far right",
-                "6": "wide",
-            },
-        ),
-        features={"quiet": Choice((False, True), {False: "off", True: "on"})},
+        swing_v=SWING_V_ANGLES,
+        swing_h=SWING_H_6,
+        features={"quiet": ON_OFF},
     )
 
     def frames(self, previous, target, actions):

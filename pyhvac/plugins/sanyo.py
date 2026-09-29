@@ -27,6 +27,7 @@ from .hvaclib import PulseBased, GenPluginObject
 from ..device import Device
 from ..fields import Field, Layout, NibbleSum
 from ..ir.model import Frame, Protocol, PulseDistance, Section
+from ..choices import FAN_3, ON_OFF, SWING
 from ..state import Capabilities, Choice, TemperatureRange
 
 
@@ -162,10 +163,7 @@ class SanyoAcDevice(Device):
     capabilities = Capabilities(
         modes=("auto", "cool", "dry", "heat"),
         temperature=TemperatureRange(16.0, 30.0),
-        fan=Choice(
-            ("auto", "1", "2", "3"),
-            {"auto": "auto", "1": "low", "2": "medium", "3": "high"},
-        ),
+        fan=FAN_3,
         swing_v=Choice(
             ("auto", "1", "2", "3", "4", "5"),
             {
@@ -177,7 +175,7 @@ class SanyoAcDevice(Device):
                 "5": "0°",
             },
         ),
-        features={"sleep": Choice((False, True), {False: "off", True: "on"})},
+        features={"sleep": ON_OFF},
     )
 
     def frames(self, previous, target, actions):
@@ -297,11 +295,8 @@ class SanyoAc88Device(Device):
             ("auto", "1", "2", "3", "4"),
             {"auto": "auto", "1": "lowest", "2": "medium", "3": "high", "4": "highest"},
         ),
-        swing_v=Choice(("off", "swing"), {"off": "off", "swing": "on"}),
-        features={
-            name: Choice((False, True), {False: "off", True: "on"})
-            for name in ("powerful", "purifier", "sleep")
-        },
+        swing_v=SWING,
+        features={name: ON_OFF for name in ("powerful", "purifier", "sleep")},
     )
 
     def frames(self, previous, target, actions):

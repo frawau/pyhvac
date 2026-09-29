@@ -28,6 +28,7 @@ from .midea import Midea
 from ..device import Device
 from ..fields import Field, Layout, Sum8
 from ..ir.model import Frame, Protocol, PulseDistance, Section
+from ..choices import ON_OFF, SWING
 from ..state import Capabilities, Choice, TemperatureRange
 
 
@@ -139,7 +140,7 @@ class TrotecDevice(Device):
         modes=("auto", "cool", "dry", "fan"),
         temperature=TemperatureRange(16.0, 30.0),
         fan=Choice(("1", "2", "3"), {"1": "low", "2": "medium", "3": "high"}),
-        features={"sleep": Choice((False, True), {False: "off", True: "on"})},
+        features={"sleep": ON_OFF},
     )
 
     def frames(self, previous, target, actions):
@@ -229,7 +230,7 @@ class Trotec3550Device(Device):
         modes=("auto", "cool", "dry", "fan"),
         temperature=TemperatureRange(16.0, 30.0),
         fan=Choice(("1", "2", "3"), {"1": "low", "2": "medium", "3": "high"}),
-        swing_v=Choice(("off", "swing"), {"off": "off", "swing": "on"}),
+        swing_v=SWING,
     )
 
     def frames(self, previous, target, actions):

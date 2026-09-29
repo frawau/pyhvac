@@ -35,6 +35,7 @@ from .hvaclib import HVAC, PulseBased, GenPluginObject, bit_reverse
 from ..device import Device
 from ..fields import Checksums, Copy, Field, Layout, Sum8
 from ..ir.model import Frame, Protocol, PulseDistance, Section
+from ..choices import FAN_5, ON_OFF, SWING, SWING_H_5
 from ..state import Capabilities, Choice, TemperatureRange
 
 try:
@@ -623,23 +624,13 @@ PANASONIC_AC_VARIANTS = {
     "RKR": dict(model_13=1, model_21=0, model_23=0x89, clock=0, swing_h="positions"),
 }
 
-_PANASONIC_AC_ON_OFF = Choice((False, True), {False: "off", True: "on"})
-_PANASONIC_AC_POSITIONS = Choice(
-    ("auto", "1", "2", "3", "4", "5"),
-    {
-        "auto": "auto",
-        "1": "far left",
-        "2": "left",
-        "3": "middle",
-        "4": "right",
-        "5": "far right",
-    },
-)
+_PANASONIC_AC_ON_OFF = ON_OFF
+_PANASONIC_AC_POSITIONS = SWING_H_5
 
 
 def _panasonic_ac_capabilities(variant):
     swing_h = {
-        "NKE": Choice(("off", "swing"), {"off": "off", "swing": "on"}),
+        "NKE": SWING,
         "DKE": _PANASONIC_AC_POSITIONS,
         "RKR": _PANASONIC_AC_POSITIONS,
     }.get(variant)
@@ -649,17 +640,7 @@ def _panasonic_ac_capabilities(variant):
     return Capabilities(
         modes=("auto", "cool", "dry", "heat", "fan"),
         temperature=TemperatureRange(16.0, 30.0),
-        fan=Choice(
-            ("auto", "1", "2", "3", "4", "5"),
-            {
-                "auto": "auto",
-                "1": "lowest",
-                "2": "low",
-                "3": "medium",
-                "4": "high",
-                "5": "highest",
-            },
-        ),
+        fan=FAN_5,
         swing_v=Choice(
             ("auto", "1", "2", "3", "4", "5"),
             {"auto": "auto", "1": "90°", "2": "60°", "3": "45°", "4": "30°", "5": "0°"},
@@ -872,22 +853,12 @@ class PanasonicAc32Device(Device):
     capabilities = Capabilities(
         modes=("auto", "cool", "dry", "heat", "fan"),
         temperature=TemperatureRange(16.0, 30.0),
-        fan=Choice(
-            ("auto", "1", "2", "3", "4", "5"),
-            {
-                "auto": "auto",
-                "1": "lowest",
-                "2": "low",
-                "3": "medium",
-                "4": "high",
-                "5": "highest",
-            },
-        ),
+        fan=FAN_5,
         swing_v=Choice(
             ("auto", "1", "2", "3", "4", "5"),
             {"auto": "auto", "1": "90°", "2": "60°", "3": "45°", "4": "30°", "5": "0°"},
         ),
-        swing_h=Choice(("off", "swing"), {"off": "off", "swing": "on"}),
+        swing_h=SWING,
     )
 
     def frames(self, previous, target, actions):

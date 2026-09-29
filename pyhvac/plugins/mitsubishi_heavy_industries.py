@@ -28,6 +28,7 @@ from .hvaclib import PulseBased, GenPluginObject
 from ..device import Device
 from ..fields import Field, InvertedPairs, Layout
 from ..ir.model import Frame, Protocol, PulseDistance, Section
+from ..choices import FAN_5, ON_OFF, SWING_H_6, SWING_V_ANGLES
 from ..state import Capabilities, Choice, TemperatureRange
 
 
@@ -232,43 +233,11 @@ class MitsubishiHeavy152Device(Device):
     capabilities = Capabilities(
         modes=("auto", "cool", "dry", "fan", "heat"),
         temperature=TemperatureRange(17.0, 31.0),
-        fan=Choice(
-            ("auto", "1", "2", "3", "4", "5"),
-            {
-                "auto": "auto",
-                "1": "lowest",
-                "2": "low",
-                "3": "medium",
-                "4": "high",
-                "5": "highest",
-            },
-        ),
-        swing_v=Choice(
-            ("off", "auto", "1", "2", "3", "4", "5"),
-            {
-                "off": "off",
-                "auto": "auto",
-                "1": "90°",
-                "2": "60°",
-                "3": "45°",
-                "4": "30°",
-                "5": "0°",
-            },
-        ),
-        swing_h=Choice(
-            ("auto", "1", "2", "3", "4", "5", "6"),
-            {
-                "auto": "auto",
-                "1": "far left",
-                "2": "left",
-                "3": "middle",
-                "4": "right",
-                "5": "far right",
-                "6": "wide",
-            },
-        ),
+        fan=FAN_5,
+        swing_v=SWING_V_ANGLES,
+        swing_h=SWING_H_6,
         features={
-            name: Choice((False, True), {False: "off", True: "on"})
+            name: ON_OFF
             for name in (
                 "quiet",
                 "sleep",
@@ -420,18 +389,7 @@ class MitsubishiHeavy88Device(Device):
             ("1", "2", "3", "4"),
             {"1": "lowest", "2": "low", "3": "medium", "4": "highest"},
         ),
-        swing_v=Choice(
-            ("off", "auto", "1", "2", "3", "4", "5"),
-            {
-                "off": "off",
-                "auto": "auto",
-                "1": "90°",
-                "2": "60°",
-                "3": "45°",
-                "4": "30°",
-                "5": "0°",
-            },
-        ),
+        swing_v=SWING_V_ANGLES,
         swing_h=Choice(
             ("off", "auto", "1", "2", "3", "4", "5"),
             {
@@ -445,9 +403,9 @@ class MitsubishiHeavy88Device(Device):
             },
         ),
         features={
-            "cleaning": Choice((False, True), {False: "off", True: "on"}),
-            "powerful": Choice((False, True), {False: "off", True: "on"}),
-            "economy": Choice((False, True), {False: "off", True: "on"}),
+            "cleaning": ON_OFF,
+            "powerful": ON_OFF,
+            "economy": ON_OFF,
         },
     )
 

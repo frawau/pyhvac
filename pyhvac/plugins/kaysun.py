@@ -24,8 +24,12 @@
 #
 
 from .hvaclib import PulseBased, GenPluginObject
-from .midea import Midea
-from .coolix import Coolix
+from .midea import MIDEA_KAYSUN_MODELS, Midea, MideaDevice
+from .coolix import COOLIX_KAYSUN_MODELS, Coolix, CoolixDevice
+
+DEVICES = {}
+DEVICES.update({m: CoolixDevice for m in COOLIX_KAYSUN_MODELS})
+DEVICES.update({m: MideaDevice for m in MIDEA_KAYSUN_MODELS})
 
 
 # Now the match between models and objects

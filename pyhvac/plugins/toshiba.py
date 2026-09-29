@@ -24,7 +24,7 @@
 #
 
 from .hvaclib import PulseBased, GenPluginObject
-from .coolix import Coolix
+from .coolix import COOLIX_TOSHIBA_MODELS, Coolix, CoolixDevice
 from ..device import Device
 from ..fields import Checksums, Field, InvertedPairs, Layout, Xor8
 from ..ir.model import Frame, Protocol, PulseDistance, Section
@@ -241,6 +241,7 @@ TOSHIBA_AC_CARRIER_MODELS = (  # carrier plugin
 
 DEVICES = {}
 DEVICES.update({m: ToshibaAcDevice for m in TOSHIBA_AC_MODELS})
+DEVICES.update({m: CoolixDevice for m in COOLIX_TOSHIBA_MODELS})
 
 
 # Now the match between models and objects

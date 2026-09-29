@@ -25,7 +25,7 @@
 # Description of the various ": Greev1, devices supported. Can be a remote control name
 
 from .hvaclib import Manchester, GenPluginObject
-from .coolix import Coolix
+from .coolix import COOLIX_AIRWELL_MODELS, Coolix, CoolixDevice
 from ..device import Device
 from ..fields import Field, Layout
 from ..ir.model import Frame, Manchester as ManchesterBits, Protocol, Section
@@ -184,6 +184,7 @@ AIRWELL_MODELS = ("DC Series", "RC08W remote", "RC04 remote", "generic")
 
 
 DEVICES.update({m: AirwellDevice for m in AIRWELL_MODELS})
+DEVICES.update({m: CoolixDevice for m in COOLIX_AIRWELL_MODELS})
 
 
 # Now the match between models and objects

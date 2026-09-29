@@ -24,7 +24,10 @@
 #
 
 from .hvaclib import PulseBased, GenPluginObject
-from .coolix import Coolix
+from .coolix import COOLIX_TOKIO_MODELS, Coolix, CoolixDevice
+
+DEVICES = {}
+DEVICES.update({m: CoolixDevice for m in COOLIX_TOKIO_MODELS})
 
 
 # Now the match between models and objects

@@ -25,7 +25,10 @@
 # Description of the various ": Greev1, devices supported. Can be a remote control name
 
 from .hvaclib import GenPluginObject
-from .coolix import Coolix
+from .coolix import COOLIX_BEKO_MODELS, Coolix, CoolixDevice
+
+DEVICES = {}
+DEVICES.update({m: CoolixDevice for m in COOLIX_BEKO_MODELS})
 
 
 # Now the match between models and objects

@@ -25,7 +25,7 @@
 # Description of the various ": Greev1, devices supported. Can be a remote control name
 
 from .hvaclib import PulseBased, GenPluginObject
-from .coolix import Coolix
+from .coolix import COOLIX_BOSCH_MODELS, Coolix, CoolixDevice
 from ..choices import FAN_5, ON_OFF
 from ..device import Device
 from ..fields import Field, InvertedPairs, Layout, Sum8
@@ -217,6 +217,7 @@ BOSCH144_MODELS = ("CL3000i-Set 26 E", "RG10A(G2S)BGEF remote", "generic")
 
 
 DEVICES.update({m: Bosch144Device for m in BOSCH144_MODELS})
+DEVICES.update({m: CoolixDevice for m in COOLIX_BOSCH_MODELS})
 
 
 # Now the match between models and objects

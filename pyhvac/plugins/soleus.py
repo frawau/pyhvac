@@ -24,11 +24,12 @@
 #
 
 from .hvaclib import PulseBased, GenPluginObject
-from .gree import Greev3
+from .gree import GREE_SOLEUS_MODELS, Greev3, GreeDevice
 from .neoclima import NEOCLIMA_SOLEUS_MODELS, Neoclima, NeoclimaDevice
 
 DEVICES = {}
 DEVICES.update({m: NeoclimaDevice for m in NEOCLIMA_SOLEUS_MODELS})
+DEVICES.update({m: GreeDevice for m in GREE_SOLEUS_MODELS})
 
 
 # Now the match between models and objects

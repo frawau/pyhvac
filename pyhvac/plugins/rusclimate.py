@@ -23,7 +23,10 @@
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
 #
 from .hvaclib import GenPluginObject
-from .gree import Greev1
+from .gree import GREE_RUSCLIMATE_MODELS, Greev1, GreeDevice
+
+DEVICES = {}
+DEVICES.update({m: GreeDevice for m in GREE_RUSCLIMATE_MODELS})
 
 
 # Now the match between models and objects

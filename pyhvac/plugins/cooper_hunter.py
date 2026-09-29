@@ -24,7 +24,10 @@
 #
 
 from .hvaclib import GenPluginObject
-from .gree import Greev1
+from .gree import GREE_COOPER_HUNTER_MODELS, Greev1, GreeDevice
+
+DEVICES = {}
+DEVICES.update({m: GreeDevice for m in GREE_COOPER_HUNTER_MODELS})
 
 
 # Now the match between models and objects

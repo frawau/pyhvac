@@ -24,7 +24,10 @@
 #
 
 from .hvaclib import GenPluginObject
-from .gree import Greev1
+from .gree import GREE_EKOKAI_MODELS, Greev1, GreeDevice
+
+DEVICES = {}
+DEVICES.update({m: GreeDevice for m in GREE_EKOKAI_MODELS})
 
 
 # Now the match between models and objects

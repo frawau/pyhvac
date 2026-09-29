@@ -24,7 +24,10 @@
 #
 
 from .hvaclib import PulseBased, GenPluginObject
-from .gree import Greev2
+from .gree import GREE_GREEN_MODELS, Greev2, GreeDevice
+
+DEVICES = {}
+DEVICES.update({m: GreeDevice for m in GREE_GREEN_MODELS})
 
 
 # Now the match between models and objects

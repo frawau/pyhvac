@@ -24,7 +24,7 @@
 #
 
 from .hvaclib import PulseBased, GenPluginObject
-from .midea import Midea
+from .midea import MIDEA_TROTECH_MODELS, Midea, MideaDevice
 from ..device import Device
 from ..fields import Field, Layout, Sum8
 from ..ir.model import Frame, Protocol, PulseDistance, Section
@@ -260,6 +260,7 @@ TROTEC3550_MODELS = ("PAC 3550 Pro", "generic 3550")
 
 DEVICES.update({m: TrotecDevice for m in TROTEC_MODELS})
 DEVICES.update({m: Trotec3550Device for m in TROTEC3550_MODELS})
+DEVICES.update({m: MideaDevice for m in MIDEA_TROTECH_MODELS})
 
 
 # Now the match between models and objects

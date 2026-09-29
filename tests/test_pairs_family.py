@@ -19,7 +19,6 @@ def test_no_ported_model_uses_the_c_library(name):
     from pyhvac.legacy import LegacyDevice
     from pyhvac.plugins.hvaclib import IRGHVAC
 
-    # The Midea models listed in trotech.py belong to the Midea port.
     left = []
     for model in registry.models(name):
         try:
@@ -31,14 +30,4 @@ def test_no_ported_model_uses_the_c_library(name):
             device.legacy_class, IRGHVAC
         ):
             left.append(model)
-    if name == "trotech":
-        assert sorted(left) == sorted(
-            [
-                "PAC 2100 X",
-                "PAC 3900 X",
-                "RG57H(B)/BGE remote",
-                "RG57H3(B)/BGCEF-M remote",
-            ]
-        )
-    else:
-        assert left == []
+    assert left == []

@@ -25,7 +25,10 @@
 # Description of the various ": Greev1, devices supported. Can be a remote control name
 
 from .hvaclib import PulseBased, GenPluginObject
-from .midea import Midea
+from .midea import MIDEA_COMFEE_MODELS, Midea, MideaDevice
+
+DEVICES = {}
+DEVICES.update({m: MideaDevice for m in MIDEA_COMFEE_MODELS})
 
 
 # Now the match between models and objects

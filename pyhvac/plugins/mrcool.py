@@ -24,7 +24,10 @@
 #
 
 from .hvaclib import PulseBased, GenPluginObject
-from .midea import Midea
+from .midea import MIDEA_MRCOOL_MODELS, Midea, MideaDevice
+
+DEVICES = {}
+DEVICES.update({m: MideaDevice for m in MIDEA_MRCOOL_MODELS})
 
 
 # Now the match between models and objects

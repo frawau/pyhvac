@@ -195,8 +195,13 @@ DEVICES = {}
 # kHitachiAc264/296/344StateLength, MSB first otherwise).
 
 
-def _hitachi_ac_protocol(name, lsb_first=True):
-    """The sendHitachiAC message: one frame, 38 kHz."""
+def _hitachi_ac_protocol(name, lsb_first=True, tolerance=0.30, mark_excess=50):
+    """The sendHitachiAC message: one frame, 38 kHz.
+
+    decodeHitachiAC (kHitachiAcBits, kHitachiAc264Bits, kHitachiAc344Bits)
+    matches with k_tolerance = _tolerance + 5 (30 %) and kMarkExcess;
+    decodeHitachiAc296 with kUseDefTol (25 %) and mark excess 0.
+    """
     return Protocol(
         name,
         {
@@ -209,6 +214,8 @@ def _hitachi_ac_protocol(name, lsb_first=True):
             ),
         },
         carrier=38000,  # kHitachiAcFreq
+        tolerance=tolerance,
+        mark_excess=mark_excess,
     )
 
 
@@ -333,6 +340,9 @@ HITACHI1 = Protocol(
         )
     },
     carrier=38000,
+    # decodeHitachiAC (kHitachiAc1Bits): k_tolerance = _tolerance + 5
+    # (30 %), kMarkExcess.
+    tolerance=0.30,
 )
 
 
@@ -587,6 +597,9 @@ HITACHI424 = Protocol(
         ),
     },
     carrier=38000,  # kHitachiAcFreq
+    # decodeHitachiAc424: the leader with the defaults, the frame with
+    # kUseDefTol (25 %) and mark excess 0.
+    mark_excess=0,
 )
 
 # raw[9] and raw[29] are not in the struct (padding), but
@@ -813,7 +826,8 @@ DEVICES.update({m: Hitachi264Device for m in HITACHI264_MODELS})
 # kHitachiAc296StateLength), fields at Hitachi424Protocol's offsets but a
 # 5-bit Temp and a 3-bit Fan.
 
-HITACHI296 = _hitachi_ac_protocol("hitachi296")
+# decodeHitachiAc296: kUseDefTol (25 %), mark excess 0.
+HITACHI296 = _hitachi_ac_protocol("hitachi296", tolerance=0.25, mark_excess=0)
 
 HITACHI296_MODE = {  # kHitachiAc296*, as IRHitachiAc296::convertMode
     "cool": 0b0011,  # kHitachiAc296Cool

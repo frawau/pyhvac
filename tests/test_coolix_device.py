@@ -702,3 +702,10 @@ def test_other_records_need_no_defect():
     for record in load_oracle("COOLIX"):
         if record not in swinging:
             assert_matches(device(), record, defects=())
+
+
+# No real capture in ir_Coolix_test.cpp needs it, but
+# decodeCOOLIX matches the bits with _tolerance +
+# kCoolixExtraTolerance (30 %) and no mark excess.
+def test_decode_tolerance_is_the_c_decoders():
+    assert (COOLIX.tolerance, COOLIX.mark_excess) == (0.30, 0)

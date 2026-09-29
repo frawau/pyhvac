@@ -14,6 +14,7 @@ from port_oracle import (
 )
 from pyhvac import registry
 from pyhvac.plugins.fujitsu import (
+    FUJITSU_AC,
     FUJITSU_AC_LONG15_LAYOUT,
     FUJITSU_AC_LONG_LAYOUT,
     FUJITSU_AC_MODELS,
@@ -23,6 +24,7 @@ from pyhvac.plugins.fujitsu import (
     FujitsuAcDevice,
 )
 from pyhvac.state import HvacState
+from pyhvac.ir.codec import decode
 
 VARIANTS = ("ARRAH2E", "ARDB1", "ARREB1E", "ARJW2", "ARRY4", "ARREW4E")
 LEGACY_CLASS = {
@@ -496,3 +498,32 @@ def test_layouts_must_cover_every_frame():
     record = load_oracle("FUJITSU_AC")[0]
     with pytest.raises(AssertionError, match="layout"):
         assert_matches_oracle(dev, record, (), DEFECTS)
+
+
+# ir_Fujitsu_test.cpp DecodeFujitsuAC.Issue1455: decodeFujitsuAC matches the
+# bits with _tolerance + kFujitsuAcExtraTolerance (30 %) and no mark excess;
+# this capture has bit marks as short as 304 µs for 448. C reads it as an
+# ARREW4E, Heat, 19C.
+REAL_RAW = (
+    "3220 1700 354 446 380 448 380 1296 352 446 382 1296 354 448 380 448 "
+    "378 446 382 1296 352 1296 354 448 378 446 380 446 382 1294 354 1270 "
+    "380 448 380 446 380 448 380 446 380 450 378 448 380 446 380 448 380 "
+    "448 380 448 380 450 376 450 380 448 378 1298 352 448 378 448 380 448 "
+    "380 448 378 450 378 450 378 448 378 1296 354 446 382 446 380 448 378 "
+    "448 380 1296 352 1296 354 1296 354 1272 376 1272 378 1296 354 1294 354 "
+    "1296 354 446 380 448 378 1296 354 448 378 448 378 448 380 446 380 1272 "
+    "378 446 380 450 378 448 378 1296 354 1296 354 446 380 448 378 448 378 "
+    "446 382 446 380 1296 354 1296 354 446 380 1296 354 446 380 446 380 446 "
+    "380 1294 354 448 380 448 380 448 380 448 380 446 380 448 380 446 380 "
+    "448 380 446 380 446 380 448 380 446 380 448 380 448 380 446 380 1296 "
+    "352 446 380 1296 354 446 380 448 380 448 380 1296 354 448 378 448 380 "
+    "446 380 446 382 446 380 446 382 446 380 1272 378 446 380 446 382 1294 "
+    "354 446 382 1294 354 446 382 446 382 446 380 448 380 448 380 448 380 "
+    "448 378 1296 354 446 382 446 380 1296 354 446 382 1296 354 446 382 "
+    "1294 354 446 382 446 380 446 382"
+)
+
+
+def test_real_raw_capture_decodes():
+    (frame,) = decode(FUJITSU_AC, [int(x) for x in REAL_RAW.split()])
+    assert frame.data == bytes.fromhex("1463001010fe09315804001401292015")

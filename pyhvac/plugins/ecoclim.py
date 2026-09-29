@@ -82,6 +82,9 @@ ECOCLIM = Protocol(
         ),
     },
     carrier=38000,  # enableIROut(38)
+    # decodeEcoclim: matchGeneric(..., _tolerance + kEcoclimExtraTolerance
+    # (30 %)), default kMarkExcess (50).
+    tolerance=0.30,
 )
 
 

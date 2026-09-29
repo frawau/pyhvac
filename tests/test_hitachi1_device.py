@@ -11,6 +11,7 @@ from port_oracle import (
 )
 from pyhvac import registry
 from pyhvac.plugins.hitachi import (
+    HITACHI1,
     HITACHI1_LAYOUT,
     HITACHI1_MODELS,
     Hitachi1Checksum,
@@ -318,3 +319,9 @@ def test_layouts_must_cover_every_frame():
     dev = _device_for(record)
     with pytest.raises(AssertionError, match="layout"):
         assert_matches_oracle(dev, record, (), DEFECTS)
+
+
+# No real capture in ir_Hitachi_test.cpp needs it, but decodeHitachiAC
+# (kHitachiAc1Bits) matches with _tolerance + 5 (30 %) and kMarkExcess.
+def test_decode_tolerance_is_the_c_decoders():
+    assert (HITACHI1.tolerance, HITACHI1.mark_excess) == (0.30, 50)

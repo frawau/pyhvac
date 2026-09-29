@@ -516,6 +516,9 @@ PANASONIC_AC = Protocol(
         ),
     },
     carrier=36700,  # kPanasonicFreq
+    # decodePanasonicAC: kPanasonicAcTolerance (40 %), kPanasonicAcExcess (0).
+    tolerance=0.40,
+    mark_excess=0,
 )
 
 PANASONIC_AC_MODE = {  # kPanasonicAc{Auto,Dry,Cool,Heat,Fan}

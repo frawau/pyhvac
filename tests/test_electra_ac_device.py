@@ -12,6 +12,7 @@ from port_oracle import (
 from pyhvac import registry
 from pyhvac.ir.codec import decode
 from pyhvac.plugins.electra import (
+    ELECTRA_AC,
     ELECTRA_AC_AEG_MODELS,
     ELECTRA_AC_AUX_MODELS,
     ELECTRA_AC_CENTEK_MODELS,
@@ -331,3 +332,9 @@ def test_layouts_must_cover_every_frame():
     )
     with pytest.raises(AssertionError, match="layout"):
         assert_matches_oracle(dev, record, (), DEFECTS)
+
+
+# No real capture in ir_Electra_test.cpp needs it, but
+# decodeElectraAC matches with _tolerance (25 %) and no mark excess.
+def test_decode_tolerance_is_the_c_decoders():
+    assert (ELECTRA_AC.tolerance, ELECTRA_AC.mark_excess) == (0.25, 0)

@@ -445,3 +445,9 @@ def test_toggle_word_is_not_silently_dropped_by_the_plain_helper():
     )
     with pytest.raises(Exception):
         assert_matches_oracle(device(), record, (LG_AC_LAYOUT,) * 2, DEFECTS)
+
+
+# No real capture in ir_LG_test.cpp needs it, but
+# decodeLG matches with kUseDefTol (25 %) and no mark excess.
+def test_decode_tolerance_is_the_c_decoders():
+    assert (LG_AC.tolerance, LG_AC.mark_excess) == (0.25, 0)

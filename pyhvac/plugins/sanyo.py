@@ -224,6 +224,9 @@ SANYO_AC88 = Protocol(
         "end": Section(None, gap=100000),
     },
     carrier=38000,  # kSanyoAc88Freq
+    # decodeSanyoAc88: _tolerance + kSanyoAc88ExtraTolerance (30 %),
+    # kMarkExcess.
+    tolerance=0.30,
 )
 
 SANYO_AC88_MODE = {  # kSanyoAc88{Auto,Cool,Heat,Fan}

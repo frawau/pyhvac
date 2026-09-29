@@ -95,6 +95,9 @@ SAMSUNG_AC = Protocol(
         ),
     },
     carrier=38000,
+    # decodeSamsungAC: the leader with the defaults, the sections with
+    # _tolerance (25 %) and mark excess 0.
+    mark_excess=0,
 )
 
 

@@ -4,12 +4,14 @@ from oracle import load_oracle
 from port_oracle import Defect, assert_matches_oracle, oracle_params, state_from_record
 from pyhvac import registry
 from pyhvac.plugins.hitachi import (
+    HITACHI_AC,
     HITACHI_AC_LAYOUT,
     HITACHI_AC_MODELS,
     HitachiAcChecksum,
     HitachiAcDevice,
 )
 from pyhvac.state import HvacState
+from pyhvac.ir.codec import decode
 
 # The C path never sends swing on: the old vocabulary's "on" has no entry in
 # IRGHVAC.trans_swing / trans_hswing, so build_ircode skips the key, swingv and
@@ -197,3 +199,44 @@ def test_layouts_must_cover_every_frame():
     record = load_oracle("HITACHI_AC")[0]
     with pytest.raises(AssertionError, match="layout"):
         assert_matches_oracle(dev, record, (), DEFECTS)
+
+
+# ir_Hitachi_test.cpp DecodeHitachiAC.NormalRealExample1: decodeHitachiAC
+# matches with _tolerance + 5 (30 %) and kMarkExcess; this capture has bit
+# marks as short as 296 µs for 400.
+REAL_RAW = (
+    "3318 1720 400 1276 400 432 398 434 398 434 400 432 398 432 398 432 398 "
+    "434 398 432 398 434 400 432 398 434 398 1278 398 434 398 434 396 434 "
+    "398 434 398 432 398 434 398 432 398 1276 426 1252 424 408 424 406 424 "
+    "408 426 406 398 432 398 434 398 432 400 432 398 1276 426 408 424 1252 "
+    "426 1252 424 1250 426 1252 428 1250 426 1252 424 406 426 1248 428 1252 "
+    "426 406 426 406 424 408 400 432 400 430 400 432 400 430 400 432 400 "
+    "1276 400 1276 402 1276 400 1276 400 1276 400 1278 400 1276 402 1276 "
+    "402 428 402 430 400 430 402 1276 400 430 402 430 400 432 402 428 402 "
+    "1278 400 430 402 430 402 1276 402 428 402 430 402 430 400 1276 402 430 "
+    "402 430 402 430 402 430 402 428 402 430 404 430 402 428 402 430 402 "
+    "1276 402 430 402 428 402 430 400 428 402 430 402 430 402 430 402 430 "
+    "402 428 402 430 402 1274 402 428 402 430 402 430 402 430 402 430 402 "
+    "428 402 428 402 428 404 428 404 428 402 1276 400 430 402 430 400 432 "
+    "400 456 374 432 400 456 404 428 404 426 404 428 402 428 402 430 402 "
+    "430 400 432 398 434 376 454 378 454 380 452 378 452 404 428 406 424 "
+    "432 398 406 426 430 402 404 428 428 402 400 430 400 432 398 434 398 "
+    "432 398 434 372 460 374 434 398 432 398 434 396 434 376 456 376 456 "
+    "376 456 376 1300 378 454 378 452 378 454 378 454 378 454 378 452 378 "
+    "454 400 432 402 430 402 430 402 430 402 428 402 430 402 430 400 430 "
+    "402 430 400 432 400 430 400 432 400 430 402 430 400 432 398 432 400 "
+    "430 400 432 398 432 398 434 398 432 398 432 400 434 398 432 398 432 "
+    "398 434 398 434 396 434 398 434 398 432 398 434 398 432 398 456 376 "
+    "454 376 436 396 454 376 454 378 454 376 454 376 456 374 458 374 1302 "
+    "374 456 374 458 374 458 376 456 374 456 374 456 374 456 376 456 376 "
+    "456 374 458 374 458 374 458 372 458 372 460 374 458 372 460 372 460 "
+    "372 460 370 462 372 460 372 460 370 462 370 462 356 1320 368 464 346 "
+    "1332 356 476 368 1310 366 1312 366 464 366 466 366"
+)
+
+
+def test_real_raw_capture_decodes():
+    (frame,) = decode(HITACHI_AC, [int(x) for x in REAL_RAW.split()])
+    assert frame.data == bytes.fromhex(
+        "80080c02fd807f8848802004008000000001000000000000800000ac"
+    )

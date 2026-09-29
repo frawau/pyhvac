@@ -4,6 +4,7 @@ from oracle import load_oracle
 from port_oracle import Defect, assert_matches_oracle, oracle_params, state_from_record
 from pyhvac import registry
 from pyhvac.plugins.hitachi import (
+    HITACHI296,
     HITACHI296_LAYOUT,
     HITACHI296_MODELS,
     Hitachi296Device,
@@ -194,3 +195,9 @@ def test_stale_high_padding_bit_is_a_declared_defect():
     theirs = encode(dev.PROTOCOL, [Frame(ours[0].section, bytes(stale))])
     stale_record = {"state": record["state"], "pulses": list(theirs.pulses)}
     assert_matches_oracle(dev, stale_record, dev.LAYOUTS, DEFECTS)
+
+
+# No real capture in ir_Hitachi_test.cpp needs it, but decodeHitachiAc296
+# matches with kUseDefTol (25 %) and no mark excess.
+def test_decode_tolerance_is_the_c_decoders():
+    assert (HITACHI296.tolerance, HITACHI296.mark_excess) == (0.25, 0)

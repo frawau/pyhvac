@@ -85,6 +85,8 @@ KELON = Protocol(
         )
     },
     carrier=38000,  # kKelonFreq
+    # decodeKelon: _tolerance (25 %), mark excess 0.
+    mark_excess=0,
 )
 
 # Skeleton: stateReset clears the whole word and writes the preamble

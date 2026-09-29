@@ -3,7 +3,7 @@ import pytest
 from oracle import load_oracle
 from port_oracle import Defect, assert_matches_oracle, oracle_params, state_from_record
 from pyhvac import registry
-from pyhvac.plugins.daikin import DAIKIN2_FIRST, DAIKIN2_SECOND, Daikin2Device
+from pyhvac.plugins.daikin import DAIKIN2_FIRST, DAIKIN2_SECOND, Daikin2Device, DAIKIN2
 from pyhvac.state import HvacState
 
 # IRremoteESP8266 deviates from its own documented Daikin2 values here:
@@ -109,3 +109,10 @@ def test_every_daikin2_model_is_served_by_the_port():
         "Daikin2",
     ):
         assert isinstance(registry.get_device("daikin", model), Daikin2Device)
+
+
+# No real capture in ir_Daikin_test.cpp needs it, but
+# decodeDaikin2 matches with _tolerance + kDaikin2Tolerance (30 %) and
+# kDaikinMarkExcess (kMarkExcess).
+def test_decode_tolerance_is_the_c_decoders():
+    assert (DAIKIN2.tolerance, DAIKIN2.mark_excess) == (0.30, 50)

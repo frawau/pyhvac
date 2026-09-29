@@ -116,6 +116,8 @@ MITSUBISHI_HEAVY152 = Protocol(
         ),
     },
     carrier=38000,
+    # decodeMitsubishiHeavy: _tolerance (25 %), mark excess 0.
+    mark_excess=0,
 )
 
 MITSUBISHI_HEAVY152_MODE = {  # kMitsubishiHeavy{Auto,Cool,Dry,Fan,Heat}
@@ -307,6 +309,8 @@ MITSUBISHI_HEAVY88 = Protocol(
         ),
     },
     carrier=38000,  # sendMitsubishiHeavy88: 38 kHz
+    # decodeMitsubishiHeavy: _tolerance (25 %), mark excess 0.
+    mark_excess=0,
 )
 
 

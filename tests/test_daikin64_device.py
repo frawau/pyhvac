@@ -11,6 +11,7 @@ from port_oracle import (
 )
 from pyhvac import registry
 from pyhvac.plugins.daikin import (
+    DAIKIN64,
     DAIKIN64_LAYOUT,
     DAIKIN64_MODELS,
     Daikin64Device,
@@ -166,3 +167,10 @@ def test_layouts_must_cover_every_frame():
     record = load_oracle("DAIKIN64")[0]
     with pytest.raises(AssertionError, match="layout"):
         assert_matches_oracle(dev, record, dev.LAYOUTS[:2], DEFECTS)
+
+
+# No real capture in ir_Daikin_test.cpp needs it, but
+# decodeDaikin64 matches the bits with _tolerance +
+# kDaikin64ToleranceDelta (30 %) and kMarkExcess.
+def test_decode_tolerance_is_the_c_decoders():
+    assert (DAIKIN64.tolerance, DAIKIN64.mark_excess) == (0.30, 50)

@@ -179,6 +179,11 @@ FUJITSU_AC = Protocol(
         )
     },
     carrier=38000,
+    # decodeFujitsuAC: header and bits with _tolerance +
+    # kFujitsuAcExtraTolerance (30 %) and mark excess 0 (the footer mark with
+    # the defaults).
+    tolerance=0.30,
+    mark_excess=0,
 )
 
 # kFujitsuAcMode{Auto,Cool,Dry,Fan,Heat}

@@ -74,6 +74,8 @@ ELECTRA_AC = Protocol(
         )
     },
     carrier=38000,  # sendElectraAC's "complete guess"
+    # decodeElectraAC: _tolerance (25 %), mark excess 0.
+    mark_excess=0,
 )
 
 # kElectraAcSwingOn / kElectraAcSwingOff, for SwingV and SwingH.

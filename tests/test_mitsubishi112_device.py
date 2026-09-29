@@ -4,6 +4,7 @@ from oracle import load_oracle
 from port_oracle import Defect, assert_matches_oracle, oracle_params, state_from_record
 from pyhvac import registry
 from pyhvac.plugins.mitsubishi_electric import (
+    MITSUBISHI112,
     MITSUBISHI112_LAYOUT,
     MITSUBISHI112_MODELS,
     Mitsubishi112Device,
@@ -219,3 +220,10 @@ def test_layouts_must_cover_every_frame():
     record = load_oracle("MITSUBISHI112")[0]
     with pytest.raises(AssertionError, match="layout"):
         assert_matches_oracle(dev, _with_c_defaults(record), (), DEFECTS)
+
+
+# No real capture in ir_Mitsubishi_test.cpp needs it, but
+# decodeMitsubishi112 matches with _tolerance + kTcl112AcTolerance (30 %)
+# and no mark excess.
+def test_decode_tolerance_is_the_c_decoders():
+    assert (MITSUBISHI112.tolerance, MITSUBISHI112.mark_excess) == (0.30, 0)

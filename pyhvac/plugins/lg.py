@@ -614,6 +614,9 @@ def _lg_protocol(name, bit_mark, header):
             )
         },
         carrier=38000,  # sendGeneric's 38 kHz
+        # decodeLG: header, bits and footer with kUseDefTol (25 %) and mark
+        # excess 0 (the header mark alone with the defaults).
+        mark_excess=0,
     )
 
 

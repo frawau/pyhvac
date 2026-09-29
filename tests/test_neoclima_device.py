@@ -347,3 +347,9 @@ def test_undeclared_deviation_is_reported(key, value, field):
     others = tuple(d for d in DEFECTS if d.field != field)
     with pytest.raises(AssertionError, match=field):
         assert_matches_oracle(device(), record, device().LAYOUTS, others)
+
+
+# No real capture in ir_Neoclima_test.cpp needs it, but
+# decodeNeoclima matches with _tolerance (25 %) and no mark excess.
+def test_decode_tolerance_is_the_c_decoders():
+    assert (NEOCLIMA.tolerance, NEOCLIMA.mark_excess) == (0.25, 0)

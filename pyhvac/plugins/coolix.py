@@ -95,8 +95,10 @@ COOLIX = Protocol(
         "repeat": Section(gap=5244 + 100000, **_COOLIX_BITS),
     },
     carrier=38000,  # enableIROut(38)
-    # decodeCOOLIX matches with kTolerance + kCoolixExtraTolerance (25 + 5 %).
+    # decodeCOOLIX matches the bits with kTolerance + kCoolixExtraTolerance
+    # (25 + 5 %) and mark excess 0 (header and footer with the defaults).
     tolerance=0.30,
+    mark_excess=0,
 )
 
 

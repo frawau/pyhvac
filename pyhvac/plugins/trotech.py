@@ -86,6 +86,9 @@ TROTEC = Protocol(
         "end": Section(None, header=(592,), gap=1500),  # kTrotecGapEnd
     },
     carrier=36000,  # sendTrotec's enableIROut(36)
+    # decodeTrotec: header, bits and footer #1 with _tolerance (25 %) and mark
+    # excess 0.
+    mark_excess=0,
 )
 
 TROTEC_MODE = {  # kTrotec{Auto,Cool,Dry,Fan}

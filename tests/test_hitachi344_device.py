@@ -222,3 +222,9 @@ def test_missing_hswing_is_not_silently_accepted():
     record = next(r for r in load_oracle("HITACHI_AC344") if "hswing" not in r["state"])
     with pytest.raises(AssertionError, match="swing_h"):
         assert_matches_oracle(dev, record, dev.LAYOUTS, DEFECTS)
+
+
+# No real capture in ir_Hitachi_test.cpp needs it, but decodeHitachiAC
+# (kHitachiAc344Bits) matches with _tolerance + 5 (30 %) and kMarkExcess.
+def test_decode_tolerance_is_the_c_decoders():
+    assert (HITACHI344.tolerance, HITACHI344.mark_excess) == (0.30, 50)

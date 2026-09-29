@@ -74,6 +74,8 @@ CORONA_AC = Protocol(
         "off_timer": _CORONA_AC_SECTION,
     },
     carrier=38000,  # kCoronaAcFreq
+    # decodeCoronaAc: _tolerance + kCoronaTolerance (30 %), kMarkExcess.
+    tolerance=0.30,
 )
 
 # Data0 and Data1 are followed by their complements.

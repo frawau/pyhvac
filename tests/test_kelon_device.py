@@ -10,7 +10,7 @@ from port_oracle import (
     state_from_record,
 )
 from pyhvac import registry
-from pyhvac.plugins.kelon import KELON_LAYOUT, KELON_MODELS, KelonDevice
+from pyhvac.plugins.kelon import KELON_LAYOUT, KELON_MODELS, KelonDevice, KELON
 from pyhvac.state import HvacState
 
 # The C path deviates from the documented Kelon values here:
@@ -246,3 +246,9 @@ def test_layouts_must_cover_every_frame():
     record = load_oracle("KELON")[0]
     with pytest.raises(AssertionError, match="layout"):
         assert_matches_oracle(dev, record, (), DEFECTS)
+
+
+# No real capture in ir_Kelon_test.cpp needs it, but
+# decodeKelon matches with _tolerance (25 %) and no mark excess.
+def test_decode_tolerance_is_the_c_decoders():
+    assert (KELON.tolerance, KELON.mark_excess) == (0.25, 0)

@@ -497,3 +497,9 @@ def test_capabilities_match_the_legacy_entity(plugin, model):
     cls = importlib.import_module(f"pyhvac.plugins.{plugin}").Midea
     legacy = LegacyDevice(plugin, model, cls)
     assert MideaDevice(plugin, model).capabilities == legacy.capabilities
+
+
+# No real capture in ir_Midea_test.cpp needs it, but
+# decodeMidea matches with kMideaTolerance (30 %) and kMarkExcess.
+def test_decode_tolerance_is_the_c_decoders():
+    assert (MIDEA.tolerance, MIDEA.mark_excess) == (0.30, 50)

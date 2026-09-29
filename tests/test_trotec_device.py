@@ -186,3 +186,9 @@ def test_layouts_must_cover_every_frame():
     record = load_oracle("TROTEC")[0]
     with pytest.raises(AssertionError, match="layout"):
         assert_matches_oracle(dev, record, (), DEFECTS)
+
+
+# No real capture in ir_Trotec_test.cpp needs it, but
+# decodeTrotec matches with _tolerance (25 %) and no mark excess.
+def test_decode_tolerance_is_the_c_decoders():
+    assert (TROTEC.tolerance, TROTEC.mark_excess) == (0.25, 0)

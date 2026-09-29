@@ -10,6 +10,7 @@ from port_oracle import (
 )
 from pyhvac import registry
 from pyhvac.plugins.vestel import (
+    VESTEL_AC,
     VESTEL_AC_LAYOUT,
     VESTEL_AC_MODELS,
     VestelAcDevice,
@@ -345,3 +346,9 @@ def test_layouts_must_cover_every_frame():
     record = _record(mode="heat", swing="on")
     with pytest.raises(AssertionError, match="layout"):
         assert_matches_oracle(dev, record, (), DEFECTS)
+
+
+# No real capture in ir_Vestel_test.cpp needs it, but
+# decodeVestelAc matches with kVestelAcTolerance (30 %) and kMarkExcess.
+def test_decode_tolerance_is_the_c_decoders():
+    assert (VESTEL_AC.tolerance, VESTEL_AC.mark_excess) == (0.30, 50)

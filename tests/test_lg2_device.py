@@ -520,3 +520,9 @@ def test_undeclared_dropped_swing_word_is_reported():
     with pytest.raises(DecodeError, match="end of signal"):
         check(record, drops=set())
     check(record)  # with C_DROPS declared it matches
+
+
+# No real capture in ir_LG_test.cpp needs it, but
+# decodeLG matches with kUseDefTol (25 %) and no mark excess.
+def test_decode_tolerance_is_the_c_decoders():
+    assert (LG2.tolerance, LG2.mark_excess) == (0.25, 0)

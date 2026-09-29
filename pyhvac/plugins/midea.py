@@ -96,6 +96,8 @@ MIDEA = Protocol(
         "special_inverted": _midea_section(MIDEA_END_GAP),
     },
     carrier=38000,
+    # decodeMidea: kMideaTolerance (30 %), default kMarkExcess.
+    tolerance=0.30,
 )
 
 

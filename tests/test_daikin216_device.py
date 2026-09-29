@@ -4,12 +4,14 @@ from oracle import load_oracle
 from port_oracle import Defect, assert_matches_oracle, oracle_params, state_from_record
 from pyhvac import registry
 from pyhvac.plugins.daikin import (
+    DAIKIN216,
     DAIKIN216_FIRST,
     DAIKIN216_MODELS,
     DAIKIN216_SECOND,
     Daikin216Device,
 )
 from pyhvac.state import HvacState
+from pyhvac.ir.codec import decode
 
 # The C path never sends swing on: the old vocabulary's "on" has no entry in
 # IRGHVAC.trans_swing / trans_hswing, so build_ircode skips the key, swingv and
@@ -116,3 +118,45 @@ def test_layouts_must_cover_every_frame():
     record = load_oracle("DAIKIN216")[0]
     with pytest.raises(AssertionError, match="layout"):
         assert_matches_oracle(dev, record, dev.LAYOUTS[:1], DEFECTS)
+
+
+# ir_Daikin_test.cpp DecodeDaikin216.RealExample: decodeDaikin216 matches
+# with kDaikinTolerance (35 %) and kDaikinMarkExcess (kMarkExcess); this
+# capture has bit marks as short as 306 µs for 460.
+REAL_RAW = (
+    "3402 1770 382 1340 382 480 382 478 382 480 380 1342 382 478 356 504 "
+    "382 480 380 478 384 1342 380 480 380 1342 382 1342 382 478 382 1340 "
+    "382 1340 384 1340 382 1342 382 1340 380 480 382 480 382 1296 426 480 "
+    "380 480 382 480 380 480 382 480 382 478 382 1342 382 1342 382 1340 356 "
+    "1368 382 478 382 480 382 478 380 480 382 480 382 480 382 478 382 480 "
+    "382 478 358 504 382 480 380 480 382 480 382 480 380 480 382 478 382 "
+    "480 382 478 382 480 354 506 354 506 380 480 382 480 382 480 382 480 "
+    "380 1342 382 480 382 480 382 478 382 478 382 478 384 478 382 29652 "
+    "3426 1772 382 1340 382 480 380 478 382 480 382 1342 382 480 382 480 "
+    "382 478 356 506 382 1342 380 480 382 1340 382 1340 382 478 356 1366 "
+    "382 1340 384 1340 382 1340 382 1342 382 478 382 478 382 1340 382 478 "
+    "382 478 382 478 382 480 382 480 384 478 358 504 382 478 382 480 382 "
+    "478 382 480 382 480 382 478 382 480 382 478 382 478 382 478 382 478 "
+    "384 478 382 478 360 500 358 504 382 478 382 480 382 480 382 478 382 "
+    "478 382 1340 382 1342 382 480 380 480 382 1342 382 478 382 480 356 506 "
+    "382 478 382 480 382 480 356 506 382 478 382 480 382 478 382 480 382 "
+    "478 382 480 380 480 380 480 382 1342 382 478 382 1342 382 480 382 480 "
+    "382 478 382 478 382 480 382 478 382 480 356 504 384 478 382 480 382 "
+    "480 380 480 382 478 382 480 382 480 382 478 356 504 384 478 380 480 "
+    "382 480 382 480 382 478 356 506 382 478 382 480 380 480 382 478 382 "
+    "480 382 478 382 480 358 504 382 478 382 478 356 504 382 478 382 480 "
+    "382 478 382 478 382 478 382 480 380 480 382 480 380 480 356 506 356 "
+    "504 382 480 382 478 382 478 382 478 382 478 382 480 382 478 382 480 "
+    "382 480 382 1340 382 1342 382 478 384 478 382 478 382 480 380 480 382 "
+    "478 382 480 356 506 382 478 382 480 382 478 356 506 380 480 382 478 "
+    "382 478 382 478 382 480 382 480 380 480 382 1342 382 1340 382 480 356 "
+    "504 382 1342 382"
+)
+
+
+def test_real_raw_capture_decodes():
+    pulses = [int(x) for x in REAL_RAW.split()]
+    first, second = decode(DAIKIN216, pulses, expected=["main", "main"])
+    assert first.data + second.data == bytes.fromhex(
+        "11da27f000000002" "11da270000002600a0000000000000c0000098"
+    )

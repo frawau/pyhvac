@@ -79,6 +79,8 @@ NEOCLIMA = Protocol(
         )
     },
     carrier=38000,
+    # decodeNeoclima: _tolerance (25 %), mark excess 0.
+    mark_excess=0,
 )
 
 NEOCLIMA_MIN_TEMP, NEOCLIMA_MAX_TEMP = 16, 32  # kNeoclimaMinTempC/MaxTempC

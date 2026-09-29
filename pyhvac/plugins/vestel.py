@@ -73,6 +73,8 @@ VESTEL_AC = Protocol(
         )
     },
     carrier=38000,
+    # decodeVestelAc: kVestelAcTolerance (30 %), kMarkExcess.
+    tolerance=0.30,
 )
 
 

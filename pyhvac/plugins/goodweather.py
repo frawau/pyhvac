@@ -74,6 +74,9 @@ GOODWEATHER = Protocol(
         ),
     },
     carrier=38000,  # enableIROut(38)
+    # decodeGoodweather: header with the defaults, bits and footer marks with
+    # _tolerance + kGoodweatherExtraTolerance (37 %), kMarkExcess.
+    tolerance=0.37,
 )
 
 GOODWEATHER_COMMAND = {  # kGoodweatherCmd*: the button the frame says was pressed

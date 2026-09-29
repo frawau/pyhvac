@@ -500,6 +500,9 @@ DAIKIN2 = Protocol(
         ),
     },
     carrier=36700,
+    # decodeDaikin2: _tolerance + kDaikin2Tolerance (30 %), kDaikinMarkExcess
+    # (kMarkExcess).
+    tolerance=0.30,
 )
 
 DAIKIN2_SWING_V = {  # kDaikin2SwingV*
@@ -650,6 +653,8 @@ DAIKIN_ARC = Protocol(
         ),
     },
     carrier=38000,
+    # decodeDaikin: kDaikinTolerance (35 %), kDaikinMarkExcess (kMarkExcess).
+    tolerance=0.35,
 )
 
 # The first two sections carry nothing the C path drives (Comfort, and the
@@ -750,6 +755,9 @@ DAIKIN64 = Protocol(
         ),
         "trailer": Section(None, header=(4600,), gap=100000),
     },
+    # decodeDaikin64: the leader with the defaults, header, bits and footer #1
+    # with _tolerance + kDaikin64ToleranceDelta (30 %), kMarkExcess.
+    tolerance=0.30,
 )
 
 
@@ -852,6 +860,8 @@ DAIKIN128 = Protocol(
         "second": Section(PulseDistance(350, 382, 954), footer=(4600,), gap=20300),
     },
     carrier=38000,  # kDaikin128Freq
+    # decodeDaikin128: kDaikinTolerance (35 %), kDaikinMarkExcess (kMarkExcess).
+    tolerance=0.35,
 )
 
 
@@ -1066,6 +1076,8 @@ DAIKIN160 = Protocol(
         ),
     },
     carrier=38000,
+    # decodeDaikin160: kDaikinTolerance (35 %), kDaikinMarkExcess (kMarkExcess).
+    tolerance=0.35,
 )
 
 DAIKIN160_SWING_V = {  # kDaikin160SwingV*; the header has no "off" value
@@ -1146,6 +1158,8 @@ DAIKIN176 = Protocol(
         ),
     },
     carrier=38000,
+    # decodeDaikin176: kDaikinTolerance (35 %), kDaikinMarkExcess (kMarkExcess).
+    tolerance=0.35,
 )
 
 DAIKIN176_MODES = {"fan": 0, "heat": 1, "cool": 2, "auto": 3, "dry": 7}
@@ -1234,6 +1248,8 @@ DAIKIN216 = Protocol(
         ),
     },
     carrier=38000,
+    # decodeDaikin216: kDaikinTolerance (35 %), kDaikinMarkExcess (kMarkExcess).
+    tolerance=0.35,
 )
 
 DAIKIN216_SWING = {"off": 0b0000, "swing": 0b1111}  # kDaikin216Swing{Off,On}
@@ -1318,6 +1334,9 @@ DAIKIN312 = Protocol(
         "main": Section(DAIKIN312_BITS, header=(3518, 1688), footer=(453,), gap=35512),
     },
     carrier=36700,  # kDaikin312Freq
+    # decodeDaikin312: kDaikinTolerance (35 %), mark excess 0.
+    tolerance=0.35,
+    mark_excess=0,
 )
 
 # Skeleton bits the port never changes, as IRac::daikin312 sends them: beep

@@ -111,6 +111,8 @@ ARGO = Protocol(
         ),
     },
     carrier=38000,  # kArgoFrequency
+    # decodeArgo / decodeArgoWREM3: _tolerance (25 %), mark excess 0.
+    mark_excess=0,
 )
 ARGO_WREM2_BITS = 95  # kArgoBits - 1: the last bit is the section footer
 

@@ -261,3 +261,13 @@ def test_layouts_must_cover_every_frame():
     record = load_oracle("GOODWEATHER")[0]
     with pytest.raises(AssertionError, match="layout"):
         assert_matches_oracle(dev, record, (), DEFECTS)
+
+
+# No real capture in ir_Goodweather_test.cpp needs it, but
+# decodeGoodweather matches the bits with _tolerance +
+# kGoodweatherExtraTolerance (37 %) and kMarkExcess. (C also takes
+# RealExampleDecode's rawData_71DD9105, whose 858 µs mark is within 37 %
+# of 580 + 50, but not of 580 after removing the 50 µs excess, as the
+# codec does.)
+def test_decode_tolerance_is_the_c_decoders():
+    assert (GOODWEATHER.tolerance, GOODWEATHER.mark_excess) == (0.37, 50)

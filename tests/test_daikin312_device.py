@@ -5,6 +5,7 @@ from port_oracle import Defect, assert_matches_oracle, oracle_params, state_from
 from pyhvac import registry
 from pyhvac.ir.model import Frame
 from pyhvac.plugins.daikin import (
+    DAIKIN312,
     DAIKIN312_FIRST,
     DAIKIN312_MODELS,
     DAIKIN312_SECOND,
@@ -133,3 +134,10 @@ def test_layouts_must_cover_every_frame():
     record = load_oracle("DAIKIN312")[0]
     with pytest.raises(AssertionError, match="layout"):
         assert_matches_oracle(dev, record, dev.LAYOUTS[:2], DEFECTS)
+
+
+# No real capture in ir_Daikin_test.cpp needs it, but
+# decodeDaikin312 matches with kDaikinTolerance (35 %) and no mark
+# excess.
+def test_decode_tolerance_is_the_c_decoders():
+    assert (DAIKIN312.tolerance, DAIKIN312.mark_excess) == (0.35, 0)

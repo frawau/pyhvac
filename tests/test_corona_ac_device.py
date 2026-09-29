@@ -359,3 +359,10 @@ def test_swing_toggle_matches_c_with_the_glue_fixed(monkeypatch):
     for old in states:
         (rec,) = c_sequence(record, [old])  # a fresh C object
         assert_matches_oracle(dev, rec, dev.LAYOUTS)
+
+
+# No real capture in ir_Corona_test.cpp needs it, but
+# decodeCoronaAc matches with _tolerance + kCoronaTolerance (30 %) and
+# kMarkExcess.
+def test_decode_tolerance_is_the_c_decoders():
+    assert (CORONA_AC.tolerance, CORONA_AC.mark_excess) == (0.30, 50)

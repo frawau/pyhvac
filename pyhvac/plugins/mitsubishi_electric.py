@@ -125,6 +125,10 @@ MITSUBISHI_AC = Protocol(
         ),
     },
     carrier=38000,  # sendMitsubishiAC: 38 kHz
+    # decodeMitsubishiAC: _tolerance + kMitsubishiAcExtraTolerance (30 %),
+    # mark excess 0.
+    tolerance=0.30,
+    mark_excess=0,
 )
 
 MITSUBISHI_AC_MODE = {  # kMitsubishiAc*, as IRMitsubishiAC::convertMode
@@ -284,6 +288,8 @@ MITSUBISHI136 = Protocol(
         ),
     },
     carrier=38000,  # sendMitsubishi136: 38 kHz
+    # decodeMitsubishi136: _tolerance (25 %), mark excess 0.
+    mark_excess=0,
 )
 
 
@@ -417,6 +423,10 @@ MITSUBISHI112 = Protocol(
         ),
     },
     carrier=38000,  # sendGeneric(..., 38, ...)
+    # decodeMitsubishi112: _tolerance + kTcl112AcTolerance (30 %), mark
+    # excess 0 (the header mark with kMitsubishi112HdrMarkTolerance).
+    tolerance=0.30,
+    mark_excess=0,
 )
 
 MITSUBISHI112_MODE = {  # kMitsubishi112*, as convertMode (no fan-only mode)

@@ -4,6 +4,7 @@ from oracle import load_oracle
 from port_oracle import Defect, assert_matches_oracle, oracle_params, state_from_record
 from pyhvac import registry
 from pyhvac.plugins.mitsubishi_heavy_industries import (
+    MITSUBISHI_HEAVY88,
     MITSUBISHI_HEAVY88_LAYOUT,
     MITSUBISHI_HEAVY88_MODELS,
     MitsubishiHeavy88Device,
@@ -246,3 +247,9 @@ def test_layouts_must_cover_every_frame():
     record = _record(mode="cool", fan="lowest", swing="off")
     with pytest.raises(AssertionError, match="layout"):
         assert_matches_oracle(dev, record, (), DEFECTS)
+
+
+# No real capture in ir_MitsubishiHeavy_test.cpp needs it, but
+# decodeMitsubishiHeavy matches with _tolerance (25 %) and no mark excess.
+def test_decode_tolerance_is_the_c_decoders():
+    assert (MITSUBISHI_HEAVY88.tolerance, MITSUBISHI_HEAVY88.mark_excess) == (0.25, 0)

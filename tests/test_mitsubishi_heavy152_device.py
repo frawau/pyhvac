@@ -243,3 +243,9 @@ def test_missing_hswing_is_not_silently_accepted():
     )
     with pytest.raises(AssertionError, match="swing_h"):
         assert_matches_oracle(dev, record, dev.LAYOUTS, DEFECTS)
+
+
+# No real capture in ir_MitsubishiHeavy_test.cpp needs it, but
+# decodeMitsubishiHeavy matches with _tolerance (25 %) and no mark excess.
+def test_decode_tolerance_is_the_c_decoders():
+    assert (MITSUBISHI_HEAVY152.tolerance, MITSUBISHI_HEAVY152.mark_excess) == (0.25, 0)

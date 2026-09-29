@@ -781,6 +781,157 @@ PANASONIC_AC_MODELS = {  # model -> remote variant (panasonic_ac_remote_model_t)
 DEVICES.update({m: PanasonicAcDevice for m in PANASONIC_AC_MODELS})
 
 
+# ------------------------------------------------------- PanasonicAc32
+# Layout from IRremoteESP8266's PanasonicAc32Protocol (ir_Panasonic.h): one
+# 32-bit word. sendPanasonicAC32 sends it as two sections, the upper 16 bits
+# (bytes 2 and 3) first. Each section is sent twice ("block" + repeat), and
+# each byte of it is doubled on the wire: b2 b2 b3 b3, then b0 b0 b1 b1, all
+# LSB first. A block has no footer mark: the next kPanasonicAc32HdrMark closes
+# its last bit. The section then ends with a data-less header, a bit mark and
+# kPanasonicAc32SectionGap. So the "block" footer is the repeat's header, and
+# the "repeat" footer is that closing header + mark.
+
+PANASONIC_AC32 = Protocol(
+    "panasonic-ac32",
+    {
+        "block": Section(
+            PulseDistance(920, 828, 2575),
+            header=(3543, 3450),
+            footer=(3543, 3450),
+        ),
+        "repeat": Section(
+            PulseDistance(920, 828, 2575),
+            footer=(3543, 3450, 920),
+            gap=13946,
+        ),
+    },
+    carrier=36700,  # kPanasonicFreq
+)
+
+
+@dataclass(frozen=True)
+class PanasonicAc32Doubled:
+    """sendPanasonicAC32 duplicates every byte: data[1] == data[0] and
+    data[3] == data[2]. Not a checksum, but the same contract: the copies
+    are derived from the fields, which live in bytes 0 and 2 only."""
+
+    def positions(self):
+        return {1, 3}
+
+    def apply(self, data):
+        data[1], data[3] = data[0], data[2]
+
+    def check(self, data):
+        return data[1] == data[0] and data[3] == data[2]
+
+
+# The upper section, raw bytes 2 and 3 (doubled). Skeleton from
+# kPanasonicAc32KnownGood (0x0AF136FC): byte 3 bits 4-7 are always 0.
+PANASONIC_AC32_HIGH_LAYOUT = Layout(
+    bytes.fromhex("f1f10a0a"),
+    {
+        "temperature": Field.at(0, 0, 4, values={t: t - 15 for t in range(16, 31)}),
+        "fan": Field.at(  # kPanasonicAc32Fan*
+            0,
+            4,
+            4,
+            values={"auto": 0xF, "1": 2, "2": 3, "3": 4, "4": 5, "5": 6},
+        ),
+        "mode": Field.at(  # kPanasonicAc32*
+            2, 0, 3, values={"fan": 1, "cool": 2, "dry": 3, "heat": 4, "auto": 6}
+        ),
+        # PowerToggle: 0 means toggle, 1 = keep the same.
+        "power_toggle": Field.at(2, 3, 1, values={True: 0, False: 1}),
+    },
+    checksum=PanasonicAc32Doubled(),
+)
+
+# The lower section, raw bytes 0 and 1 (doubled). Byte 0 bits 0-2 (0b100)
+# and bit 7 (1), and byte 1 (0x36), are fixed, as in kPanasonicAc32KnownGood.
+PANASONIC_AC32_LOW_LAYOUT = Layout(
+    bytes.fromhex("fcfc3636"),
+    {
+        "swing_h": Field.at(0, 3, 1, values={"off": 0, "swing": 1}),
+        "swing_v": Field.at(  # kPanasonicAcSwingV*, kPanasonicAc32SwingVAuto
+            0,
+            4,
+            3,
+            values={"1": 1, "2": 2, "3": 3, "4": 4, "5": 5, "auto": 7},
+        ),
+    },
+    checksum=PanasonicAc32Doubled(),
+)
+
+
+class PanasonicAc32Device(Device):
+    """Panasonic 32-bit (CS-E9CKP, A75C2295): full state, except that the
+    power bit is a toggle.
+
+    With ``previous`` the toggle is sent only when the power changes, which
+    is also what the C path does from a persistent IRac object
+    (IRac::handleToggles XORs the power for PANASONIC_AC32). Without
+    ``previous`` the toggle is ``target.power``, as from a fresh IRac: an
+    "on" toggles, an "off" toggles nothing.
+    """
+
+    PROTOCOL = PANASONIC_AC32
+    LAYOUTS = (
+        PANASONIC_AC32_HIGH_LAYOUT,
+        PANASONIC_AC32_HIGH_LAYOUT,
+        PANASONIC_AC32_LOW_LAYOUT,
+        PANASONIC_AC32_LOW_LAYOUT,
+    )
+    capabilities = Capabilities(
+        modes=("auto", "cool", "dry", "heat", "fan"),
+        temperature=TemperatureRange(16.0, 30.0),
+        fan=Choice(
+            ("auto", "1", "2", "3", "4", "5"),
+            {
+                "auto": "auto",
+                "1": "lowest",
+                "2": "low",
+                "3": "medium",
+                "4": "high",
+                "5": "highest",
+            },
+        ),
+        swing_v=Choice(
+            ("auto", "1", "2", "3", "4", "5"),
+            {"auto": "auto", "1": "90°", "2": "60°", "3": "45°", "4": "30°", "5": "0°"},
+        ),
+        swing_h=Choice(("off", "swing"), {"off": "off", "swing": "on"}),
+    )
+
+    def frames(self, previous, target, actions):
+        if previous is None:
+            toggle = target.power
+        else:
+            toggle = target.power != previous.power
+        high = PANASONIC_AC32_HIGH_LAYOUT.build(
+            temperature=int(target.temperature),
+            fan=target.fan,
+            # As the C path: an off message carries mode auto (IRac passes
+            # mode "off", which convertMode maps to kPanasonicAc32Auto).
+            mode=target.mode if target.power else "auto",
+            power_toggle=toggle,
+        )
+        low = PANASONIC_AC32_LOW_LAYOUT.build(
+            swing_h=target.swing_h, swing_v=target.swing_v
+        )
+        return [
+            Frame("block", bytes(high)),
+            Frame("repeat", bytes(high)),
+            Frame("block", bytes(low)),
+            Frame("repeat", bytes(low)),
+        ]
+
+
+PANASONIC_AC32_MODELS = ("CS-E9CKP series", "A75C2295remote", "generic 32")
+
+
+DEVICES.update({m: PanasonicAc32Device for m in PANASONIC_AC32_MODELS})
+
+
 class PluginObject(GenPluginObject):
     MODELS = {
         "generic": Panasonic,

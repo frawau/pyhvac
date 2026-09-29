@@ -24,7 +24,14 @@
 ##
 # Description of the various ": Greev1, devices supported. Can be a remote control name
 
+from dataclasses import dataclass
+
 from .hvaclib import PulseBased, GenPluginObject
+from ..device import Device
+from ..fields import Checksum, Field, Layout
+from ..ir.model import Frame, Protocol, PulseDistance, Section
+from ..choices import FAN_5, ON_OFF, SWING
+from ..state import Capabilities, TemperatureRange
 
 
 class Airton(PulseBased):
@@ -47,6 +54,141 @@ class Airton(PulseBased):
             "economy": ["off", "on"],
             "light": ["off", "on"],
         }
+
+
+# ----------------------------------------------------------------- Airton
+# Layout from IRremoteESP8266's AirtonProtocol (ir_Airton.h): one 56-bit word
+# sent LSB first by sendAirton, i.e. 7 bytes in order, each LSB first, with a
+# kAirtonHdrMark/HdrSpace header, a kAirtonBitMark footer and
+# kDefaultMessageGap after it.
+
+AIRTON = Protocol(
+    "airton",
+    {
+        "main": Section(
+            PulseDistance(400, 430, 1260),  # kAirtonBitMark/ZeroSpace/OneSpace
+            header=(6630, 3350),  # kAirtonHdrMark/HdrSpace
+            footer=(400,),  # kAirtonBitMark
+            gap=100000,  # kDefaultMessageGap
+        )
+    },
+    carrier=38000,  # kAirtonFreq
+)
+
+
+@dataclass(frozen=True)
+class AirtonChecksum(Checksum):
+    """IRAirtonAc::calcChecksum: 0x7F minus the sum of the bytes before
+    ``at``, XORed with 0x2C."""
+
+    def compute(self, data):
+        return ((0x7F - sum(self._input(data))) & 0xFF) ^ 0x2C
+
+
+# Skeleton: stateReset writes the header (0x11D3) and clears every other
+# bit, so the unused bits of bytes 3, 4 and 5 are always 0.
+AIRTON_LAYOUT = Layout(
+    bytes.fromhex("d3110000000000"),
+    {
+        "mode": Field.at(  # kAirton{Auto,Cool,Dry,Fan,Heat}
+            2, 0, 3, values={"auto": 0, "cool": 1, "dry": 2, "fan": 3, "heat": 4}
+        ),
+        "power": Field.at(2, 3, 1),
+        "fan": Field.at(  # kAirtonFan{Auto,Min,Low,Med,High,Max}
+            2, 4, 3, values={"auto": 0, "1": 1, "2": 2, "3": 3, "4": 4, "5": 5}
+        ),
+        "turbo": Field.at(2, 7, 1),
+        "temperature": Field.at(  # degrees - kAirtonMinTemp
+            3, 0, 4, values={t: t - 16 for t in range(16, 32)}
+        ),
+        "swing_v": Field.at(4, 0, 1),
+        "econo": Field.at(5, 0, 1),
+        "sleep": Field.at(5, 1, 1),
+        "not_auto_on": Field.at(5, 2, 1),
+        # Unknown / Unused: stays 0 in the C output, but is set (with
+        # NotAutoOn clear) in the real light captures of ir_Airton_test.cpp.
+        "unknown5_3": Field.at(5, 3, 1),
+        "heat_on": Field.at(5, 4, 1),
+        "health": Field.at(5, 6, 1),
+        "light": Field.at(5, 7, 1),
+    },
+    AirtonChecksum(0, 6, 6),
+)
+
+# The temperature IRAirtonAc::setTemp forces in mode auto (kAirtonMaxTemp).
+AIRTON_AUTO_TEMPERATURE = 31
+
+
+class AirtonDevice(Device):
+    """Airton: one 56-bit state message, no toggles (``previous`` is
+    ignored).
+
+    As IRac::airton sends it:
+    - an off message carries mode auto (the glue sends opmode kOff, which
+      convertMode maps to kAirtonAuto), and hence auto's rules;
+    - mode auto sends 31 °C whatever the setpoint (setTemp forces
+      kAirtonMaxTemp), and sets NotAutoOn only when powered off; every other
+      mode sets NotAutoOn;
+    - HeatOn is set in heat when powered on;
+    - economy is sent in cool only (setEcono);
+    - powerful sets Turbo and forces the fan to kAirtonFanMax (setTurbo);
+    - purifier is the Health bit;
+    - Sleep stays clear (the entity has no sleep), and quiet sends nothing
+      ("No Quiet setting available").
+
+    The real light captures in ir_Airton_test.cpp clear NotAutoOn and set
+    the unknown bit 5.3 in cool and dry; the port follows the C path there.
+
+    Where the C path contradicts the header, the port sends the documented
+    value (see the Defects in tests/test_airton_device.py): the old glue's
+    trans_swing has no "on" key, so swing "on" never reached C; the port sets
+    SwingV.
+    """
+
+    PROTOCOL = AIRTON
+    LAYOUTS = (AIRTON_LAYOUT,)
+    capabilities = Capabilities(
+        modes=("auto", "cool", "fan", "dry", "heat"),
+        temperature=TemperatureRange(16.0, 25.0),
+        fan=FAN_5,
+        swing_v=SWING,
+        features={
+            "purifier": ON_OFF,
+            "powerful": ON_OFF,
+            "quiet": ON_OFF,
+            "economy": ON_OFF,
+            "light": ON_OFF,
+        },
+    )
+
+    def frames(self, previous, target, actions):
+        power = target.power
+        mode = target.mode if power else "auto"
+        features = target.features
+        powerful = features["powerful"]
+        data = AIRTON_LAYOUT.build(
+            mode=mode,
+            power=power,
+            fan="5" if powerful else target.fan,
+            turbo=powerful,
+            temperature=(
+                AIRTON_AUTO_TEMPERATURE if mode == "auto" else int(target.temperature)
+            ),
+            swing_v=target.swing_v != "off",
+            econo=features["economy"] and mode == "cool",
+            not_auto_on=mode != "auto" or not power,
+            heat_on=mode == "heat" and power,
+            health=features["purifier"],
+            light=features["light"],
+        )
+        return [Frame("main", bytes(data))]
+
+
+AIRTON_MODELS = ("SMVH09B-2A2A3NH", "RD1A1", "generic")
+
+
+DEVICES = {}
+DEVICES.update({m: AirtonDevice for m in AIRTON_MODELS})
 
 
 # Now the match between models and objects

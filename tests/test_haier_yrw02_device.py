@@ -19,6 +19,8 @@ from pyhvac.state import HvacState
 #   included. The port sends kHaierAcYrw02ModelB (0x59) for variant B;
 # - sleep: IRGHVAC.build_ircode's key map has no "sleep", so IRac's sleep
 #   stays -1 and setSleep(sleep >= 0) never sets Sleep (byte 8 bit 7).
+# kHaierAcYrw02ModelB = 0x59; the real V9014557-B capture "setmodelb" in
+# IRremoteESP8266's test/ir_Haier_test.cpp has byte 0 = 0x59.
 MODEL_B = Defect("model", "B", "A", "IRac::haierYrwo2 never calls setModel")
 SLEEP = Defect("sleep", 1, 0, "legacy glue never passes sleep")
 DEFECTS = (MODEL_B, SLEEP)

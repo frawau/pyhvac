@@ -29,7 +29,7 @@
 ## Review Focus
 
 1. **The button field is always Power** (HAIER_AC: On/Off), as the C path; real remotes send the key actually pressed. HAIER_AC160 presses the light button only when the light changes, which IRac::sendAc also does.
-2. **HAIER_AC_YRW02 "Code B"** now sends the documented model B code (0x59). The C path never calls `setModel`, so code-B users got code-A frames. No real capture confirms 0x59.
+2. **HAIER_AC_YRW02 "Code B"** now sends the documented model B code (0x59). The C path never calls `setModel`, so code-B users got code-A frames. The real V9014557-B capture `setmodelb` in `test/ir_Haier_test.cpp` (line 1533) has byte 0 = 0x59, and YRW02 is the first 14 bytes of the same struct. (Corrected after the final review; the first version wrongly said no capture confirmed it.)
 3. **Sleep** is sent on all four protocols; the fixtures predate `main`'s sleep glue fix.
 4. **Records without hswing** are read as "middle", because C sends kOff → Middle (the HEAVY_152 precedent).
 5. **The import guard:** without it the brand vanishes without the C extension.
@@ -1232,6 +1232,8 @@ from pyhvac.state import HvacState
 #   included. The port sends kHaierAcYrw02ModelB (0x59) for variant B;
 # - sleep: IRGHVAC.build_ircode's key map has no "sleep", so IRac's sleep
 #   stays -1 and setSleep(sleep >= 0) never sets Sleep (byte 8 bit 7).
+# kHaierAcYrw02ModelB = 0x59; the real V9014557-B capture "setmodelb" in
+# IRremoteESP8266's test/ir_Haier_test.cpp has byte 0 = 0x59.
 MODEL_B = Defect("model", "B", "A", "IRac::haierYrwo2 never calls setModel")
 SLEEP = Defect("sleep", 1, 0, "legacy glue never passes sleep")
 DEFECTS = (MODEL_B, SLEEP)

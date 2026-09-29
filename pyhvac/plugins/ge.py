@@ -24,7 +24,13 @@
 #
 
 from .hvaclib import PulseBased, GenPluginObject
-from .lg import LGv1
+from .lg import LG_AC_GE_MODELS, LGv1, LgAcDevice
+
+DEVICES = {}
+DEVICES.update({m: LgAcDevice for m in LG_AC_GE_MODELS})
+
+
+# Now the match between models and objects
 
 
 # Now the match between models and objects

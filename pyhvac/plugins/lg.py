@@ -582,6 +582,210 @@ class LG2v3(PulseBased):
 DEVICES = {}
 
 
+# ------------------------------------------------------------------ LgAc
+# Layout from IRremoteESP8266's LGProtocol (ir_LG.h): one 28-bit word, sent
+# MSB first (IRsend::sendLG: sendGeneric with kLgHdrMark/kLgHdrSpace,
+# kLgBitMark, kLgOneSpace/kLgZeroSpace, MSBfirst). As logical bytes the word
+# is (raw << 4) big-endian: byte 0 is Sign, byte 1 holds Power, the unnamed
+# bits and Mode, byte 2 Temp and Fan, and the top nibble of byte 3 is Sum;
+# the low nibble of byte 3 is not sent (nbits=28). IRLgAc::send sends the
+# state word, then, for LG6711A20083V only, the swing word when it changed;
+# each word is a separate burst with the same timings. No repeat
+# (kLgDefaultRepeat is kNoRepeat). Carrier 38 kHz (sendGeneric's 38).
+
+LG_AC = Protocol(
+    "lg-ac",
+    {
+        "main": Section(
+            PulseDistance(550, 550, 1600),  # kLgBitMark/kLgZeroSpace/kLgOneSpace
+            header=(8500, 4250),  # kLgHdrMark, kLgHdrSpace
+            footer=(550,),  # kLgBitMark
+            # sendGeneric's space(max(kLgMinGap, kLgMinMessageLength -
+            # elapsed)): the C build's timer does not advance, so the oracle
+            # records the whole kLgMinMessageLength.
+            gap=108050,
+            lsb_first=False,
+        )
+    },
+    carrier=38000,
+)
+
+
+@dataclass(frozen=True)
+class LgAcChecksum(Checksum):
+    """IRLgAc::calcChecksum: sumNibbles(raw >> 4, 4), i.e. the four nibbles
+    above Sum (Fan, Temp, Mode + unnamed bit, unnamed bits + Power), mod 16,
+    stored in Sum: the top nibble of byte 3 (raw bits 0-3)."""
+
+    start: int = 1
+    end: int = 3
+    at: int = 3
+
+    def compute(self, data):
+        return sum((b >> 4) + (b & 0x0F) for b in self._input(data)) & 0x0F
+
+    def apply(self, data):
+        data[self.at] = (data[self.at] & 0x0F) | self.compute(data) << 4
+
+    def check(self, data):
+        return data[self.at] >> 4 == self.compute(data)
+
+
+LG_AC_SIGNATURE = 0x88  # kLgAcSignature
+LG_AC_TEMP_ADJUST = 15  # kLgAcTempAdjust: Temp = celsius - 15
+LG_AC_MIN_TEMP, LG_AC_MAX_TEMP = 16, 30  # kLgAcMinTemp, kLgAcMaxTemp
+LG_AC_MODE = {  # kLgAc{Cool,Dry,Fan,Auto,Heat}
+    "cool": 0b000,
+    "dry": 0b001,
+    "fan": 0b010,
+    "auto": 0b011,
+    "heat": 0b100,
+}
+LG_AC_FAN = {  # canonical fan -> the Fan value IRLgAc::setFan stores
+    "auto": 5,  # kLgAcFanAuto (kAuto)
+    "1": 0,  # lowest: kLgAcFanLowest (kMin)
+    "2": 1,  # low: kLgAcFanLow (kLow)
+    "3": 2,  # medium: kLgAcFanMedium (kMedium)
+    # high: convertFan gives kLgAcFanHigh, which setFan turns into
+    # kLgAcFanMax on every model but AKB74955603 (a designed mapping).
+    "4": 4,
+}
+LG_AC_POWER = {"on": 0b00, "off": 0b11}  # kLgAcPowerOn, kLgAcPowerOff
+LG_AC_OFF_COMMAND = 0x88C0051  # kLgAcOffCommand
+LG_AC_SWINGV_TOGGLE = 0x8810001  # kLgAcSwingVToggle (LG6711A20083V)
+
+
+def lg_ac_word(raw):
+    """The logical bytes of a 28-bit LG word (sent MSB first)."""
+    return (raw << 4).to_bytes(4, "big")
+
+
+# Skeleton: Sign kLgAcSignature, everything else (and Sum) clear. The C
+# object never carries stale bits: stateReset loads kLgAcOffCommand and
+# every message is either that constant or setRaw'd state plus setters.
+LG_AC_LAYOUT = Layout(
+    bytes([LG_AC_SIGNATURE, 0, 0, 0]),
+    {
+        "sign": Field.at(0, 0, 8),  # raw bits 20-27
+        "power": Field.at(1, 6, 2, values=LG_AC_POWER),  # raw bits 18-19
+        # The struct's unnamed 3 bits (raw bits 15-17). C never sets them in
+        # a state word; special words use them (kLgAcSwingVToggle has bit 16),
+        # and real LG remotes set bit 15 (see the tests).
+        "unused": Field.at(1, 3, 3),
+        "mode": Field.at(1, 0, 3, values=LG_AC_MODE),  # raw bits 12-14
+        "temp": Field.at(2, 4, 4),  # raw bits 8-11: celsius - kLgAcTempAdjust
+        "fan": Field.at(2, 0, 4, values=LG_AC_FAN),  # raw bits 4-7
+    },
+    checksum=LgAcChecksum(),
+)
+
+
+_LG_AC_BASE = dict(
+    modes=("auto", "cool", "fan", "dry", "heat"),
+    temperature=TemperatureRange(16.0, 25.0),
+    fan=Choice(
+        ("auto", "1", "2", "3", "4"),
+        {"auto": "auto", "1": "lowest", "2": "low", "3": "medium", "4": "high"},
+    ),
+    swing_h=Choice(("off", "swing"), {"off": "off", "swing": "on"}),
+    features={"light": Choice((False, True), {False: "off", True: "on"})},
+)
+LG_AC_CAPABILITIES = {  # variant -> the legacy entity (LGv2 / LGv1)
+    "LG6711A20083V": Capabilities(
+        swing_v=Choice(("off", "swing"), {"off": "off", "swing": "on"}),
+        **_LG_AC_BASE,
+    ),
+    # The legacy LGv1 entity offers swing positions, but IRLgAc::send sends
+    # no swing word for GE6711AR2853M (its default case): they send nothing.
+    "GE6711AR2853M": Capabilities(
+        swing_v=Choice(
+            ("off", "auto", "1", "2", "3", "4", "5"),
+            {
+                "off": "off",
+                "auto": "auto",
+                "1": "90°",
+                "2": "60°",
+                "3": "45°",
+                "4": "30°",
+                "5": "0°",
+            },
+        ),
+        **_LG_AC_BASE,
+    ),
+}
+
+
+class LgAcDevice(Device):
+    """LG 28-bit A/C (IRLgAc, protocol LG): a full-state word, plus a swing
+    toggle word for the LG6711A20083V remote.
+
+    The variant (an lg_ac_remote_model_t name: LG6711A20083V, or
+    GE6711AR2853M for the "ge" plugin's models) comes from the model
+    (LG_AC_MODEL_VARIANT) unless given, and picks the capabilities (the
+    legacy LGv2 / LGv1 entities). The variants share the state word.
+
+    Power off sends only kLgAcOffCommand, whatever the other settings
+    (IRLgAc::send). Light and horizontal swing send nothing for either
+    variant: IRLgAc::send sends the light toggle for AKB74955603 and the
+    SwingH words for AKB73757604 only.
+
+    Swing: GE6711AR2853M sends no swing word at all. LG6711A20083V has one
+    vertical swing button: IRac::lg sends kLgAcSwingVToggle when the swing
+    changes between off and not-off, comparing with the previous state
+    IRac::sendAc passes (prev->swingv, kOff without one);
+    IRac::handleToggles has no LG case, the rule lives in IRac::lg. The port
+    does the same: with ``previous`` the toggle word follows the state word
+    when the swing changes, without it when the target swing is on. No
+    toggle word goes with an off message.
+    """
+
+    PROTOCOL = LG_AC
+    # One layout per word: the toggle word, when sent, reads with it too.
+    LAYOUTS = (LG_AC_LAYOUT,)
+    capabilities = LG_AC_CAPABILITIES["LG6711A20083V"]
+
+    def __init__(self, brand, model, variant=None):
+        super().__init__(brand, model)
+        self.variant = variant or LG_AC_MODEL_VARIANT.get(model, "LG6711A20083V")
+        if self.variant not in LG_AC_CAPABILITIES:
+            raise ValueError(f"unknown LG A/C variant {self.variant!r}")
+        self.capabilities = LG_AC_CAPABILITIES[self.variant]
+
+    def frames(self, previous, target, actions):
+        if not target.power:
+            return [Frame("main", lg_ac_word(LG_AC_OFF_COMMAND), 28)]
+        temperature = min(max(int(target.temperature), LG_AC_MIN_TEMP), LG_AC_MAX_TEMP)
+        data = LG_AC_LAYOUT.build(
+            sign=LG_AC_SIGNATURE,
+            power="on",
+            mode=target.mode,
+            temp=temperature - LG_AC_TEMP_ADJUST,
+            fan=target.fan,
+        )
+        frames = [Frame("main", bytes(data), 28)]
+        if self.variant != "LG6711A20083V":
+            return frames
+        was_swinging = previous is not None and previous.swing_v != "off"
+        if (target.swing_v != "off") != was_swinging:
+            # The documented toggle word. The old glue never passed swing
+            # "on" to C (declared as a Defect in the tests).
+            frames.append(Frame("main", lg_ac_word(LG_AC_SWINGV_TOGGLE), 28))
+        return frames
+
+
+LG_AC_MODEL_VARIANT = {  # model -> remote variant (lg_ac_remote_model_t)
+    "6711A20083V  remote": "LG6711A20083V",
+    "TS-H122ERM1  remote": "LG6711A20083V",
+    "AG1BH09AW101": "GE6711AR2853M",  # ge plugin
+    "6711AR2853M Remote": "GE6711AR2853M",  # ge plugin
+}
+LG_AC_MODELS = ("6711A20083V  remote", "TS-H122ERM1  remote")  # lg plugin
+LG_AC_GE_MODELS = ("AG1BH09AW101", "6711AR2853M Remote")  # ge plugin
+
+
+DEVICES.update({m: LgAcDevice for m in LG_AC_MODELS})
+
+
 class PluginObject(GenPluginObject):
 
     MODELS = {

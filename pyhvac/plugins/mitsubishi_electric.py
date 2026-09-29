@@ -23,7 +23,13 @@
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
 #
 
+from dataclasses import dataclass
+
 from .hvaclib import PulseBased, GenPluginObject
+from ..device import Device
+from ..fields import Checksum, Field, Layout, Sum8
+from ..ir.model import Frame, Protocol, PulseDistance, Section
+from ..state import Capabilities, Choice, TemperatureRange
 
 
 class Mitsubishi(PulseBased):
@@ -96,6 +102,9 @@ class Mitsubishi112(PulseBased):
             ],
             "quiet": ["off", "on"],
         }
+
+
+DEVICES = {}
 
 
 # Now the match between models and objects

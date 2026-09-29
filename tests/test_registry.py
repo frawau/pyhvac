@@ -37,7 +37,7 @@ def test_new_style_devices_win_over_legacy_models():
 
 
 def test_other_models_are_wrapped():
-    assert isinstance(registry.get_device("daikin", "generic"), LegacyDevice)
+    assert isinstance(registry.get_device("sharp", "generic"), LegacyDevice)
 
 
 def test_device_knows_brand_and_model():

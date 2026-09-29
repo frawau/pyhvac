@@ -30,13 +30,14 @@
 ##
 
 import struct
+from dataclasses import dataclass
 
 from .hvaclib import HVAC, PulseBased, GenPluginObject, bit_reverse
 from ..device import Device
 from ..fields import Checksums, Copy, Field, Layout, Sum8
 from ..ir.model import Frame, Protocol, PulseDistance, Section
 from ..choices import FAN_5, ON_OFF, SWING, SWING_H_5, SWING_V_AUTO_ANGLES
-from ..state import Capabilities, TemperatureRange
+from ..state import Capabilities, Choice, TemperatureRange
 
 try:
     from ..irhvac import (
@@ -886,6 +887,226 @@ PANASONIC_AC32_MODELS = ("CS-E9CKP series", "A75C2295remote", "generic 32")
 
 
 DEVICES.update({m: PanasonicAc32Device for m in PANASONIC_AC32_MODELS})
+
+
+# ------------------------------------------------------- Panasonic native
+# The 0.1.x pure-Python Panasonic classes (Panasonic, PanaCassette) on
+# PANASONIC_NATIVE. Their code is the spec. Bytes are as sent, MSB first,
+# so each value is bit-reversed against the LSB-first convention: the
+# classes store the reversed codes. Every frame ends with Panasonic.crc: the
+# byte sum of the bit-reversed bytes, bit-reversed.
+#
+# A message is two frames (Panasonic.build_code):
+# - the first frame: FHEADER + F1BODY, a constant;
+# - the main frame: FHEADER, mode (code_mode; the power bit is the first
+#   sent), temperature (code_temperature), FILLER, fan + swing
+#   (code_fan + code_swing), F2COMMON1, profile (code_profile),
+#   F2COMMON2, purifier (code_purifier).
+# Economy and cleaning are toggles ("This is a toggling value AFAIK"): each
+# change is the first frame plus a special frame (FECON, FODOUR), sent
+# before the message (Panasonic._build_ircode: cleaning, economy, then the
+# message).
+
+
+@dataclass(frozen=True)
+class _ReversedSum8(Sum8):
+    """Panasonic.crc: Sum8 over the bit-reversed bytes, bit-reversed."""
+
+    def compute(self, data):
+        return bit_reverse(super().compute(data))
+
+
+PANASONIC_NATIVE_SHORT = Layout(  # the 8-byte frames: FHEADER + 2 bytes + crc
+    Panasonic.FHEADER + b"\x00\x00\x00",
+    {
+        # Bytes 4-6 (byte 4 lowest): F1BODY after FHEADER's zero, or the
+        # tail of FECON / FODOUR.
+        "frame": Field.at(
+            4,
+            0,
+            24,
+            values={
+                "first": 0,  # FHEADER + F1BODY
+                "economy": int.from_bytes(Panasonic.FECON[4:], "little"),
+                "cleaning": int.from_bytes(Panasonic.FODOUR[4:], "little"),
+            },
+        ),
+    },
+    checksum=_ReversedSum8(0, 7, 7, reverse=True),
+)
+PANASONIC_NATIVE_MODE = {  # code_mode without its power bit (0x80)
+    "auto": 0x10,
+    "heat": 0x12,  # encoded, but no legacy class offers heat
+    "dry": 0x14,
+    "fan": 0x16,
+    "cool": 0x1C,
+}
+PANASONIC_NATIVE_FAN = {  # code_fan (0: no fan capability)
+    None: 0x0,
+    "auto": 0x5,
+    "highest": 0xE,
+    "high": 0x6,
+    "medium": 0xA,
+    "low": 0x2,
+    "lowest": 0xC,
+}
+PANASONIC_NATIVE_SWING = {  # code_swing, high nibble (0: no swing capability)
+    None: 0x0,
+    "auto": 0xF,
+    "auto high": 0x7,
+    "auto low": 0xB,
+    "ceiling": 0x8,
+    "90°": 0x4,
+    "60°": 0xC,
+    "45°": 0x2,
+    "30°": 0xA,
+}
+PANASONIC_NATIVE_PROFILE = {  # code_profile; no legacy class offers profile
+    None: 0x00,
+    "normal": 0x08,
+    "boost": 0x88,
+    "quiet": 0x0C,
+}
+PANASONIC_NATIVE_MIN_TEMP = 16  # Panasonic.base_temp
+PANASONIC_NATIVE_FAN_TEMP = 27  # set_mode/build_code: fan mode sends 27 °C
+PANASONIC_NATIVE_MAIN = Layout(
+    Panasonic.FHEADER
+    + b"\x00\x00"
+    + Panasonic.FILLER
+    + b"\x00"
+    + Panasonic.F2COMMON1
+    + b"\x00"
+    + Panasonic.F2COMMON2
+    + b"\x00\x00",
+    {
+        "power": Field.at(5, 7, 1),
+        "mode": Field.at(5, 0, 7, values=PANASONIC_NATIVE_MODE),
+        # code_temperature: bit_reverse(0x20 + (celsius - base_temp) * 2),
+        # for any value set_temperature can hold (16-31 °C)
+        "temperature": Field.at(
+            6,
+            0,
+            8,
+            values={
+                t: bit_reverse(0x20 + ((t - PANASONIC_NATIVE_MIN_TEMP) << 1))
+                for t in range(PANASONIC_NATIVE_MIN_TEMP, 32)
+            },
+        ),
+        "fan": Field.at(8, 0, 4, values=PANASONIC_NATIVE_FAN),
+        "swing": Field.at(8, 4, 4, values=PANASONIC_NATIVE_SWING),
+        "profile": Field.at(13, 0, 8, values=PANASONIC_NATIVE_PROFILE),
+        "purifier": Field.at(17, 5, 1),  # code_purifier: 0x20
+    },
+    checksum=_ReversedSum8(0, 18, 18, reverse=True),
+)
+
+PANASONIC_NATIVE_VARIANTS = {
+    # Panasonic.__init__: modes off/auto/cool/fan/dry, 16-31 °C, nothing else.
+    "generic": Capabilities(
+        modes=("auto", "cool", "fan", "dry"),
+        temperature=TemperatureRange(16.0, 31.0),
+    ),
+    # PanaCassette.__init__
+    "4 way cassette": Capabilities(
+        modes=("auto", "cool", "fan", "dry"),
+        temperature=TemperatureRange(16.0, 31.0),
+        fan=Choice(
+            ("auto", "1", "2", "3"),
+            {"auto": "auto", "1": "lowest", "2": "medium", "3": "highest"},
+        ),
+        swing_v=Choice(
+            ("auto", "1", "2", "3", "4", "5", "6"),
+            {
+                "auto": "auto",
+                "1": "90°",
+                "2": "60°",
+                "3": "45°",
+                "4": "30°",
+                "5": "auto high",
+                "6": "auto low",
+            },
+        ),
+        features={"purifier": ON_OFF, "economy": ON_OFF, "cleaning": ON_OFF},
+    ),
+}
+PANASONIC_NATIVE_MODELS = {  # model -> variant, as PluginObject.MODELS
+    "generic": "generic",
+    "4 way cassette": "4 way cassette",
+}
+PANASONIC_NATIVE_TOGGLES = ("cleaning", "economy")  # _build_ircode's order
+
+
+class PanasonicNativeDevice(Device):
+    """The 0.1.x pure-Python Panasonic classes: Panasonic ("generic") and
+    PanaCassette ("4 way cassette"). They share Panasonic's code and differ
+    only by their tables (the variant's capabilities).
+
+    The message is the full state (see PANASONIC_NATIVE_MAIN); a variant
+    without fan or swing sends 0 there, as code_fan / code_swing. Fan mode
+    sends 27 °C (set_mode), whatever the setpoint.
+
+    Power off: the power bit clear and mode auto (code_mode's 0x10). The
+    other settings are those the unit had, not the target's: set_mode("off")
+    drops every pending change, so the legacy object sent its status. The
+    port sends ``previous``'s settings (the target's without it).
+
+    Economy and cleaning are toggles: their special frames go, with power
+    on, when the setting differs from ``previous``. Without ``previous``
+    the unit is taken to have them off, as a fresh legacy object. With power
+    off no toggle goes (set_mode("off") dropped them).
+    """
+
+    PROTOCOL = PANASONIC_NATIVE
+    # The message; each toggle adds two PANASONIC_NATIVE_SHORT frames before it.
+    LAYOUTS = (PANASONIC_NATIVE_SHORT, PANASONIC_NATIVE_MAIN)
+    capabilities = PANASONIC_NATIVE_VARIANTS["generic"]
+
+    def __init__(self, brand, model, variant=None):
+        super().__init__(brand, model)
+        self.variant = variant or PANASONIC_NATIVE_MODELS.get(model, "generic")
+        if self.variant not in PANASONIC_NATIVE_VARIANTS:
+            raise ValueError(f"unknown Panasonic native variant {self.variant!r}")
+        self.capabilities = PANASONIC_NATIVE_VARIANTS[self.variant]
+
+    @staticmethod
+    def _short(name):
+        return Frame("main", bytes(PANASONIC_NATIVE_SHORT.build(frame=name)))
+
+    def _main(self, state, power):
+        caps = self.capabilities
+        fan = None if caps.fan is None else caps.fan.label(state.fan)
+        swing = None if caps.swing_v is None else caps.swing_v.label(state.swing_v)
+        if state.mode == "fan":
+            temperature = PANASONIC_NATIVE_FAN_TEMP
+        else:
+            temperature = int(state.temperature)
+        data = PANASONIC_NATIVE_MAIN.build(
+            power=int(power),
+            mode=state.mode if power else "auto",
+            temperature=temperature,
+            fan=fan,
+            swing=swing,
+            profile=None,
+            purifier=int(state.features.get("purifier", False)),
+        )
+        return Frame("main", bytes(data))
+
+    def frames(self, previous, target, actions):
+        frames = []
+        if target.power:
+            for name in PANASONIC_NATIVE_TOGGLES:
+                if name not in self.capabilities.features:
+                    continue
+                was = previous is not None and previous.features[name]
+                if target.features[name] != was:
+                    frames += [self._short("first"), self._short(name)]
+            main = self._main(target, True)
+        else:
+            main = self._main(previous or target, False)
+        return frames + [self._short("first"), main]
+
+
+DEVICES.update({m: PanasonicNativeDevice for m in PANASONIC_NATIVE_MODELS})
 
 
 class PluginObject(GenPluginObject):

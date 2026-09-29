@@ -31,7 +31,7 @@ import struct
 
 from .hvaclib import HVAC, PulseBased, GenPluginObject, bit_reverse
 from ..device import Device
-from ..fields import Field, HighNibbleSum, Layout, NibbleSum, Sum8
+from ..fields import Checksum, Field, HighNibbleSum, Layout, NibbleSum, Sum8
 from ..ir.model import Frame, Protocol, PulseDistance, Section
 from ..choices import FAN_3, FAN_5, ON_OFF, SWING, SWING_V_ANGLES
 from ..state import Capabilities, Choice, TemperatureRange
@@ -1430,6 +1430,93 @@ DAIKIN312_MODELS = ("FTXM20R5V1B", "ARC466A67 remote", "Daikin312")
 
 
 DEVICES.update({m: Daikin312Device for m in DAIKIN312_MODELS})
+
+
+# ----- Daikinth / Smash2 (the 0.1.x native Daikin protocol)
+# Layout from the legacy classes above (Daikinth.code_*, build_code, crc):
+# one 18-byte body plus a checksum byte, sent MSB first (DAIKIN_NATIVE). The
+# legacy code writes wire bytes, so values that read naturally LSB first
+# (Daikin's usual mode and fan codes) appear bit-reversed here: mode 0xC on
+# the wire is 3 (cool), fan 0xC is 3 (lowest), and so on.
+
+
+def _bit_reverse_nibble(n):
+    return int(f"{n:04b}"[::-1], 2)
+
+
+class ReflectedSum8(Checksum):
+    """Daikinth.crc: the sum of the bit-reversed bytes, bit-reversed back."""
+
+    def compute(self, data):
+        return bit_reverse(sum(self._input(data)) & 0xFF)
+
+
+# code_mode: auto 0x80, heat 0x82, dry 0x84, fan 0x86, cool 0x8C (FBODY)
+DAIKIN_NATIVE_MODE = {"auto": 0x0, "heat": 0x2, "dry": 0x4, "fan": 0x6, "cool": 0xC}
+# code_fan: auto 0x05, else bit_reverse(48 + 16 * rank) for lowest..highest
+DAIKIN_NATIVE_FAN = {"auto": 0x5}
+DAIKIN_NATIVE_FAN.update({str(n): _bit_reverse_nibble(n + 2) for n in range(1, 6)})
+
+DAIKIN_NATIVE_LAYOUT = Layout(
+    bytes(Daikinth.FBODY) + b"\x00",
+    {
+        # byte 5: power 0x80 | mode (code_mode; FBODY holds cool, 0x0C)
+        "mode": Field.at(5, 0, 4, values=DAIKIN_NATIVE_MODE),
+        "power": Field.at(5, 7, 1),
+        # byte 6: bit_reverse(2 * setpoint) (code_temperature); dry replaces
+        # it with 0x03 (code_mode)
+        "temperature": Field.at(6, 0, 8),
+        # byte 8: fan in the low nibble, swing in the high one (code_fan,
+        # code_swing)
+        "fan": Field.at(8, 0, 4, values=DAIKIN_NATIVE_FAN),
+        "swing_v": Field.at(8, 4, 4, values={"off": 0x0, "swing": 0xF}),
+        "powerful": Field.at(13, 7, 1),  # code_powerful: mask[13] = 0x80
+        "off": Field.at(16, 1, 1),  # code_mode: mask[16] = 0x02 when off
+    },
+    checksum=ReflectedSum8(0, 18, 18, reverse=True),
+)
+DAIKIN_NATIVE_FAN_TEMPERATURE = 25  # set_mode("fan") forces 25 °C
+DAIKIN_NATIVE_DRY_BYTE = 0x03  # code_mode("dry"): mask[6] = 0x03
+
+
+class DaikinNativeDevice(Device):
+    """Daikin's 0.1.x native protocol (Daikinth "generic", Smash2 "smash 2").
+
+    A full-state protocol: ``previous`` is ignored. An off message carries
+    the target's mode (without the power bit) and settings, as the legacy
+    object sent its stored status with only the mode changed to off.
+    """
+
+    PROTOCOL = DAIKIN_NATIVE
+    LAYOUTS = (DAIKIN_NATIVE_LAYOUT,)
+    capabilities = Capabilities(
+        modes=("cool", "fan", "dry", "heat", "auto"),
+        temperature=TemperatureRange(18.0, 31.0),
+        fan=FAN_5,
+        swing_v=SWING,
+        features={"powerful": ON_OFF},
+    )
+
+    def frames(self, previous, target, actions):
+        if target.mode == "fan":
+            temperature = bit_reverse(2 * DAIKIN_NATIVE_FAN_TEMPERATURE)
+        elif target.mode == "dry" and target.power:
+            temperature = DAIKIN_NATIVE_DRY_BYTE
+        else:
+            temperature = bit_reverse(int(2 * target.temperature))
+        data = DAIKIN_NATIVE_LAYOUT.build(
+            mode=target.mode,
+            power=target.power,
+            temperature=temperature,
+            fan=target.fan,
+            swing_v=target.swing_v,
+            powerful=target.features["powerful"],
+            off=not target.power,
+        )
+        return [Frame("main", bytes(data))]
+
+
+DEVICES.update({"generic": DaikinNativeDevice, "smash 2": DaikinNativeDevice})
 
 
 class PluginObject(GenPluginObject):

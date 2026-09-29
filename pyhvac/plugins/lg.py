@@ -27,13 +27,14 @@
 ##
 
 import struct
+from dataclasses import replace
 
 from .hvaclib import HVAC, PulseBased, GenPluginObject
 from ..device import Device
 from ..fields import Field, HighNibbleSum, Layout
 from ..ir.model import Frame, Protocol, PulseDistance, Section
 from ..choices import FAN_4, FAN_5, ON_OFF, SWING, SWING_V_ANGLES
-from ..state import Capabilities, TemperatureRange
+from ..state import Capabilities, Choice, TemperatureRange
 
 try:
     from ..irhvac import (
@@ -1041,6 +1042,294 @@ class Lg2Device(_LgWordDevice):
 
 
 DEVICES.update({m: Lg2Device for m in LG2_MODELS})
+
+
+# ------------------------------------------------------------- LG native
+# The 0.1.x pure-Python LG classes (LG, InverterV, DualInverter) on
+# LG_NATIVE. Their code is the spec: every frame is 3 bytes plus the
+# checksum byte LG.crc appends (the nibble sum of the 3 bytes, mod 16, in
+# its high nibble), sent MSB first as 32 bits. The first 28 bits are
+# IRremoteESP8266's LGProtocol word (the off frame is kLgAcOffCommand):
+#   byte 0: 0x88 (LG.FBODY)
+#   byte 1: power (bits 6-7, 3 = off: code_mode's 0xc0), "change" (bit 3:
+#           code_mode's addit, set when the unit was already on), mode
+#           (bits 0-2)
+#   byte 2: temperature - 15 (bits 4-7), fan (bits 0-3)
+# Settings the state frame cannot carry are "special" frames of their own:
+# 0x88 and a 16-bit command (code_swing, code_hswing, code_powerful,
+# code_purifier, code_cleaning, code_economy, code_diagnostic).
+
+LG_NATIVE_MODE = {"cool": 0, "dry": 1, "fan": 2, "auto": 3}  # LG.code_mode
+LG_NATIVE_FAN = {  # LG.code_fan's rank
+    "lowest": 0x0,
+    "low": 0x09,
+    "medium": 0x02,
+    "high": 0x0A,
+    "highest": 0x04,
+    "auto": 0x05,
+}
+LG_NATIVE_CHECKSUM = HighNibbleSum(0, 3, 3)  # LG.crc
+
+LG_NATIVE_LAYOUT = Layout(
+    b"\x88\x00\x00\x00",
+    {
+        "power": Field.at(1, 6, 2, values={True: 0, False: 3}),
+        "change": Field.at(1, 3, 1),
+        "mode": Field.at(1, 0, 3, values=LG_NATIVE_MODE),
+        "temp": Field.at(2, 4, 4),  # celsius - 15
+        "fan": Field.at(2, 0, 4, values=LG_NATIVE_FAN),
+    },
+    checksum=LG_NATIVE_CHECKSUM,
+)
+
+
+def _lg_native_commands(prefix, byte1, codes):
+    return {f"{prefix}{name}": byte1 | code << 8 for name, code in codes.items()}
+
+
+LG_NATIVE_COMMANDS = {  # command -> bytes 1-2 (byte 1 low, byte 2 high)
+    # LG.code_swing: 0x88 0x13 xx
+    **_lg_native_commands(
+        "swing_v ",
+        0x13,
+        {
+            "swing": 0x14,
+            "off": 0x15,
+            "0°": 0x04,
+            "30°": 0x05,
+            "45°": 0x06,
+            "60°": 0x07,
+            "90°": 0x08,
+            "ceiling": 0x09,
+        },
+    ),
+    # LG.code_hswing: 0x88 0x13 xx
+    **_lg_native_commands(
+        "swing_h ",
+        0x13,
+        {
+            "swing": 0x16,
+            "off": 0x17,
+            "left": 0x0B,
+            "centre left": 0x0C,
+            "centre": 0x0D,
+            "centre right": 0x0E,
+            "right": 0x0F,
+            "swing left": 0x10,
+            "swing right": 0x11,
+        },
+    ),
+    "powerful on": 0x10 | 0x08 << 8,  # LG.code_powerful: 0x88 0x10 0x08
+    # LG.code_purifier, code_cleaning, code_economy, code_diagnostic: 0x88 0xc0 xx
+    **_lg_native_commands("purifier ", 0xC0, {"on": 0x00, "off": 0x08}),
+    **_lg_native_commands("cleaning ", 0xC0, {"off": 0x0B, "on": 0x0C}),
+    **_lg_native_commands(
+        "economy ", 0xC0, {"off": 0x7F, "80": 0x7D, "60": 0x7E, "40": 0x80}
+    ),
+    "diagnostic": 0xC0 | 0xCE << 8,
+}
+LG_NATIVE_COMMAND_LAYOUT = Layout(
+    b"\x88\x00\x00\x00",
+    {"command": Field.at(1, 0, 16, values=LG_NATIVE_COMMANDS)},
+    checksum=LG_NATIVE_CHECKSUM,
+)
+
+# canonical fan -> the legacy name LG.code_fan ranks
+LG_NATIVE_FAN_NAME = dict(FAN_5.labels)
+# The auto_bias ladder: code_temperature sends 15 + its index in auto mode.
+LG_NATIVE_AUTO_BIAS_LADDER = ("-2", "-1", "default", "+1", "+2")
+# The same values, default first (a feature's first value is its default).
+LG_NATIVE_AUTO_BIAS = Choice(("default", "-2", "-1", "+1", "+2"))
+LG_NATIVE_ECONOMY = Choice(("off", "80", "60", "40"))
+
+
+def _lg_native_positions(*labels):
+    """A swing Choice: off, swing, then "1".."n" labelled with the legacy
+    positions, top (or left) first."""
+    levels = {str(n): label for n, label in enumerate(labels, 1)}
+    return Choice(("off", "swing") + tuple(levels), {"swing": "swing", **levels})
+
+
+LG_NATIVE_VARIANTS = {
+    # LG: modes off/cool/fan/dry, 18-29 °C, nothing else (LG.__init__).
+    "generic": Capabilities(
+        modes=("cool", "fan", "dry"),
+        temperature=TemperatureRange(18.0, 29.0),
+    ),
+    # InverterV.__init__
+    "inverter v": Capabilities(
+        modes=("auto", "cool", "fan", "dry"),
+        temperature=TemperatureRange(16.0, 29.0),
+        fan=FAN_5,  # auto, lowest..highest
+        swing_v=_lg_native_positions("90°", "0°"),
+        features={
+            "auto_bias": LG_NATIVE_AUTO_BIAS,
+            "powerful": ON_OFF,
+            "cleaning": ON_OFF,
+            "economy": LG_NATIVE_ECONOMY,
+        },
+    ),
+    # DualInverter.__init__
+    "dual inverter": Capabilities(
+        modes=("auto", "cool", "fan", "dry"),
+        temperature=TemperatureRange(16.0, 29.0),
+        fan=FAN_5,  # auto, lowest..highest
+        swing_v=_lg_native_positions("ceiling", "90°", "60°", "45°", "30°", "0°"),
+        swing_h=_lg_native_positions(
+            "left",
+            "centre left",
+            "centre",
+            "centre right",
+            "right",
+            "swing left",
+            "swing right",
+        ),
+        features={
+            "auto_bias": LG_NATIVE_AUTO_BIAS,
+            "powerful": ON_OFF,
+            "purifier": ON_OFF,
+            "cleaning": ON_OFF,
+            "economy": LG_NATIVE_ECONOMY,
+        },
+        actions={"diagnostic": "diagnostic"},
+    ),
+}
+LG_NATIVE_MODELS = {  # model -> variant, as PluginObject.MODELS
+    "generic": "generic",
+    "inverter v": "inverter v",
+    "dual inverter": "dual inverter",
+}
+
+
+class LgNativeDevice(Device):
+    """The 0.1.x pure-Python LG classes: LG ("generic"), InverterV
+    ("inverter v") and DualInverter ("dual inverter"). They share LG's code
+    and differ only by their tables (the variant's capabilities).
+
+    A message is a state frame and/or special frames, as LG.build_code:
+    - Power off: the off frame (kLgAcOffCommand) alone.
+    - Power on: the state frame, then one special frame per setting that
+      changed, in LG's order (swing_v, swing_h, powerful, purifier,
+      cleaning, economy), then the diagnostic request when asked.
+
+    The state frame carries the mode, the fan (auto in auto mode,
+    code_fan) and a temperature that depends on the mode (code_temperature):
+    the setpoint in cool, 18 in fan, 24 in dry, and 15 plus the auto_bias
+    index (17 by default) in auto.
+
+    ``previous``, as the legacy object's status (what it sent last):
+    - The "change" bit (code_mode's addit) is set when the unit was on.
+      Without ``previous`` it is clear: a power-on frame, as a fresh object.
+    - The state frame goes when power, mode, setpoint, fan or auto_bias
+      changed, when powerful was switched off (code_powerful resends the
+      normal code to leave jet mode), and whenever nothing else would be
+      sent. LG.build_code tests mode, temperature and fan only, so an
+      auto_bias change alone sent nothing (an evident omission: auto_bias
+      only lives in that frame); the port sends it.
+    - A special frame goes when its setting differs from ``previous``.
+      Without ``previous`` every offered setting's frame goes (each is an
+      absolute code, not a toggle), powerful only when on.
+    """
+
+    PROTOCOL = LG_NATIVE
+    # The state frame, then any number of special frames.
+    LAYOUTS = (LG_NATIVE_LAYOUT, LG_NATIVE_COMMAND_LAYOUT)
+    capabilities = LG_NATIVE_VARIANTS["generic"]
+
+    def __init__(self, brand, model, variant=None):
+        super().__init__(brand, model)
+        self.variant = variant or LG_NATIVE_MODELS.get(model, "generic")
+        if self.variant not in LG_NATIVE_VARIANTS:
+            raise ValueError(f"unknown LG native variant {self.variant!r}")
+        self.capabilities = LG_NATIVE_VARIANTS[self.variant]
+
+    def normalise(self, state):
+        state = super().normalise(state)
+        if state.mode == "auto" and state.fan != "auto":
+            state = replace(state, fan="auto")  # code_fan: auto mode, auto fan
+        return state
+
+    @staticmethod
+    def _frame(data):
+        return Frame("main", bytes(data))
+
+    def _command(self, name):
+        return self._frame(LG_NATIVE_COMMAND_LAYOUT.build(command=name))
+
+    def _temperature(self, target):
+        """LG.code_temperature."""
+        if target.mode == "fan":
+            return 18
+        if target.mode == "dry":
+            return 24
+        if target.mode == "auto":
+            bias = target.features.get("auto_bias")
+            if bias is None:  # no auto_bias capability
+                return 17
+            return 15 + LG_NATIVE_AUTO_BIAS_LADDER.index(bias)
+        return int(target.temperature)
+
+    def _state_frame(self, previous, target):
+        if not target.power:
+            return LG_NATIVE_LAYOUT.build(
+                power=False, change=0, mode="cool", temp=0, fan="auto"
+            )
+        return LG_NATIVE_LAYOUT.build(
+            power=True,
+            change=int(previous is not None and previous.power),
+            mode=target.mode,
+            temp=self._temperature(target) - 15,
+            fan=LG_NATIVE_FAN_NAME[target.fan],
+        )
+
+    def _specials(self, previous, target):
+        caps = self.capabilities
+
+        def changed(get):
+            return previous is None or get(previous) != get(target)
+
+        names = []
+        if caps.swing_v is not None and changed(lambda s: s.swing_v):
+            names.append(f"swing_v {caps.swing_v.label(target.swing_v)}")
+        if caps.swing_h is not None and changed(lambda s: s.swing_h):
+            names.append(f"swing_h {caps.swing_h.label(target.swing_h)}")
+        for feature in ("powerful", "purifier", "cleaning", "economy"):
+            if feature not in caps.features:
+                continue
+            value = target.features[feature]
+            if not changed(lambda s: s.features[feature]):
+                continue
+            if feature == "powerful" and not value:
+                continue  # leaving jet mode is the state frame (see frames)
+            if isinstance(value, bool):
+                value = caps.features[feature].label(value)
+            names.append(f"{feature} {value}")
+        return names
+
+    def frames(self, previous, target, actions):
+        if not target.power:
+            return [self._frame(self._state_frame(previous, target))]
+        names = self._specials(previous, target)
+        if "diagnostic" in actions:
+            names.append("diagnostic")
+        keys = ("power", "mode", "temperature", "fan")
+        send_state = (
+            previous is None
+            or not names
+            or any(getattr(previous, k) != getattr(target, k) for k in keys)
+            or previous.features.get("auto_bias") != target.features.get("auto_bias")
+            or (
+                previous.features.get("powerful")
+                and not target.features.get("powerful")
+            )
+        )
+        frames = (
+            [self._frame(self._state_frame(previous, target))] if send_state else []
+        )
+        return frames + [self._command(name) for name in names]
+
+
+DEVICES.update({m: LgNativeDevice for m in LG_NATIVE_MODELS})
 
 
 class PluginObject(GenPluginObject):

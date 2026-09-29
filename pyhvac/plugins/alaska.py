@@ -26,6 +26,10 @@
 
 from .hvaclib import PulseBased, GenPluginObject
 from .teco import Teco
+from .technibel import TECHNIBEL_AC_ALASKA_MODELS, TechnibelAcDevice
+
+DEVICES = {}
+DEVICES.update({m: TechnibelAcDevice for m in TECHNIBEL_AC_ALASKA_MODELS})
 
 
 # Now the match between models and objects

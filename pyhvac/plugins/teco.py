@@ -24,6 +24,7 @@
 #
 
 from .hvaclib import PulseBased, GenPluginObject
+from .technibel import TECHNIBEL_AC_TECO_MODELS, TechnibelAcDevice
 
 
 class Teco(PulseBased):
@@ -42,6 +43,10 @@ class Teco(PulseBased):
             "sleep": ["off", "on"],
             "light": ["off", "on"],
         }
+
+
+DEVICES = {}
+DEVICES.update({m: TechnibelAcDevice for m in TECHNIBEL_AC_TECO_MODELS})
 
 
 # Now the match between models and objects

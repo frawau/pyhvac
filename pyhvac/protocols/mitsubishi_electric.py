@@ -24,6 +24,8 @@
 #
 
 
+from dataclasses import replace
+
 from ..device import Device
 from ..fields import Copy, Field, Layout, Sum8
 from ..ir.model import Frame, Protocol, PulseDistance, Section
@@ -302,6 +304,13 @@ class Mitsubishi136Device(Device):
         ),
         features={"quiet": ON_OFF},
     )
+
+    def normalise(self, state):
+        # No auto fan: a fan the protocol lacks (the default "auto") is sent
+        # as C sent IRac's kAuto, kMitsubishi136FanMed (canonical "3").
+        if state.fan not in self.capabilities.fan.values:
+            state = replace(state, fan="3")
+        return super().normalise(state)
 
     def frames(self, previous, target, actions):
         mode = target.mode if target.power else "auto"

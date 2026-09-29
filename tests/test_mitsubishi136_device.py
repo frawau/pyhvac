@@ -242,3 +242,12 @@ def test_layouts_must_cover_every_frame():
 # decodeMitsubishi136 matches with _tolerance (25 %) and no mark excess.
 def test_decode_tolerance_is_the_c_decoders():
     assert (MITSUBISHI136.tolerance, MITSUBISHI136.mark_excess) == (0.25, 0)
+
+
+@pytest.mark.parametrize("fan", ["auto", "5"])
+def test_a_fan_the_protocol_lacks_sends_medium(fan):
+    # No auto fan: IRac's default fan (kAuto) reached C, which sent
+    # kMitsubishi136FanMed, so an unoffered fan normalises to medium.
+    dev = device()
+    state = dev.normalise(HvacState(True, "cool", 24.0, fan=fan))
+    assert state.fan == "3"

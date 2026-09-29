@@ -190,9 +190,9 @@ DEVICES = {}
 
 
 # ------------------------------------------------------------ shared parts
-# Every Hitachi remote but the AC1 and the 424 is sent by sendHitachiAC with
-# the same timings; only the bit order changes (MSB first for
-# kHitachiAcStateLength only).
+# The 28-, 264-, 296- and 344-byte messages go through sendHitachiAC with
+# the same timings; only the bit order changes (LSB first for
+# kHitachiAc264/296/344StateLength, MSB first otherwise).
 
 
 def _hitachi_ac_protocol(name, lsb_first=True):

@@ -138,9 +138,6 @@ def _haier_protocol(name):
     )
 
 
-# The canonical fan and on/off feature entities every Haier port offers.
-
-
 # ---------------------------------------------------------------- HaierAc
 # Layout from IRremoteESP8266's HaierProtocol (ir_Haier.h): one 9-byte frame
 # (kHaierACStateLength), sent by sendHaierAC (see _haier_protocol).

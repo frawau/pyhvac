@@ -470,7 +470,7 @@ DAIKIN_MODE = {  # kDaikinAuto/Dry/Cool/Heat/Fan
     "fan": 6,
 }
 # kDaikinFanAuto, and IRac's kLow/kMedium/kHigh (kDaikinFanMin, Med, Max - 1)
-# plus 2: level n is sent as n + 2.
+# as sent: the C fan value plus 2.
 DAIKIN_FAN = {"auto": 0xA, "1": 3, "2": 5, "3": 6}
 DAIKIN_SWING = {"off": 0x0, "swing": 0xF}  # kDaikinSwingOff / kDaikinSwingOn
 DAIKIN_SWING_BIT = {"off": 0, "swing": 1}  # Daikin64/Daikin128 SwingV bit

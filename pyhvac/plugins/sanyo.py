@@ -213,6 +213,123 @@ SANYO_AC_MODELS = (
 DEVICES.update({m: SanyoAcDevice for m in SANYO_AC_MODELS})
 
 
+# ----------------------------------------------------------------- SanyoAc88
+# Layout from IRremoteESP8266's SanyoAc88Protocol (ir_Sanyo.h): 11 bytes sent
+# LSB first (sendSanyoAc88: sendGeneric with MSBfirst false), no checksum.
+# IRSanyoAc88::send sends the message kSanyoAc88MinRepeat + 1 = 3 times, each
+# closed by kSanyoAc88BitMark and kSanyoAc88Gap, then adds a
+# kDefaultMessageGap space: the wire ends on 500 µs mark + 103 675 µs space
+# (as ir_Sanyo_test.cpp's SyntheticSelfDecode shows). stateReset writes every
+# byte, so no bit is left to stale memory.
+
+SANYO_AC88 = Protocol(
+    "sanyo-ac88",
+    {
+        "main": Section(
+            # kSanyoAc88BitMark / ZeroSpace / OneSpace
+            PulseDistance(500, 750, 1500),
+            header=(5400, 2000),  # kSanyoAc88HdrMark / HdrSpace
+            footer=(500,),
+            gap=3675,  # kSanyoAc88Gap
+        ),
+        # sendSanyoAc88: space(kDefaultMessageGap) after the last repeat.
+        "end": Section(None, gap=100000),
+    },
+    carrier=38000,  # kSanyoAc88Freq
+)
+
+SANYO_AC88_MODE = {  # kSanyoAc88{Auto,Cool,Heat,Fan}
+    "auto": 0,
+    "cool": 2,
+    "heat": 4,
+    "fan": 5,
+}
+SANYO_AC88_FAN = {  # canonical fan -> kSanyoAc88Fan*, as convertFan
+    "auto": 0,  # FanAuto
+    "1": 1,  # lowest (kMin): FanLow
+    "2": 2,  # medium: FanMedium
+    "3": 3,  # high: FanHigh
+    "4": 3,  # highest (kMax): FanHigh, the protocol has no faster speed
+}
+SANYO_AC88_SWING = {"off": 0, "swing": 1}  # SwingV
+
+# Skeleton: IRSanyoAc88::stateReset (kReset) with Power, Mode, Fan and Temp
+# cleared: bytes 0-1 0xAA 0x55, byte 7 0x01, EnableStartTimer (byte 10 bit 4)
+# set, the clock (bytes 4-6) zero, as IRac never calls setClock (clock -1).
+# The one real capture (ir_Sanyo_test.cpp, issue 1503) has 0x59, 0x00 and
+# 0x80 in bytes 1, 7 and 10: undocumented bits, so the port follows C.
+SANYO_AC88_LAYOUT = Layout(
+    bytes.fromhex("aa550000000000010000" "10"),
+    {
+        "fan": Field.at(2, 0, 2, values=SANYO_AC88_FAN),
+        "mode": Field.at(2, 4, 3, values=SANYO_AC88_MODE),
+        "power": Field.at(2, 7, 1),
+        "temperature": Field.at(3, 0, 5),  # whole °C, 10-30
+        "filter": Field.at(3, 5, 1),
+        "swing_v": Field.at(3, 6, 1, values=SANYO_AC88_SWING),
+        "clock_secs": Field.at(4, 0, 8),
+        "clock_mins": Field.at(5, 0, 8),
+        "clock_hours": Field.at(6, 0, 8),
+        "turbo": Field.at(10, 3, 1),
+        "start_timer": Field.at(10, 4, 1),  # EnableStartTimer
+        "stop_timer": Field.at(10, 5, 1),  # EnableStopTimer
+        "sleep": Field.at(10, 6, 1),
+    },
+)
+
+
+class SanyoAc88Device(Device):
+    """Sanyo 88-bit: a full-state protocol with an explicit power bit and no
+    toggles, so ``previous`` is ignored. The frame is sent three times.
+
+    As the C path: an off message carries mode auto; fan high and highest
+    both send FanHigh; the EnableStartTimer bit of stateReset stays set.
+    Swing "on" and sleep send the documented SwingV and Sleep bits; the
+    C path of the oracle fixtures never received them (pyhvac's glue).
+    """
+
+    PROTOCOL = SANYO_AC88
+    LAYOUTS = (SANYO_AC88_LAYOUT,) * 3 + (None,)
+    capabilities = Capabilities(
+        modes=("auto", "cool", "heat", "fan"),
+        temperature=TemperatureRange(10.0, 30.0),
+        fan=Choice(
+            ("auto", "1", "2", "3", "4"),
+            {"auto": "auto", "1": "lowest", "2": "medium", "3": "high", "4": "highest"},
+        ),
+        swing_v=Choice(("off", "swing"), {"off": "off", "swing": "on"}),
+        features={
+            name: Choice((False, True), {False: "off", True: "on"})
+            for name in ("powerful", "purifier", "sleep")
+        },
+    )
+
+    def frames(self, previous, target, actions):
+        feat = target.features
+        data = bytes(
+            SANYO_AC88_LAYOUT.build(
+                power=target.power,
+                # As the C path: IRac passes mode "off" for an off message,
+                # which convertMode maps to kSanyoAc88Auto.
+                mode=target.mode if target.power else "auto",
+                # setTemp clamps to kSanyoAc88TempMin-Max, whole degrees.
+                temperature=int(target.temperature),
+                fan=target.fan,
+                swing_v=target.swing_v,
+                turbo=feat["powerful"],
+                filter=feat["purifier"],
+                sleep=feat["sleep"],
+            )
+        )
+        return [Frame("main", data)] * 3 + [Frame("end", b"", 0)]
+
+
+SANYO_AC88_MODELS = ("generic 88",)
+
+
+DEVICES.update({m: SanyoAc88Device for m in SANYO_AC88_MODELS})
+
+
 # Now the match between models and objects
 class PluginObject(GenPluginObject):
     MODELS = {

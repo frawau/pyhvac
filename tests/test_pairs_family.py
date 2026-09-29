@@ -11,3 +11,34 @@ MODULES = ("lg", "panasonic", "sanyo", "kelon", "trotech")
 def test_module_has_a_devices_table(name):
     module = importlib.import_module(f"pyhvac.plugins.{name}")
     assert isinstance(module.DEVICES, dict)
+
+
+@pytest.mark.parametrize("name", MODULES + ("ge",))
+def test_no_ported_model_uses_the_c_library(name):
+    from pyhvac import registry
+    from pyhvac.legacy import LegacyDevice
+    from pyhvac.plugins.hvaclib import IRGHVAC
+
+    # The Midea models listed in trotech.py belong to the Midea port.
+    left = []
+    for model in registry.models(name):
+        try:
+            device = registry.get_device(name, model)
+        except AttributeError:  # a legacy C class without the C extension
+            left.append(model)
+            continue
+        if isinstance(device, LegacyDevice) and issubclass(
+            device.legacy_class, IRGHVAC
+        ):
+            left.append(model)
+    if name == "trotech":
+        assert sorted(left) == sorted(
+            [
+                "PAC 2100 X",
+                "PAC 3900 X",
+                "RG57H(B)/BGE remote",
+                "RG57H3(B)/BGCEF-M remote",
+            ]
+        )
+    else:
+        assert left == []

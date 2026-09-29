@@ -1,0 +1,746 @@
+diff -ruN a/pyhvac/plugins/haier.py b/pyhvac/plugins/haier.py
+--- a/pyhvac/plugins/haier.py	2026-09-29 14:46:17.000000000 +0700
++++ b/pyhvac/plugins/haier.py	2026-09-29 14:54:12.856036936 +0700
+@@ -172,9 +172,9 @@
+ }
+ HAIER_AC_SWING_V = {  # kHaierAcSwingV*, as IRHaierAC::convertSwingV
+     "off": 0b00,  # Off (kOff)
++    "auto": 0b11,  # Chg (kAuto; toCommonSwingV reads it back as kAuto)
+     "1": 0b01,  # Up ("auto high" = kHigh)
+     "2": 0b10,  # Down ("auto low" = kLow)
+-    "change": 0b11,  # Chg (kAuto): not offered by the entity
+ }
+ HAIER_AC_MIN_TEMP = 16  # kHaierAcMinTemp
+ HAIER_AC_MAX_TEMP = 30  # kHaierAcMaxTemp
+@@ -233,8 +233,11 @@
+         modes=("auto", "cool", "dry", "heat", "fan"),
+         temperature=TemperatureRange(16.0, 30.0),
+         fan=FAN_3,
++        # Every kHaierAcSwingV* value; "auto" is Chg, which the legacy entity
++        # did not offer.
+         swing_v=Choice(
+-            ("off", "1", "2"), {"off": "off", "1": "auto high", "2": "auto low"}
++            ("off", "auto", "1", "2"),
++            {"off": "off", "auto": "auto", "1": "auto high", "2": "auto low"},
+         ),
+         features={"purifier": ON_OFF, "sleep": ON_OFF},
+     )
+@@ -593,14 +596,20 @@
+     "aux_heating": 0b10110,
+     "clean": 0b11001,
+ }
+-HAIER160_SWING_V = {  # canonical swing -> kHaierAc160SwingV*, as convertSwingV
++# Canonical swing -> kHaierAc160SwingV*, as convertSwingV, plus Highest,
++# which convertSwingV never picks (it sends Top for kHighest) but setSwingV
++# accepts and toCommonSwingV reads as kHighest. The positions run in the
++# header's order, Top first; the header does not say which of Top and
++# Highest is higher.
++HAIER160_SWING_V = {
+     "off": 0b0000,
+     "auto": 0b1100,  # airflow
+     "1": 0b0001,  # ceiling (kHighest): kHaierAc160SwingVTop
+-    "2": 0b0100,  # 90° (kHigh): kHaierAc160SwingVHigh
+-    "3": 0b0110,  # 45° (kMiddle): kHaierAc160SwingVMiddle
+-    "4": 0b1000,  # 30° (kLow): kHaierAc160SwingVLow
+-    "5": 0b0011,  # 0° (kLowest): kHaierAc160SwingVLowest
++    "2": 0b0010,  # kHaierAc160SwingVHighest
++    "3": 0b0100,  # 90° (kHigh): kHaierAc160SwingVHigh
++    "4": 0b0110,  # 45° (kMiddle): kHaierAc160SwingVMiddle
++    "5": 0b1000,  # 30° (kLow): kHaierAc160SwingVLow
++    "6": 0b0011,  # 0° (kLowest): kHaierAc160SwingVLowest
+ }
+ 
+ # Skeleton: IRHaierAC160::stateReset (Model kHaierAcYrw02ModelA, Prefix
+@@ -652,15 +661,16 @@
+         temperature=TemperatureRange(16.0, 30.0),
+         fan=FAN_3,
+         swing_v=Choice(
+-            ("off", "auto", "1", "2", "3", "4", "5"),
++            ("off", "auto", "1", "2", "3", "4", "5", "6"),
+             {
+                 "off": "off",
+                 "auto": "auto",
+                 "1": "ceiling",
+-                "2": "90°",
+-                "3": "45°",
+-                "4": "30°",
+-                "5": "0°",
++                "2": "highest",
++                "3": "90°",
++                "4": "45°",
++                "5": "30°",
++                "6": "0°",
+             },
+         ),
+         features={
+diff -ruN a/pyhvac/plugins/hitachi.py b/pyhvac/plugins/hitachi.py
+--- a/pyhvac/plugins/hitachi.py	2026-09-29 14:46:17.000000000 +0700
++++ b/pyhvac/plugins/hitachi.py	2026-09-29 14:53:56.877962728 +0700
+@@ -29,8 +29,8 @@
+ from ..device import Device
+ from ..fields import Checksum, Field, InvertedPairs, Layout, NibbleSum, bit_reverse
+ from ..ir.model import Frame, Protocol, PulseDistance, Section
+-from ..choices import FAN_3, FAN_5, ON_OFF, SWING, SWING_H_5
+-from ..state import Capabilities, TemperatureRange
++from ..choices import FAN_3, FAN_4, FAN_5, ON_OFF, SWING, SWING_H_5
++from ..state import Capabilities, Choice, TemperatureRange
+ 
+ try:
+     from ..irhvac import R_LT0541_HTA_A, R_LT0541_HTA_B
+@@ -248,8 +248,15 @@
+     "auto": 1,  # kHitachiAcFanAuto
+     "1": 2,  # kHitachiAcFanLow (kLow)
+     "2": 3,  # kHitachiAcFanMed (kMedium)
+-    "3": 4,  # kHitachiAcFanHigh - 1 (kHigh; kMax would be kHitachiAcFanHigh)
++    "3": 4,  # kHitachiAcFanHigh - 1 (kHigh)
++    "4": 5,  # kHitachiAcFanHigh (kMax)
+ }
++# The four speeds IRHitachiAc::setFan allows (kHitachiAcFanLow up to
++# kHitachiAcFanHigh), with the legacy labels for the first three.
++HITACHI_AC_FAN = Choice(
++    ("auto", "1", "2", "3", "4"),
++    {"auto": "auto", "1": "low", "2": "medium", "3": "high", "4": "highest"},
++)
+ HITACHI_AC_MIN_TEMP = 16  # kHitachiAcMinTemp
+ 
+ # Skeleton: IRHitachiAc::stateReset with the written fields and the sum
+@@ -283,8 +290,8 @@
+     LAYOUTS = (HITACHI_AC_LAYOUT,)
+     capabilities = Capabilities(
+         modes=("auto", "heat", "cool", "dry", "fan"),
+-        temperature=TemperatureRange(16.0, 32.0),
+-        fan=FAN_3,
++        temperature=TemperatureRange(16.0, 32.0),  # kHitachiAcMin/MaxTemp
++        fan=HITACHI_AC_FAN,
+         swing_v=SWING,
+         swing_h=SWING,
+     )
+@@ -297,7 +304,7 @@
+         # (kHitachiAcFanLow..+1), fan has no auto (minimum kHitachiAcFanLow).
+         fan = target.fan
+         if mode == "dry":
+-            fan = {"auto": "1", "3": "2"}.get(fan, fan)
++            fan = {"auto": "1", "3": "2", "4": "2"}.get(fan, fan)
+         elif mode == "fan" and fan == "auto":
+             fan = "1"
+         # setMode(kHitachiAcFan) writes the special temperature 64, but IRac
+@@ -780,23 +787,22 @@
+     always sends kHitachiAc264ButtonPowerMode; the port does the same, with
+     or without ``previous`` (the frame carries the full state either way).
+ 
+-    Swing and the features (purifier, powerful, quiet, economy, light) are
+-    kept for the legacy entity but have no bits: IRac::hitachi264 has "No
+-    Swing(V) setting available" and IRHitachiAc264::toCommon forces swingv
+-    off, so the kHitachiAc264ButtonSwingV press is never sent.
++    Capabilities are what HitachiAC264Protocol can carry: kHitachiAc264
++    has no auto mode (IRHitachiAc424::convertMode sends cool for it), and
++    no swing or feature bits. The legacy entity offered auto, swing and
++    purifier/powerful/quiet/economy/light, none of which changed the frame:
++    IRac::hitachi264 has "No Swing(V) setting available" and
++    IRHitachiAc264::toCommon forces swingv off. The swing button
++    (kHitachiAc264ButtonSwingV) would need a toggle rule (as Hitachi424's),
++    which the C path never sends; it is not offered.
+     """
+ 
+     PROTOCOL = HITACHI264
+     LAYOUTS = (HITACHI264_LAYOUT,)
+     capabilities = Capabilities(
+-        modes=("auto", "cool", "fan", "dry", "heat"),
+-        temperature=TemperatureRange(16.0, 32.0),
+-        fan=FAN_3,
+-        swing_v=SWING,
+-        features={
+-            name: ON_OFF
+-            for name in ("purifier", "powerful", "quiet", "economy", "light")
+-        },
++        modes=("cool", "fan", "dry", "heat"),  # kHitachiAc264{Cool,Fan,Dry,Heat}
++        temperature=TemperatureRange(16.0, 32.0),  # kHitachiAc264Min/MaxTemp
++        fan=FAN_3,  # kHitachiAc264Fan{Low,Medium,High,Auto}
+     )
+ 
+     def frames(self, previous, target, actions):
+@@ -839,12 +845,12 @@
+     "1": 0b001,  # lowest: kHitachiAc296FanSilent
+     "2": 0b010,  # kHitachiAc296FanLow
+     "3": 0b011,  # kHitachiAc296FanMedium
+-    "4": 0b100,  # kHitachiAc296FanHigh
+-    "5": 0b100,  # highest: kHitachiAc296FanHigh (no higher code exists)
++    "4": 0b100,  # kHitachiAc296FanHigh (convertFan: kHigh and kMax)
+     "auto": 0b101,  # kHitachiAc296FanAuto
+ }
+ HITACHI296_TEMP_AUTO = 1  # kHitachiAc296TempAuto
+ HITACHI296_MIN_TEMP = 16  # kHitachiAc296MinTemp
++HITACHI296_MAX_TEMP = 31  # kHitachiAc296MaxTemp
+ 
+ # IRHitachiAc296::stateReset, odd bytes only (the complements follow).
+ # Byte 13 bits 0-1 ("unset_low") and bit 7 ("unset_high"), and byte 25
+@@ -864,7 +870,7 @@
+     HITACHI296_RESET,
+     37,  # kHitachiAc296StateLength
+     HITACHI296_MODE,
+-    None,  # raw: HITACHI296_FAN is not one-to-one
++    None,  # raw kHitachiAc296Fan* codes (HITACHI296_FAN)
+     temp_width=5,  # whole °C, or kHitachiAc296TempAuto
+     fan_width=3,
+     unset_low=Field.at(13, 0, 2),  # padding the C path never initialises
+@@ -890,8 +896,8 @@
+     LAYOUTS = (HITACHI296_LAYOUT,)
+     capabilities = Capabilities(
+         modes=("auto", "cool", "dry", "heat"),
+-        temperature=TemperatureRange(16.0, 25.0),
+-        fan=FAN_5,
++        temperature=TemperatureRange(16.0, 31.0),  # kHitachiAc296Min/MaxTemp
++        fan=FAN_4,  # kHitachiAc296Fan{Silent,Low,Medium,High,Auto}
+     )
+ 
+     def frames(self, previous, target, actions):
+@@ -902,7 +908,9 @@
+         if mode == "auto":
+             temperature = HITACHI296_TEMP_AUTO
+         else:
+-            temperature = max(int(target.temperature), HITACHI296_MIN_TEMP)
++            temperature = min(
++                max(int(target.temperature), HITACHI296_MIN_TEMP), HITACHI296_MAX_TEMP
++            )
+         data = HITACHI296_LAYOUT.build(
+             temperature=temperature,
+             mode=mode,
+diff -ruN a/tests/test_haier160_device.py b/tests/test_haier160_device.py
+--- a/tests/test_haier160_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_haier160_device.py	2026-09-29 14:54:49.670502579 +0700
+@@ -171,10 +171,11 @@
+         ("off", 0b0000),
+         ("auto", 0b1100),
+         ("1", 0b0001),  # ceiling: kHighest -> Top
+-        ("2", 0b0100),  # 90°: kHigh -> High
+-        ("3", 0b0110),  # 45°: kMiddle -> Middle
+-        ("4", 0b1000),  # 30°: kLow -> Low
+-        ("5", 0b0011),  # 0°: kLowest -> Lowest
++        ("2", 0b0010),  # kHaierAc160SwingVHighest (not reached by convertSwingV)
++        ("3", 0b0100),  # 90°: kHigh -> High
++        ("4", 0b0110),  # 45°: kMiddle -> Middle
++        ("5", 0b1000),  # 30°: kLow -> Low
++        ("6", 0b0011),  # 0°: kLowest -> Lowest
+     ],
+ )
+ def test_every_swing_value(swing, raw):
+@@ -265,14 +266,35 @@
+     assert isinstance(registry.get_device("haier", model), Haier160Device)
+ 
+ 
+-@pytest.mark.parametrize("model", HAIER160_MODELS)
+-def test_capabilities_match_the_legacy_entity(model):
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.haier import Haier160
++def test_swing_v_offers_every_documented_position():
++    # ir_Haier.h kHaierAc160SwingV{Off,Auto,Top,Highest,High,Middle,Low,
++    # Lowest}: Highest (0b0010) is new, the legacy entity had the other seven.
++    swing_v = device().capabilities.swing_v
++    assert swing_v.values == ("off", "auto", "1", "2", "3", "4", "5", "6")
++    assert swing_v.label("2") == "highest"
++
+ 
+-    legacy = LegacyDevice("haier", model, Haier160)
+-    assert Haier160Device("haier", model).capabilities == legacy.capabilities
++def test_legacy_swing_labels_keep_their_positions():
++    # The oracle's old-vocabulary swings still reach the same codes.
++    dev = device()
++    for label, raw in (
++        ("ceiling", 0b0001),
++        ("90°", 0b0100),
++        ("45°", 0b0110),
++        ("30°", 0b1000),
++        ("0°", 0b0011),
++    ):
++        state = state_from_record(dev, {"mode": "cool", "swing": label})
++        assert HAIER160_LAYOUT.read_raw(frame(state), "swing_v") == raw
++
++
++def test_capabilities():
++    caps = device().capabilities
++    assert caps.modes == ("auto", "cool", "dry", "heat", "fan")
++    assert (caps.temperature.min, caps.temperature.max) == (16.0, 30.0)
++    assert caps.fan.values == ("auto", "1", "2", "3")
++    assert caps.swing_h is None  # IRHaierAC160 has no SwingH setter
++    assert set(caps.features) == set(ALL_FEATURES)
+ 
+ 
+ def test_undeclared_sleep_deviation_is_reported():
+diff -ruN a/tests/test_haier176_device.py b/tests/test_haier176_device.py
+--- a/tests/test_haier176_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_haier176_device.py	2026-09-29 14:57:03.233094705 +0700
+@@ -20,8 +20,6 @@
+ #   (byte 8 bit 7). The port sends the documented bit.
+ DEFECTS = (Defect("sleep", 1, 0, "C glue never passes sleep: bit clear"),)
+ 
+-LEGACY_CLASS = {"A": "Haier176A", "B": "Haier176B"}
+-
+ 
+ def device(model="V9014557 M47 8D remote"):
+     return Haier176Device("haier", model)
+@@ -332,14 +330,19 @@
+ 
+ 
+ @pytest.mark.parametrize("model", HAIER176_MODELS)
+-def test_capabilities_match_the_legacy_entity(model):
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins import haier
+-
+-    cls = getattr(haier, LEGACY_CLASS[HAIER176_MODELS[model]])
+-    legacy = LegacyDevice("haier", model, cls)
+-    assert Haier176Device("haier", model).capabilities == legacy.capabilities
++def test_capabilities_are_the_documented_controls(model):
++    # Unchanged from the legacy entity, and what HaierAc176Protocol carries:
++    # kHaierAcYrw02{Auto,Cool,Dry,Heat,Fan}, kHaierAcYrw02Min/MaxTempC,
++    # kHaierAcYrw02Fan{Auto,Low,Med,High}, every kHaierAcYrw02SwingV* (Middle
++    # and Bottom share "2"/"4" by mode) and kHaierAcYrw02SwingH*, and the
++    # Health, Sleep, Turbo and Quiet bits.
++    caps = Haier176Device("haier", model).capabilities
++    assert caps.modes == ("auto", "cool", "dry", "heat", "fan")
++    assert (caps.temperature.min, caps.temperature.max) == (16.0, 30.0)
++    assert caps.fan.values == ("auto", "1", "2", "3")
++    assert caps.swing_v.values == ("off", "auto", "1", "2", "3", "4")
++    assert caps.swing_h.values == ("auto", "1", "2", "3", "4", "5")
++    assert set(caps.features) == {"purifier", "sleep", "powerful", "quiet"}
+ 
+ 
+ def test_undeclared_deviation_is_reported():
+@@ -372,13 +375,3 @@
+     # mabe.py's models use the Haier176A class: variant A.
+     dev = registry.get_device("mabe", model)
+     assert isinstance(dev, Haier176Device) and dev.variant == "A"
+-
+-
+-@pytest.mark.parametrize("model", HAIER176_MABE_MODELS)
+-def test_mabe_capabilities_match_the_legacy_entity(model):
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.haier import Haier176A
+-
+-    legacy = LegacyDevice("mabe", model, Haier176A)
+-    assert Haier176Device("mabe", model).capabilities == legacy.capabilities
+diff -ruN a/tests/test_haier_ac_device.py b/tests/test_haier_ac_device.py
+--- a/tests/test_haier_ac_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_haier_ac_device.py	2026-09-29 14:56:43.199517437 +0700
+@@ -138,9 +138,10 @@
+     )
+ 
+ 
+-@pytest.mark.parametrize("swing, raw", [("off", 0), ("1", 1), ("2", 2)])
++@pytest.mark.parametrize("swing, raw", [("off", 0), ("auto", 3), ("1", 1), ("2", 2)])
+ def test_every_swing_position(swing, raw):
+-    # "auto high" -> kHigh -> kHaierAcSwingVUp; "auto low" -> kLow -> Down.
++    # "auto high" -> kHigh -> kHaierAcSwingVUp; "auto low" -> kLow -> Down;
++    # "auto" -> kAuto -> kHaierAcSwingVChg (0b11).
+     raw_read = HAIER_AC_LAYOUT.read_raw(
+         data(HvacState(True, "cool", 22.0, swing_v=swing)), "swing_v"
+     )
+@@ -207,13 +208,28 @@
+ 
+ 
+ @pytest.mark.parametrize("model", HAIER_AC_MODELS)
+-def test_capabilities_match_the_legacy_entity(model):
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.haier import Haier
+-
+-    legacy = LegacyDevice("haier", model, Haier)
+-    assert device(model).capabilities == legacy.capabilities
++def test_swing_v_offers_every_documented_value(model):
++    # kHaierAcSwingV{Off,Chg,Up,Down}: Chg ("auto", 0b11) is new, the legacy
++    # entity had off, "auto high" (Up) and "auto low" (Down).
++    swing_v = device(model).capabilities.swing_v
++    assert swing_v.values == ("off", "auto", "1", "2")
++    assert swing_v.label("1") == "auto high" and swing_v.label("2") == "auto low"
++
++
++def test_swing_change_matches_the_libraries_message_construction():
++    # ir_Haier_test.cpp TestHaierACClass.MessageConstuction: setSwingV(
++    # kHaierAcSwingVChg) gives byte 2 = 0xEA there (SwingV 0b11 over the
++    # constant bit 5 and the clock); with the clock at 0, byte 2 is 0xE0.
++    assert data(HvacState(True, "cool", 21.0, swing_v="auto"))[2] == 0xE0
++
++
++def test_capabilities():
++    caps = device().capabilities
++    assert caps.modes == ("auto", "cool", "dry", "heat", "fan")
++    assert (caps.temperature.min, caps.temperature.max) == (16.0, 30.0)
++    assert caps.fan.values == ("auto", "1", "2", "3")
++    assert caps.swing_h is None
++    assert set(caps.features) == {"purifier", "sleep"}
+ 
+ 
+ def test_undeclared_deviation_is_reported():
+diff -ruN a/tests/test_haier_yrw02_device.py b/tests/test_haier_yrw02_device.py
+--- a/tests/test_haier_yrw02_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_haier_yrw02_device.py	2026-09-29 14:56:43.199468885 +0700
+@@ -557,13 +557,19 @@
+ 
+ 
+ @pytest.mark.parametrize("model", HAIER_YRW02_MODELS)
+-def test_capabilities_match_the_legacy_entity(model):
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.haier import PluginObject
+-
+-    legacy = LegacyDevice("haier", model, PluginObject.MODELS[model])
+-    assert HaierYrw02Device("haier", model).capabilities == legacy.capabilities
++def test_capabilities_are_the_documented_controls(model):
++    # Unchanged from the legacy entity, and what HaierAc176Protocol carries:
++    # kHaierAcYrw02{Auto,Cool,Dry,Heat,Fan}, kHaierAcYrw02Min/MaxTempC,
++    # kHaierAcYrw02Fan{Auto,Low,Med,High}, every kHaierAcYrw02SwingV* (Middle
++    # and Bottom share "2"/"4" by mode) and kHaierAcYrw02SwingH*, and the
++    # Health, Sleep, Turbo and Quiet bits.
++    caps = HaierYrw02Device("haier", model).capabilities
++    assert caps.modes == ("auto", "cool", "dry", "heat", "fan")
++    assert (caps.temperature.min, caps.temperature.max) == (16.0, 30.0)
++    assert caps.fan.values == ("auto", "1", "2", "3")
++    assert caps.swing_v.values == ("off", "auto", "1", "2", "3", "4")
++    assert caps.swing_h.values == ("auto", "1", "2", "3", "4", "5")
++    assert set(caps.features) == {"purifier", "sleep", "powerful", "quiet"}
+ 
+ 
+ def _first(pred):
+diff -ruN a/tests/test_hitachi1_device.py b/tests/test_hitachi1_device.py
+--- a/tests/test_hitachi1_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_hitachi1_device.py	2026-09-29 14:56:43.199219682 +0700
+@@ -267,13 +267,16 @@
+ 
+ 
+ @pytest.mark.parametrize("model", HITACHI1_MODELS)
+-def test_capabilities_match_the_legacy_entity(model):
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.hitachi import PluginObject
+-
+-    legacy = LegacyDevice("hitachi", model, PluginObject.MODELS[model])
+-    assert Hitachi1Device("hitachi", model).capabilities == legacy.capabilities
++def test_capabilities_are_the_documented_controls(model):
++    # Unchanged from the legacy entity, and what Hitachi1Protocol carries:
++    # kHitachiAc1{Auto,Heat,Cool,Dry,Fan}, kHitachiAcMin/MaxTemp (setTemp),
++    # kHitachiAc1Fan{Auto,Low,Med,High}, the SwingV and SwingH bits, Sleep.
++    caps = Hitachi1Device("hitachi", model).capabilities
++    assert caps.modes == ("auto", "heat", "cool", "dry", "fan")
++    assert (caps.temperature.min, caps.temperature.max) == (16.0, 32.0)
++    assert caps.fan.values == ("auto", "1", "2", "3")
++    assert caps.swing_v.values == caps.swing_h.values == ("off", "swing")
++    assert set(caps.features) == {"sleep"}
+ 
+ 
+ def _first(pred):
+diff -ruN a/tests/test_hitachi264_device.py b/tests/test_hitachi264_device.py
+--- a/tests/test_hitachi264_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_hitachi264_device.py	2026-09-29 14:55:57.216474401 +0700
+@@ -15,7 +15,11 @@
+ 
+ # No declared defects: the C path sends the documented values for every
+ # field it writes. Swing and the features have no bits (IRac::hitachi264
+-# sets none of them), so the oracle's swing "on" records match as they are.
++# sets none of them) and are no longer offered, so the oracle's swing and
++# feature "on" keys are dropped (state_from_record reads only offered
++# controls) and its mode "auto" records normalise to cool, which is what C
++# sends for them (IRHitachiAc424::convertMode): C's frames stay the expected
++# ones.
+ 
+ 
+ def device():
+@@ -68,6 +72,8 @@
+ 
+ def test_auto_mode_is_sent_as_cool():
+     # IRHitachiAc424::convertMode has no auto; kHitachiAc264* has none either.
++    # Auto is not offered: normalise maps it to cool, the first mode.
++    assert device().normalise(HvacState(True, "auto", 24.0)).mode == "cool"
+     assert read(HvacState(True, "auto", 24.0))["mode"] == "cool"
+ 
+ 
+@@ -147,14 +153,22 @@
+     assert isinstance(registry.get_device("hitachi", model), Hitachi264Device)
+ 
+ 
+-@pytest.mark.parametrize("model", HITACHI264_MODELS)
+-def test_capabilities_match_the_legacy_entity(model):
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.hitachi import Hitachi264
+-
+-    legacy = LegacyDevice("hitachi", model, Hitachi264)
+-    assert Hitachi264Device("hitachi", model).capabilities == legacy.capabilities
++def test_capabilities_are_the_documented_controls():
++    # kHitachiAc264{Cool,Fan,Dry,Heat}, kHitachiAc264Min/MaxTemp (16/32),
++    # kHitachiAc264Fan{Low,Medium,High,Auto}.
++    caps = device().capabilities
++    assert caps.modes == ("cool", "fan", "dry", "heat")
++    assert (caps.temperature.min, caps.temperature.max) == (16.0, 32.0)
++    assert caps.fan.values == ("auto", "1", "2", "3")
++
++
++def test_no_op_controls_are_not_offered():
++    # The legacy entity offered auto mode (sent as cool), swing and five
++    # features, none of which has a bit in HitachiAC264Protocol.
++    caps = device().capabilities
++    assert "auto" not in caps.modes
++    assert caps.swing_v is None and caps.swing_h is None
++    assert dict(caps.features) == {}
+ 
+ 
+ def test_undeclared_deviation_is_reported():
+diff -ruN a/tests/test_hitachi296_device.py b/tests/test_hitachi296_device.py
+--- a/tests/test_hitachi296_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_hitachi296_device.py	2026-09-29 14:55:08.629947975 +0700
+@@ -35,6 +35,20 @@
+ )
+ 
+ 
++# The legacy entity offered a fifth fan level, "highest", which C sends as
++# kHitachiAc296FanHigh like "high" (convertFan maps kMax and kHigh alike).
++# The port offers the four documented speeds only, so the oracle's "highest"
++# records are read as "high": same code, so C's frames are the expected ones.
++def adapt(record):
++    if record["state"].get("fan") != "highest":
++        return record
++    return {**record, "state": {**record["state"], "fan": "high"}}
++
++
++def records():
++    return [adapt(r) for r in load_oracle("HITACHI_AC296")]
++
++
+ def device(model="RAR-3U3 remote"):
+     return Hitachi296Device("hitachi", model)
+ 
+@@ -48,12 +62,12 @@
+ @pytest.mark.parametrize("record", oracle_params("HITACHI_AC296"))
+ def test_matches_c_library(record):
+     dev = device()
+-    assert_matches_oracle(dev, record, dev.LAYOUTS, DEFECTS)
++    assert_matches_oracle(dev, adapt(record), dev.LAYOUTS, DEFECTS)
+ 
+ 
+ def test_layout_round_trips_every_oracle_state():
+     dev = device()
+-    for record in load_oracle("HITACHI_AC296"):
++    for record in records():
+         state = state_from_record(dev, record["state"])
+         (frame,) = dev.frames(None, state, ())
+         values = HITACHI296_LAYOUT.read(frame.data)
+@@ -108,20 +122,55 @@
+ 
+ 
+ @pytest.mark.parametrize("mode", ["cool", "dry", "heat"])
+-def test_setpoint_is_whole_degrees_clamped_to_16_25(mode):
++def test_setpoint_is_whole_degrees_clamped_to_16_31(mode):
++    # kHitachiAc296MinTemp = 16, kHitachiAc296MaxTemp = 31 (the legacy
++    # entity stopped at 25).
+     assert read(HvacState(True, mode, 10.0))["temperature"] == 16
+     assert read(HvacState(True, mode, 21.0))["temperature"] == 21
+-    assert read(HvacState(True, mode, 30.0))["temperature"] == 25
++    assert read(HvacState(True, mode, 26.0))["temperature"] == 26
++    assert read(HvacState(True, mode, 31.0))["temperature"] == 31
++    assert read(HvacState(True, mode, 40.0))["temperature"] == 31
++
++
++def test_setpoint_range_is_the_headers():
++    temperature = device().capabilities.temperature
++    assert (temperature.min, temperature.max, temperature.decimals) == (
++        16.0,
++        31.0,
++        (0,),
++    )
++
++
++def test_frames_clamp_the_setpoint_to_the_header_maximum():
++    # setTemp clamps to kHitachiAc296MaxTemp even without normalise.
++    (frame,) = device().frames(None, HvacState(True, "cool", 40.0), ())
++    assert HITACHI296_LAYOUT.read(frame.data)["temperature"] == 31
+ 
+ 
+ @pytest.mark.parametrize(
+-    "fan, raw", [("auto", 5), ("1", 1), ("2", 2), ("3", 3), ("4", 4), ("5", 4)]
++    "fan, raw", [("auto", 5), ("1", 1), ("2", 2), ("3", 3), ("4", 4)]
+ )
+ def test_every_fan_level_uses_convert_fan(fan, raw):
+-    # convertFan maps kMax (highest) to kHitachiAc296FanHigh, like kHigh.
++    # kHitachiAc296Fan{Auto,Silent,Low,Medium,High}.
+     assert read(HvacState(True, "cool", 22.0, fan=fan))["fan"] == raw
+ 
+ 
++def test_no_fan_level_duplicates_high():
++    # The legacy "highest" (fan "5") sent kHitachiAc296FanHigh, as "4" does:
++    # a control with no code of its own, removed.
++    assert device().capabilities.fan.values == ("auto", "1", "2", "3", "4")
++
++
++def test_the_oracles_highest_records_match_as_high():
++    dev = device()
++    highest = [
++        r for r in load_oracle("HITACHI_AC296") if r["state"].get("fan") == "highest"
++    ]
++    assert highest
++    for record in highest:
++        assert_matches_oracle(dev, adapt(record), dev.LAYOUTS, DEFECTS)
++
++
+ def test_mode_codes():
+     for mode, raw in (("auto", 7), ("cool", 3), ("dry", 5), ("heat", 6)):
+         assert (
+@@ -150,16 +199,6 @@
+     assert isinstance(registry.get_device("hitachi", model), Hitachi296Device)
+ 
+ 
+-@pytest.mark.parametrize("model", HITACHI296_MODELS)
+-def test_capabilities_match_the_legacy_entity(model):
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.hitachi import Hitachi296
+-
+-    legacy = LegacyDevice("hitachi", model, Hitachi296)
+-    assert device(model).capabilities == legacy.capabilities
+-
+-
+ @pytest.mark.parametrize(
+     "declared, field", [((UNSET_LOW,), "'unset'"), ((UNSET,), "'unset_low'")]
+ )
+diff -ruN a/tests/test_hitachi344_device.py b/tests/test_hitachi344_device.py
+--- a/tests/test_hitachi344_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_hitachi344_device.py	2026-09-29 14:56:43.199339800 +0700
+@@ -199,13 +199,16 @@
+ 
+ 
+ @pytest.mark.parametrize("model", HITACHI344_MODELS)
+-def test_capabilities_match_the_legacy_entity(model):
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.hitachi import Hitachi344
+-
+-    legacy = LegacyDevice("hitachi", model, Hitachi344)
+-    assert Hitachi344Device("hitachi", model).capabilities == legacy.capabilities
++def test_capabilities_are_the_documented_controls(model):
++    # Unchanged from the legacy entity: Hitachi424's controls plus every
++    # kHitachiAc344SwingH* position (Auto, LeftMax..RightMax).
++    caps = Hitachi344Device("hitachi", model).capabilities
++    assert caps.modes == ("cool", "fan", "dry", "heat")
++    assert (caps.temperature.min, caps.temperature.max) == (16.0, 32.0)
++    assert caps.fan.values == ("auto", "1", "2", "3", "4", "5")
++    assert caps.swing_v.values == ("off", "swing")
++    assert caps.swing_h.values == ("auto", "1", "2", "3", "4", "5")
++    assert dict(caps.features) == {}
+ 
+ 
+ def test_undeclared_deviation_is_reported():
+diff -ruN a/tests/test_hitachi424_device.py b/tests/test_hitachi424_device.py
+--- a/tests/test_hitachi424_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_hitachi424_device.py	2026-09-29 14:56:43.199292771 +0700
+@@ -206,13 +206,16 @@
+ 
+ 
+ @pytest.mark.parametrize("model", HITACHI424_MODELS)
+-def test_capabilities_match_the_legacy_entity(model):
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.hitachi import Hitachi424
+-
+-    legacy = LegacyDevice("hitachi", model, Hitachi424)
+-    assert Hitachi424Device("hitachi", model).capabilities == legacy.capabilities
++def test_capabilities_are_the_documented_controls(model):
++    # Unchanged from the legacy entity, and what Hitachi424Protocol carries:
++    # kHitachiAc424{Fan,Cool,Dry,Heat} (no auto), kHitachiAc424Min/MaxTemp,
++    # kHitachiAc424Fan{Auto,Min,Low,Medium,High,Max}, the SwingV button.
++    caps = Hitachi424Device("hitachi", model).capabilities
++    assert caps.modes == ("fan", "heat", "cool", "dry")
++    assert (caps.temperature.min, caps.temperature.max) == (16.0, 32.0)
++    assert caps.fan.values == ("auto", "1", "2", "3", "4", "5")
++    assert caps.swing_v.values == ("off", "swing")
++    assert caps.swing_h is None and dict(caps.features) == {}
+ 
+ 
+ def test_undeclared_deviation_is_reported():
+diff -ruN a/tests/test_hitachi_ac_device.py b/tests/test_hitachi_ac_device.py
+--- a/tests/test_hitachi_ac_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_hitachi_ac_device.py	2026-09-29 14:57:03.205505587 +0700
+@@ -110,23 +110,26 @@
+             assert frame.data[9] == byte
+ 
+ 
+-@pytest.mark.parametrize("fan, code", [("auto", 1), ("1", 2), ("2", 3), ("3", 4)])
++@pytest.mark.parametrize(
++    "fan, code", [("auto", 1), ("1", 2), ("2", 3), ("3", 4), ("4", 5)]
++)
+ def test_fan_levels_follow_convert_fan(fan, code):
+-    # kLow -> kHitachiAcFanLow, kMedium -> +1, kHigh -> kHitachiAcFanHigh - 1.
++    # kLow -> kHitachiAcFanLow, kMedium -> +1, kHigh -> kHitachiAcFanHigh - 1,
++    # kMax -> kHitachiAcFanHigh (5, the "4" the legacy entity did not offer).
+     state = HvacState(True, "cool", 24.0, fan=fan)
+     assert raw(state, "fan") == int(f"{code:08b}"[::-1], 2)
+     assert read(state)["fan"] == fan
+ 
+ 
+ @pytest.mark.parametrize(
+-    "fan, sent", [("auto", "1"), ("1", "1"), ("2", "2"), ("3", "2")]
++    "fan, sent", [("auto", "1"), ("1", "1"), ("2", "2"), ("3", "2"), ("4", "2")]
+ )
+ def test_dry_has_only_low_and_medium(fan, sent):
+     assert read(HvacState(True, "dry", 24.0, fan=fan))["fan"] == sent
+ 
+ 
+ @pytest.mark.parametrize(
+-    "fan, sent", [("auto", "1"), ("1", "1"), ("2", "2"), ("3", "3")]
++    "fan, sent", [("auto", "1"), ("1", "1"), ("2", "2"), ("3", "3"), ("4", "4")]
+ )
+ def test_fan_mode_has_no_auto(fan, sent):
+     assert read(HvacState(True, "fan", 24.0, fan=fan))["fan"] == sent
+@@ -166,14 +169,46 @@
+     assert isinstance(registry.get_device("hitachi", model), HitachiAcDevice)
+ 
+ 
+-@pytest.mark.parametrize("model", HITACHI_AC_MODELS)
+-def test_capabilities_match_the_legacy_entity(model):
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.hitachi import Hitachi
++def test_fan_offers_the_four_speeds_set_fan_allows():
++    # IRHitachiAc::setFan: kHitachiAcFanAuto (1) .. kHitachiAcFanHigh (5).
++    fan = device().capabilities.fan
++    assert fan.values == ("auto", "1", "2", "3", "4")
++    # The legacy labels keep their codes: the oracle's "high" is still 4.
++    assert [fan.label(v) for v in fan.values] == [
++        "auto",
++        "low",
++        "medium",
++        "high",
++        "highest",
++    ]
++
++
++def test_capabilities():
++    caps = device().capabilities
++    assert caps.modes == MODES
++    assert (caps.temperature.min, caps.temperature.max) == (16.0, 32.0)
++    assert caps.swing_v.values == caps.swing_h.values == ("off", "swing")
++    assert dict(caps.features) == {}
++
++
++# ir_Hitachi_test.cpp DecodeHitachiAC.NormalRealExample2 (issue #417): on,
++# heat, 32 C, fan kHitachiAcFanHigh (5), no swing.
++REAL_EXAMPLE_2 = bytes.fromhex(
++    "80080c02fd807f884810c00200a000000001000000000000800000d0"
++)
++
+ 
+-    legacy = LegacyDevice("hitachi", model, Hitachi)
+-    assert HitachiAcDevice("hitachi", model).capabilities == legacy.capabilities
++def test_real_capture_with_fan_high_is_reproduced_but_for_the_reset_bytes():
++    # Every field matches. Bytes 14 and 15 hold 0x60 below the swing bits in
++    # IRHitachiAc::stateReset (as C sends), 0x00 in this capture (and in
++    # NormalRealExample1); the checksum follows.
++    dev = device()
++    state = dev.normalise(HvacState(True, "heat", 32.0, fan="4"))
++    (frame,) = dev.frames(None, state, ())
++    assert HITACHI_AC_LAYOUT.read(frame.data) == HITACHI_AC_LAYOUT.read(REAL_EXAMPLE_2)
++    assert HITACHI_AC_LAYOUT.read_raw(REAL_EXAMPLE_2, "fan") == 0xA0  # 5 reversed
++    diff = {i for i, (a, b) in enumerate(zip(frame.data, REAL_EXAMPLE_2)) if a != b}
++    assert diff == {14, 15, 27}
+ 
+ 
+ def test_undeclared_swing_v_deviation_is_reported():

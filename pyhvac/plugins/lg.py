@@ -786,6 +786,335 @@ LG_AC_GE_MODELS = ("AG1BH09AW101", "6711AR2853M Remote")  # ge plugin
 DEVICES.update({m: LgAcDevice for m in LG_AC_MODELS})
 
 
+# ------------------------------------------------------------------- Lg2
+# Layout from IRremoteESP8266's LGProtocol (ir_LG.h): one 28-bit word, sent
+# MSB first by sendLG2 (sendGeneric: kLg2HdrMark/kLg2HdrSpace header,
+# kLg2BitMark, kLgOneSpace/kLgZeroSpace, a kLg2BitMark footer; 38 kHz).
+# The word is held in Frame.data as 4 bytes, the last nibble unused:
+#   byte 0: Sign (kLgAcSignature 0x88)
+#   byte 1: Power (bits 6-7), unnamed (bits 3-5), Mode (bits 0-2)
+#   byte 2: Temp (bits 4-7), Fan (bits 0-3)
+#   byte 3: Sum (bits 4-7)
+# Settings the state word cannot carry (swing, light) are separate "special"
+# words (kLgAc*Command/Toggle, kLgAcSwing*, kLgAcVaneSwingVBase + ...), each
+# a frame of its own, all with the same Sign and Sum.
+#
+# The gap closing each word is kLgMinMessageLength (108 050 µs): sendGeneric
+# spaces max(kLgMinGap, message length - elapsed), and the C library's timing
+# recorder (the oracle) elapses no time, so every word is followed by the
+# full message length.
+
+LG2 = Protocol(
+    "lg2",
+    {
+        "main": Section(
+            PulseDistance(480, 550, 1600),  # kLg2BitMark, kLgZeroSpace/OneSpace
+            header=(3200, 9900),  # kLg2HdrMark, kLg2HdrSpace
+            footer=(480,),  # kLg2BitMark
+            gap=108050,  # kLgMinMessageLength, as recorded
+            lsb_first=False,
+        )
+    },
+    carrier=38000,
+)
+LG2_NBITS = 28  # kLgBits
+
+
+@dataclass(frozen=True)
+class Lg2Checksum(Checksum):
+    """IRLgAc::calcChecksum: sumNibbles(raw >> 4, 4), i.e. the low nibble of
+    the sum of the four nibbles below Sign (bytes 1-2), stored in Sum (the
+    top nibble of byte 3; its low nibble is not sent)."""
+
+    start: int = 1
+    end: int = 3
+    at: int = 3
+
+    def compute(self, data):
+        return (sum((b >> 4) + (b & 0x0F) for b in self._input(data)) & 0x0F) << 4
+
+
+def _lg2_command(code):
+    """A 28-bit special word (ir_LG.h constant) -> the 16 bits of bytes 1-2,
+    as the "command" field stores them (byte 1 low, byte 2 high)."""
+    return ((code >> 12) & 0xFF) | ((code >> 4) & 0xFF) << 8
+
+
+LG2_VANE_POSITION = {  # kLgAcVaneSwingV*
+    "highest": 1,
+    "high": 2,
+    "upper_middle": 3,
+    "middle": 4,
+    "low": 5,
+    "lowest": 6,
+}
+LG2_COMMANDS = {
+    "off": _lg2_command(0x88C0051),  # kLgAcOffCommand
+    "light_toggle": _lg2_command(0x88C00A6),  # kLgAcLightToggle
+    "swing_v_toggle": _lg2_command(0x8810001),  # kLgAcSwingVToggle
+    "swing_v_lowest": _lg2_command(0x8813048),  # kLgAcSwingVLowest
+    "swing_v_low": _lg2_command(0x8813059),  # kLgAcSwingVLow
+    "swing_v_middle": _lg2_command(0x881306A),  # kLgAcSwingVMiddle
+    "swing_v_upper_middle": _lg2_command(0x881307B),  # kLgAcSwingVUpperMiddle
+    "swing_v_high": _lg2_command(0x881308C),  # kLgAcSwingVHigh
+    "swing_v_highest": _lg2_command(0x881309D),  # kLgAcSwingVHighest
+    "swing_v_swing": _lg2_command(0x8813149),  # kLgAcSwingVSwing (= Auto)
+    "swing_v_off": _lg2_command(0x881315A),  # kLgAcSwingVOff
+    "swing_h_auto": _lg2_command(0x881316B),  # kLgAcSwingHAuto
+    "swing_h_off": _lg2_command(0x881317C),  # kLgAcSwingHOff
+    # IRLgAc::calcVaneSwingV: kLgAcVaneSwingVBase (0x8813200) +
+    # ((vane * kLgAcVaneSwingVSize + position) << 4), for the
+    # kLgAcSwingVMaxVanes (4) vanes.
+    **{
+        f"vane{vane}_{name}": _lg2_command(0x8813200 + ((vane * 8 + pos) << 4))
+        for vane in range(4)
+        for name, pos in LG2_VANE_POSITION.items()
+    },
+}
+LG2_MODE = {"cool": 0, "dry": 1, "fan": 2, "auto": 3, "heat": 4}  # kLgAc*
+LG2_FAN = {  # kLgAcFan*
+    "lowest": 0,
+    "low": 1,
+    "medium": 2,
+    "max": 4,
+    "auto": 5,
+    "low_alt": 9,
+    "high": 10,
+}
+LG2_MIN_TEMP, LG2_MAX_TEMP = 16, 30  # kLgAcMinTemp, kLgAcMaxTemp
+LG2_TEMP_ADJUST = 15  # kLgAcTempAdjust
+
+# Skeleton: Sign = kLgAcSignature, the rest cleared. IRLgAc::stateReset
+# starts from kLgAcOffCommand, whose unnamed bits (byte 1, bits 3-5) are 0
+# and which no setter writes, so no bit comes from stale memory. The device
+# never sets "unnamed" (C sends 0).
+LG2_LAYOUT = Layout(
+    bytes([0x88, 0, 0, 0]),
+    {
+        "power": Field.at(1, 6, 2, values={True: 0, False: 3}),  # kLgAcPowerOn/Off
+        # LGProtocol's unnamed bits. Real AKB74955603 words set bit 3; C
+        # never writes them, so they keep kLgAcOffCommand's 0.
+        "unnamed": Field.at(1, 3, 3),
+        "mode": Field.at(1, 0, 3, values=LG2_MODE),
+        "temperature": Field.at(  # Temp: degrees - kLgAcTempAdjust
+            2,
+            4,
+            4,
+            values={
+                t: t - LG2_TEMP_ADJUST for t in range(LG2_MIN_TEMP, LG2_MAX_TEMP + 1)
+            },
+        ),
+        "fan": Field.at(2, 0, 4, values=LG2_FAN),
+    },
+    checksum=Lg2Checksum(),
+)
+# The special words: Sign, a 16-bit command, Sum.
+LG2_COMMAND_LAYOUT = Layout(
+    bytes([0x88, 0, 0, 0]),
+    {"command": Field.at(1, 0, 16, values=LG2_COMMANDS)},
+    checksum=Lg2Checksum(),
+)
+
+LG2_FAN_BY_VARIANT = {  # canonical fan -> kLgAcFan*, as IRLgAc::setFan stores it
+    # AKB75215403: convertFan(kHigh) = kLgAcFanHigh, which setFan turns into
+    # kLgAcFanMax on any model but AKB74955603; kMax is kLgAcFanMax too.
+    "AKB75215403": {
+        "auto": "auto",
+        "1": "lowest",
+        "2": "low",
+        "3": "medium",
+        "4": "max",
+        "5": "max",
+    },
+    # AKB74955603: setFan keeps kLgAcFanHigh and turns low into kLgAcFanLowAlt.
+    "AKB74955603": {
+        "auto": "auto",
+        "1": "lowest",
+        "2": "low_alt",
+        "3": "medium",
+        "4": "high",
+    },
+    "AKB73757604": {
+        "auto": "auto",
+        "1": "lowest",
+        "2": "low",
+        "3": "medium",
+        "4": "max",
+    },
+}
+LG2_SWING_V = {  # canonical swing -> kLgAcSwingV* (AKB74955603), top to bottom
+    "off": "swing_v_off",
+    "auto": "swing_v_swing",  # convertSwingV(kAuto): kLgAcSwingVSwing
+    "1": "swing_v_highest",  # 90°: the topmost documented position
+    "2": "swing_v_high",  # 60°
+    "3": "swing_v_middle",  # 45°
+    "4": "swing_v_low",  # 30°
+    "5": "swing_v_lowest",  # 0°
+}
+LG2_VANE = {  # canonical swing -> kLgAcVaneSwingV* (AKB73757604)
+    # convertVaneSwingV has no off or auto: both fall to its default, Highest.
+    "off": "highest",
+    "auto": "highest",
+    "1": "highest",  # 90°: the topmost documented position
+    "2": "high",  # 60°
+    "3": "middle",  # 45°
+    "4": "low",  # 30°
+    "5": "lowest",  # 0°
+}
+
+
+def _lg2_capabilities(fan_names):
+    return Capabilities(
+        modes=("auto", "cool", "fan", "dry", "heat"),
+        temperature=TemperatureRange(16.0, 25.0),
+        fan=Choice(
+            ("auto",) + tuple(str(i) for i in range(1, len(fan_names) + 1)),
+            {"auto": "auto", **{str(i): n for i, n in enumerate(fan_names, 1)}},
+        ),
+        swing_v=Choice(
+            ("off", "auto", "1", "2", "3", "4", "5"),
+            {
+                "off": "off",
+                "auto": "auto",
+                "1": "90°",
+                "2": "60°",
+                "3": "45°",
+                "4": "30°",
+                "5": "0°",
+            },
+        ),
+        swing_h=Choice(("off", "swing"), {"off": "off", "swing": "on"}),
+        features={"light": Choice((False, True), {False: "off", True: "on"})},
+    )
+
+
+LG2_CAPABILITIES = {
+    "AKB75215403": _lg2_capabilities(("lowest", "low", "medium", "high", "highest")),
+    "AKB74955603": _lg2_capabilities(("lowest", "low", "medium", "high")),
+    "AKB73757604": _lg2_capabilities(("lowest", "low", "medium", "high")),
+}
+
+
+class Lg2Device(Device):
+    """LG2 (28-bit LG protocol, remotes AKB75215403, AKB74955603 and
+    AKB73757604, lg_ac_remote_model_t): a state word plus, depending on the
+    remote, special words for swing and light, as IRac::lg / IRLgAc::send
+    send them.
+
+    The variant comes from the model (LG2_MODELS) unless given, so the
+    registry's ``cls(brand, model)`` call picks it; unknown models get
+    AKB75215403, the model IRLgAc::setRaw assumes for LG2.
+
+    Power off is always the single kLgAcOffCommand word, whatever the mode,
+    setpoint or variant. Power on sends the state word (Power on, Mode,
+    Temp, Fan), then:
+    - AKB75215403: nothing else. IRLgAc::send has no swing or light for it,
+      so swing_v, swing_h and light (in the legacy entity) have no effect.
+    - AKB74955603: the swing_v word when the swing differs from the previous
+      one, then kLgAcLightToggle when light is off (every state word turns
+      the light on, ir_LG.cpp). swing_h is not sent (as C).
+    - AKB73757604: one kLgAcVaneSwingV word per vane (4) for swing_v, then
+      kLgAcSwingHAuto/Off. light is not sent (as C).
+
+    ``previous``, as the C path:
+    - The swing_v word (AKB74955603) goes only when its code differs from
+      the previous swing's: IRac::sendAc passes prev->swingv and IRac::lg
+      seeds IRLgAc's previous swing with it, and IRLgAc::send compares. A
+      fresh IRac's previous state has swing off, so without ``previous`` the
+      word goes when swing_v is not "off". The port matches C in both cases.
+      (IRac::handleToggles has no LG case: this rule is in IRac::lg/send.)
+    - The vane words are sent every time: IRLgAc::send only sends vanes that
+      changed, but IRac::lg never seeds the previous vanes (they stay 0, an
+      unused position), so every vane always counts as changed.
+    - The swing_h word (AKB73757604) goes without ``previous`` (as every
+      fresh C message recorded, and as the vane words), and with
+      ``previous`` only when swing_h changed. IRLgAc::send means that rule
+      (it compares _swingh with _swingh_prev) but nothing ever writes
+      _swingh_prev, so C compares with stale memory and in practice sends
+      the word every time; stale memory is not a reference (house rule 3a),
+      so the port deliberately applies the documented change rule.
+    - light: no previous state is used, as C: the toggle goes whenever light
+      is off. It is a real toggle, but IRLgAc::send only sends it right after
+      a state word, which always turns the light on (ir_LG.cpp, issue 1513),
+      so each message leaves the light as asked; toggling only on change
+      would leave it on.
+
+    Where the C path contradicts the header, the port sends the documented
+    value (see the Defects in tests/test_lg2_device.py):
+    - swing_v "1"/"2" (90°/60°): the glue maps them to kHigh/kUpperMiddle;
+      convertSwingV sends kLgAcSwingVHigh for kHigh and has no kUpperMiddle
+      case (kLgAcSwingVOff, so no swing word at all), and convertVaneSwingV
+      sends High for kHigh and Highest for kUpperMiddle. The port sends
+      Highest/High (canonical "1" is the topmost documented position).
+    - swing_h "swing" (the legacy "on"): IRGHVAC.trans_hswing has no "on",
+      so C sends kLgAcSwingHOff; the port sends kLgAcSwingHAuto.
+    """
+
+    PROTOCOL = LG2
+    LAYOUTS = (LG2_LAYOUT, LG2_COMMAND_LAYOUT)
+
+    def __init__(self, brand, model, variant=None):
+        super().__init__(brand, model)
+        self.variant = variant or LG2_MODELS.get(model, "AKB75215403")
+        if self.variant not in LG2_CAPABILITIES:
+            raise ValueError(f"unknown LG2 variant {self.variant!r}")
+        self.capabilities = LG2_CAPABILITIES[self.variant]
+
+    @staticmethod
+    def _word(layout, **values):
+        return Frame("main", bytes(layout.build(**values)), LG2_NBITS)
+
+    def _command(self, name):
+        return self._word(LG2_COMMAND_LAYOUT, command=name)
+
+    def frames(self, previous, target, actions):
+        if not target.power:
+            # IRLgAc::send: "Always send the special Off command".
+            return [self._command("off")]
+        frames = [
+            self._word(
+                LG2_LAYOUT,
+                power=True,
+                mode=target.mode,
+                temperature=int(target.temperature),
+                fan=LG2_FAN_BY_VARIANT[self.variant][target.fan],
+            )
+        ]
+        if self.variant == "AKB74955603":
+            before = "off" if previous is None else previous.swing_v
+            if LG2_SWING_V[target.swing_v] != LG2_SWING_V[before]:
+                frames.append(self._command(LG2_SWING_V[target.swing_v]))
+            if not target.features["light"]:  # must be sent last
+                frames.append(self._command("light_toggle"))
+        elif self.variant == "AKB73757604":
+            position = LG2_VANE[target.swing_v]
+            frames += [self._command(f"vane{v}_{position}") for v in range(4)]
+            if previous is None or previous.swing_h != target.swing_h:
+                frames.append(
+                    self._command(
+                        "swing_h_auto" if target.swing_h == "swing" else "swing_h_off"
+                    )
+                )
+        return frames
+
+
+LG2_MODELS = {  # model -> remote (lg_ac_remote_model_t), as the old LG2v1-3
+    "AKB74395308  remote": "AKB75215403",
+    "S4-W12JA3AA": "AKB75215403",
+    "AKB75215403  remote": "AKB75215403",
+    "AKB74955603  remote": "AKB74955603",
+    "A4UW30GFA2": "AKB74955603",
+    "AMNW09GSJA0": "AKB74955603",
+    "AKB73315611  remote": "AKB74955603",
+    "MS05SQ NW0": "AKB74955603",
+    "AMNW24GTPA1": "AKB73757604",
+    "AKB73757604  remote": "AKB73757604",
+}
+
+
+DEVICES.update({m: Lg2Device for m in LG2_MODELS})
+
+
 class PluginObject(GenPluginObject):
 
     MODELS = {

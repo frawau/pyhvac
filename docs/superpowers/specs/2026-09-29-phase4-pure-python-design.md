@@ -22,17 +22,20 @@ What the author said:
 - Port the eight native (pre-IRremoteESP8266) models.
 - Structure: split protocol code from the brand/model table (approach 2).
 - The README must be updated since the plugin API goes away.
+- Brand and model strings need not stay identical: follow the strings the
+  brands themselves use. Keep the old strings as lookup aliases, but only
+  for the devices that were pure Python in 0.1.x; drop typos.
 
 Assumptions (not stated by the author, open to correction):
-- Brand and model strings stay byte-identical to today's registry output.
 - The oracle and golden fixtures remain the acceptance evidence.
 - `requires-python` is the oldest version the suite passes on.
 
 Success criteria:
 - `import pyhvac` and every registered model work without any compiled
   code; the wheel is `py3-none-any`.
-- `registry.get_device(brand, model)` serves every pre-phase-4 brand/model
-  pair except the two HITACHI_AC3 models, with a `Device`.
+- Every pre-phase-4 brand/model pair except the two HITACHI_AC3 models maps
+  to exactly one new (brand, model) row served by a `Device`; the old
+  strings of the 0.1.x pure-Python devices still resolve as aliases.
 - No `importorskip("pyhvac.irhvac")` remains in the tree; the evidence the
   C-gated tests held survives as frozen fixtures.
 - The old API (`plugins/`, `PluginObject`, `hvaclib`, `legacy.py`, `irhvac`,
@@ -66,11 +69,28 @@ pyhvac/
   remote variants, the variant explicitly. The per-module model->variant
   dicts go away (removing the name-collision fragility flagged in review for
   TCL and GREE); Devices keep their `variant=` parameter.
-- Brand and model strings are byte-identical to the pre-phase-4 registry
-  output. Removed rows: `hitachi:PC-LH3B`, `hitachi:generic 3` (HITACHI_AC3).
-  Teco and alaska models become plain `TechnibelAcDevice` rows.
+- Names follow the brands' own strings:
+  - Brands in the manufacturer's form ("Mitsubishi Heavy Industries",
+    "Cooper & Hunter", "Daikin"), listed that way by `brands()`; lookup is
+    case-insensitive and ignores whitespace and punctuation differences
+    ("mitsubishi_heavy_industries" finds it).
+  - Models as the manufacturer writes them. Source, in order: the
+    `Brand: X, Model: Y` lists in IRremoteESP8266's `ir_*.h` headers (they
+    note whether a model is a unit or a remote); else the manufacturer's
+    model code from the 0.1.x string, cleaned (no stray spaces, no typos
+    such as "gemeric"). Unit and remote models are told apart by a
+    `kind` ("unit" / "remote") in the row, not by a " remote" suffix.
+    Generic entries ("generic", "generic 2") become descriptive names of
+    the remote variant they select (e.g. the `*_remote_model_t` name).
+  - Aliases: the old 0.1.x brand/model strings resolve only for the devices
+    that were pure Python in 0.1.x (the eight native models of section 4,
+    the Airspool models, `sharp:j-tech`). Aliases are lookup-only; they are
+    not listed by `models()`.
+- Removed rows: the two HITACHI_AC3 models (`hitachi:PC-LH3B`,
+  `hitachi:generic 3`). Teco and alaska models become plain
+  `TechnibelAcDevice` rows.
 - `registry` keeps `brands()`, `models(brand)`, `get_device(brand, model)`
-  and their signatures; `get_device` raises `KeyError` naming the known
+  and their signatures (with the name matching above); `get_device` raises `KeyError` naming the known
   models for an unknown model. There are no import-time failures left, so
   the warn-and-skip path is removed.
 - `__main__.py` is rewritten on the registry and `HvacState`: brand, model,
@@ -82,8 +102,12 @@ pyhvac/
   `pyhvac/irhvac.py`, `pyhvac/_irhvac*.so`.
 
 Tests: a frozen list of the pre-phase-4 brand/model pairs (minus
-HITACHI_AC3) generated before any move, compared with `brands.py`; every row
-instantiates and encodes a default state.
+HITACHI_AC3), generated before any move, with the new (brand, model) each
+maps to; the test checks that every old pair has exactly one new row, that
+the new row's Device and variant are the ones the old pair used, that the
+aliases resolve, and that every row instantiates and encodes a default
+state. The old -> new name table is part of the plan, for the author's
+review before execution.
 
 ## 2. Capabilities: full control
 

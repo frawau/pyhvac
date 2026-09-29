@@ -23,8 +23,19 @@
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
 #
 
+from dataclasses import dataclass
+
 from .hvaclib import PulseBased, GenPluginObject
-from ..irhvac import V9014557_A, V9014557_B
+from ..device import Device
+from ..fields import Field, Layout, Sum8
+from ..ir.model import Frame, Protocol, PulseDistance, Section
+from ..state import Capabilities, Choice, TemperatureRange
+
+try:
+    from ..irhvac import V9014557_A, V9014557_B
+except ImportError:
+    # Only the C-backed classes use these; keep the ported ones importable.
+    V9014557_A = V9014557_B = None
 
 
 class Haier(PulseBased):
@@ -155,6 +166,9 @@ class Haier160(PulseBased):
             "cleaning": ["off", "on"],
             "light": ["off", "on"],
         }
+
+
+DEVICES = {}
 
 
 # Now the match between models and objects

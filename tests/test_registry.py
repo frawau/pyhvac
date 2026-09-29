@@ -52,9 +52,17 @@ def test_unknown_brand_or_model():
         registry.get_device("airspool", "no such model")
 
 
-@pytest.mark.skipif(_has_c_extension(), reason="needs a machine without _irhvac")
-def test_brand_needing_c_extension_is_skipped_with_warning(caplog):
-    # fujitsu.py still imports irhvac unguarded (not ported yet).
+def test_brand_that_fails_to_import_is_skipped_with_warning(caplog, monkeypatch):
+    # Every plugin now guards its irhvac import, so simulate a module that
+    # cannot be imported (as an unguarded `from ..irhvac import ...` was).
+    real = registry.importlib.import_module
+
+    def fail_for_fujitsu(name, *args):
+        if name.endswith(".fujitsu"):
+            raise ImportError("No module named 'pyhvac.irhvac'")
+        return real(name, *args)
+
+    monkeypatch.setattr(registry.importlib, "import_module", fail_for_fujitsu)
     with caplog.at_level(logging.WARNING, logger="pyhvac.registry"):
         assert registry.models("fujitsu") == []
     assert "fujitsu" in caplog.text

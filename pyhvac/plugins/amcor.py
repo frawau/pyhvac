@@ -70,6 +70,10 @@ AMCOR = Protocol(
         ),
     },
     carrier=38000,
+    # decodeAmcor: matchGeneric(..., kAmcorTolerance (40 %), mark excess 0):
+    # real remotes send marks as short as 360 µs for 600.
+    tolerance=0.40,
+    mark_excess=0,
 )
 
 AMCOR_MODE = {  # kAmcor{Cool,Heat,Fan,Dry,Auto}

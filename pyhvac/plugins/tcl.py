@@ -105,6 +105,10 @@ TCL112AC = Protocol(
     "tcl112ac",
     {"quiet": TCL112AC_SECTION, "main": TCL112AC_SECTION},
     carrier=38000,
+    # decodeMitsubishi112 (shared with TCL112AC): _tolerance +
+    # kTcl112AcTolerance (30 %), mark excess 0.
+    tolerance=0.30,
+    mark_excess=0,
 )
 
 

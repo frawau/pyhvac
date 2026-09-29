@@ -489,6 +489,298 @@ class Panasonic32(PulseBased):
 DEVICES = {}
 
 
+# ------------------------------------------------------------- PanasonicAc
+# Layout from IRremoteESP8266's IRPanasonicAc (ir_Panasonic.h/.cpp). The
+# header has no bitfield struct for this protocol: the fields are its
+# constants (kPanasonicAc*Offset/Size, kPanasonicAcIonFilterByte, the
+# per-model bytes IRPanasonicAc::setModel writes) over the 27-byte
+# kPanasonicKnownGoodState. IRsend::sendPanasonicAC sends it LSB first in two
+# sections: bytes 0-7 (kPanasonicAcSection1Length), closed by
+# kPanasonicAcSectionGap, then bytes 8-26, closed by kPanasonicAcMessageGap
+# (kDefaultMessageGap). Second-frame byte n is state byte n + 8.
+
+PANASONIC_AC = Protocol(
+    "panasonic-ac",
+    {
+        "first": Section(
+            PulseDistance(432, 432, 1296),  # kPanasonicBitMark/ZeroSpace/OneSpace
+            header=(3456, 1728),  # kPanasonicHdrMark/HdrSpace
+            footer=(432,),
+            gap=10000,  # kPanasonicAcSectionGap
+        ),
+        "second": Section(
+            PulseDistance(432, 432, 1296),
+            header=(3456, 1728),
+            footer=(432,),
+            gap=100000,  # kPanasonicAcMessageGap = kDefaultMessageGap
+        ),
+    },
+    carrier=36700,  # kPanasonicFreq
+)
+
+PANASONIC_AC_MODE = {  # kPanasonicAc{Auto,Dry,Cool,Heat,Fan}
+    "auto": 0b000,
+    "dry": 0b010,
+    "cool": 0b011,
+    "heat": 0b100,
+    "fan": 0b110,
+}
+PANASONIC_AC_FAN = {  # canonical fan -> kPanasonicAcFan* + kPanasonicAcFanDelta
+    "auto": 7 + 3,  # FanAuto
+    "1": 0 + 3,  # lowest: FanMin (kMin)
+    "2": 1 + 3,  # low: FanLow
+    "3": 2 + 3,  # medium: FanMed
+    "4": 3 + 3,  # high: FanHigh
+    "5": 4 + 3,  # highest: FanMax (kMax)
+}
+PANASONIC_AC_SWING_V = {  # canonical swing -> kPanasonicAcSwingV*, top to bottom
+    "auto": 0xF,  # SwingVAuto
+    "1": 0x1,  # 90°: SwingVHighest
+    "2": 0x2,  # 60°: SwingVHigh
+    "3": 0x3,  # 45°: SwingVMiddle
+    "4": 0x4,  # 30°: SwingVLow
+    "5": 0x5,  # 0°: SwingVLowest
+}
+PANASONIC_AC_SWING_H = {  # canonical position -> kPanasonicAcSwingH*
+    "auto": 0xD,  # SwingHAuto
+    "1": 0x9,  # far left: SwingHFullLeft
+    "2": 0xA,  # left: SwingHLeft
+    "3": 0x6,  # middle: SwingHMiddle
+    "4": 0xB,  # right: SwingHRight
+    "5": 0xC,  # far right: SwingHFullRight
+}
+PANASONIC_AC_MIN_TEMP, PANASONIC_AC_MAX_TEMP = 16, 30  # kPanasonicAcMin/MaxTemp
+PANASONIC_AC_TIME_SPECIAL = 0x600  # kPanasonicAcTimeSpecial: "no time"
+
+# The first section never changes: kPanasonicKnownGoodState bytes 0-7.
+PANASONIC_AC_FIRST = Layout(bytes.fromhex("0220e00400000006"), {})
+
+
+def _panasonic_ac_second(quiet_bit, powerful_bit):
+    """The second section, with Quiet and Powerful at the given byte-21 bits."""
+    return Layout(
+        # kPanasonicKnownGoodState bytes 8-26 with every field the device
+        # writes cleared. Byte 15 (0x80), byte 19 bit 3 and byte 20 bit 7 are
+        # constants; both timers stay kPanasonicAcTimeSpecial and disabled,
+        # as IRac::panasonic never sets them. stateReset copies the whole
+        # known good state, so no byte comes from stale memory.
+        bytes.fromhex("0220e004000000800000000ee0000000000000"),
+        {
+            "power": Field.at(5, 0, 1),  # kPanasonicAcPowerOffset
+            "on_timer_enabled": Field.at(5, 1, 1),  # kPanasonicAcOnTimerOffset
+            "off_timer_enabled": Field.at(5, 2, 1),  # kPanasonicAcOffTimerOffset
+            "model_13": Field.at(5, 3, 1),  # setModel: RKR sets byte 13 |= 0x08
+            "mode": Field.at(5, 4, 3, values=PANASONIC_AC_MODE),
+            "temperature": Field.at(  # kPanasonicAcTempOffset/Size, in °C
+                6,
+                1,
+                5,
+                values={
+                    t: t
+                    for t in range(PANASONIC_AC_MIN_TEMP, PANASONIC_AC_MAX_TEMP + 1)
+                },
+            ),
+            "swing_v": Field.at(8, 0, 4, values=PANASONIC_AC_SWING_V),
+            "fan": Field.at(8, 4, 4, values=PANASONIC_AC_FAN),
+            # Byte 17 low nibble: kPanasonicAcSwingH* on DKE/RKR, Middle on
+            # NKE (forced by setSwingHorizontal), 0 on JKE/CKP (never written).
+            "swing_h": Field.at(9, 0, 4),
+            "on_timer": Field.at(10, 0, 11),  # bytes 18-19, _setTime
+            "off_timer": Field.at(11, 4, 11),  # bytes 19-20, setOffTimer
+            "quiet": Field.at(13, quiet_bit, 1),
+            "model_21": Field.at(13, 4, 1),  # setModel: CKP sets byte 21 |= 0x10
+            "powerful": Field.at(13, powerful_bit, 1),
+            "ion": Field.at(14, 0, 1),  # kPanasonicAcIonFilterByte/Offset (DKE)
+            "model_23": Field.at(15, 0, 8),  # setModel: 0x81, DKE/CKP 0x01, RKR 0x89
+            "clock": Field.at(16, 0, 11),  # bytes 24-25, _setTime
+        },
+        # IRPanasonicAc::calcChecksum: sumBytes(state[0:26], kPanasonicAcChecksumInit
+        # = 0xF4). The constant first section sums to 0x0C, and 0xF4 + 0x0C
+        # = 0x100, so it is a plain sum of this section's bytes 0-17.
+        checksum=Sum8(0, 18, 18),
+    )
+
+
+# kPanasonicAcQuietOffset / kPanasonicAcPowerfulOffset; CKP and RKR have them
+# swapped (kPanasonicAcQuietCkpOffset / kPanasonicAcPowerfulCkpOffset).
+PANASONIC_AC_SECOND = _panasonic_ac_second(quiet_bit=0, powerful_bit=5)
+PANASONIC_AC_SECOND_CKP = _panasonic_ac_second(quiet_bit=5, powerful_bit=0)
+
+# What IRPanasonicAc::setModel writes for each panasonic_ac_remote_model_t,
+# and which of the per-model settings each remote has. "swing_h" is the
+# setSwingHorizontal behaviour: "positions" (DKE, RKR), "middle" (NKE: always
+# Middle) or None (JKE, CKP: byte 17 is never written).
+PANASONIC_AC_VARIANTS = {
+    "NKE": dict(model_13=0, model_21=0, model_23=0x81, clock=0, swing_h="middle"),
+    "DKE": dict(
+        model_13=0,
+        model_21=0,
+        model_23=0x01,
+        clock=PANASONIC_AC_TIME_SPECIAL,  # setModel: byte 25 = 0x06
+        swing_h="positions",
+    ),
+    "JKE": dict(model_13=0, model_21=0, model_23=0x81, clock=0, swing_h=None),
+    "CKP": dict(model_13=0, model_21=1, model_23=0x01, clock=0, swing_h=None),
+    "RKR": dict(model_13=1, model_21=0, model_23=0x89, clock=0, swing_h="positions"),
+}
+
+_PANASONIC_AC_ON_OFF = Choice((False, True), {False: "off", True: "on"})
+_PANASONIC_AC_POSITIONS = Choice(
+    ("auto", "1", "2", "3", "4", "5"),
+    {
+        "auto": "auto",
+        "1": "far left",
+        "2": "left",
+        "3": "middle",
+        "4": "right",
+        "5": "far right",
+    },
+)
+
+
+def _panasonic_ac_capabilities(variant):
+    swing_h = {
+        "NKE": Choice(("off", "swing"), {"off": "off", "swing": "on"}),
+        "DKE": _PANASONIC_AC_POSITIONS,
+        "RKR": _PANASONIC_AC_POSITIONS,
+    }.get(variant)
+    features = {"quiet": _PANASONIC_AC_ON_OFF, "powerful": _PANASONIC_AC_ON_OFF}
+    if variant == "DKE":
+        features["purifier"] = _PANASONIC_AC_ON_OFF
+    return Capabilities(
+        modes=("auto", "cool", "dry", "heat", "fan"),
+        temperature=TemperatureRange(16.0, 30.0),
+        fan=Choice(
+            ("auto", "1", "2", "3", "4", "5"),
+            {
+                "auto": "auto",
+                "1": "lowest",
+                "2": "low",
+                "3": "medium",
+                "4": "high",
+                "5": "highest",
+            },
+        ),
+        swing_v=Choice(
+            ("auto", "1", "2", "3", "4", "5"),
+            {"auto": "auto", "1": "90°", "2": "60°", "3": "45°", "4": "30°", "5": "0°"},
+        ),
+        swing_h=swing_h,
+        features=features,
+    )
+
+
+class PanasonicAcDevice(Device):
+    """Panasonic 216-bit A/C (remote variants NKE, DKE, JKE, CKP and RKR,
+    panasonic_ac_remote_model_t): full state in two sections.
+
+    The variant comes from the model (PANASONIC_AC_MODELS) unless given, so
+    the registry's ``cls(brand, model)`` call picks it. An unknown model gets
+    JKE: IRPanasonicAc::setModel ignores an unknown model, and getModel reads
+    the untouched kPanasonicKnownGoodState as JKE. The capabilities (swing_h,
+    purifier) and the Quiet/Powerful bits depend on the variant.
+
+    ``previous`` is ignored, except on CKP. There the Power bit is a toggle
+    (setPower's warning): IRac::handleToggles sends ``power ^ prev->power``
+    for kPanasonicCkp, so the port toggles only when the power changes.
+    Without ``previous`` it sends what a fresh IRac does: its _prev has
+    protocol UNKNOWN, so handleToggles does nothing and the bit is the
+    target power (1 for on, 0 for off, which leaves a CKP unit as it is).
+    The other variants carry the power as state.
+    """
+
+    PROTOCOL = PANASONIC_AC
+
+    def __init__(self, brand, model, variant=None):
+        super().__init__(brand, model)
+        self.variant = variant or PANASONIC_AC_MODELS.get(model, "JKE")
+        if self.variant not in PANASONIC_AC_VARIANTS:
+            raise ValueError(f"unknown PanasonicAc variant {self.variant!r}")
+        self.capabilities = _panasonic_ac_capabilities(self.variant)
+        second = (
+            PANASONIC_AC_SECOND_CKP
+            if self.variant in ("CKP", "RKR")
+            else PANASONIC_AC_SECOND
+        )
+        self.LAYOUTS = (PANASONIC_AC_FIRST, second)
+
+    def frames(self, previous, target, actions):
+        variant = PANASONIC_AC_VARIANTS[self.variant]
+        power = target.power
+        if self.variant == "CKP" and previous is not None:
+            power = target.power != previous.power
+        # IRac::panasonic: setMode(convertMode(mode)) then setTemp(degrees).
+        # An off message carries mode auto (convertMode's default for kOff),
+        # and fan mode keeps the requested temperature: setMode's 27 °C
+        # (kPanasonicAcFanModeTemp) is overwritten by the setTemp after it.
+        mode = target.mode if target.power else "auto"
+        temperature = min(
+            max(int(target.temperature), PANASONIC_AC_MIN_TEMP), PANASONIC_AC_MAX_TEMP
+        )
+        if variant["swing_h"] == "positions":
+            swing_h = PANASONIC_AC_SWING_H[target.swing_h]
+        elif variant["swing_h"] == "middle":
+            swing_h = PANASONIC_AC_SWING_H["3"]
+        else:
+            swing_h = 0
+        # setQuiet then setPowerful: Powerful on clears Quiet.
+        powerful = target.features["powerful"]
+        quiet = target.features["quiet"] and not powerful
+        # setIon only acts on DKE. The C path passes send.clock (-1, true) as
+        # IRac::panasonic's filter argument, so it always sets Ion; the port
+        # sends the documented purifier value (declared as a Defect).
+        ion = target.features.get("purifier", False)
+        second = self.LAYOUTS[1].build(
+            power=power,
+            model_13=variant["model_13"],
+            mode=mode,
+            temperature=temperature,
+            # The documented positions: "1" (90°) is SwingVHighest. The old
+            # glue sent kHigh for 90° and kUpperMiddle (-> Auto) for 60°.
+            swing_v=target.swing_v,
+            fan=target.fan,
+            swing_h=swing_h,
+            quiet=quiet,
+            model_21=variant["model_21"],
+            powerful=powerful,
+            ion=ion,
+            model_23=variant["model_23"],
+            clock=variant["clock"],
+        )
+        return [
+            Frame("first", bytes(PANASONIC_AC_FIRST.skeleton)),
+            Frame("second", bytes(second)),
+        ]
+
+
+PANASONIC_AC_MODELS = {  # model -> remote variant (panasonic_ac_remote_model_t)
+    "NKE series": "NKE",
+    "DKE series": "DKE",
+    "DKW series": "DKE",
+    "PKR series": "DKE",
+    "JKE series": "JKE",
+    "CKP series": "CKP",
+    "RKR series": "RKR",
+    "CS-ME10CKPG": "CKP",
+    "CS-ME12CKPG": "CKP",
+    "CS-ME14CKPG": "CKP",
+    "CS-E7PKR": "DKE",
+    "CS-Z9RKR": "RKR",
+    "CS-Z24RKR": "RKR",
+    "CS-YW9MKD": "JKE",
+    "CS-E12QKEW": "DKE",
+    "A75C2311remote": "CKP",
+    "A75C2616-1remote": "DKE",
+    "A75C3704remote": "DKE",
+    "PN1122Vremote": "DKE",
+    "A75C3747remote": "JKE",
+    "A75C4762remote": "RKR",
+}
+
+
+DEVICES.update({m: PanasonicAcDevice for m in PANASONIC_AC_MODELS})
+
+
 class PluginObject(GenPluginObject):
     MODELS = {
         "generic": Panasonic,

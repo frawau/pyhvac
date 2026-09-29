@@ -299,6 +299,169 @@ MITSUBISHI_AC_MODELS = (
 DEVICES.update({m: MitsubishiAcDevice for m in MITSUBISHI_AC_MODELS})
 
 
+# -------------------------------------------------------- Mitsubishi136
+# Layout from IRremoteESP8266's Mitsubishi136Protocol (ir_Mitsubishi.h):
+# 17 bytes sent LSB first in one frame, no repeat (sendMitsubishi136:
+# kMitsubishi136MinRepeat = kNoRepeat). Bytes 11-16 are the complements of
+# bytes 5-10 (IRMitsubishi136::checksum): the inverted section.
+
+MITSUBISHI136 = Protocol(
+    "mitsubishi136",
+    {
+        "main": Section(
+            PulseDistance(467, 351, 1137),  # kMitsubishi136BitMark/Zero/OneSpace
+            header=(3324, 1474),  # kMitsubishi136HdrMark/HdrSpace
+            footer=(467,),
+            gap=100000,  # kMitsubishi136Gap (kDefaultMessageGap)
+        ),
+    },
+    carrier=38000,  # sendMitsubishi136: 38 kHz
+)
+
+
+@dataclass(frozen=True)
+class Mitsubishi136Checksum(Checksum):
+    """IRMitsubishi136::checksum: data[at + i] = ~data[start + i] for the
+    ``end - start`` bytes from kMitsubishi136PowerByte (5..10 -> 11..16)."""
+
+    def positions(self):
+        return set(range(self.at, self.at + self.end - self.start))
+
+    def compute(self, data):
+        return bytes(~b & 0xFF for b in data[self.start : self.end])
+
+    def apply(self, data):
+        data[self.at : self.at + self.end - self.start] = self.compute(data)
+
+    def check(self, data):
+        return bytes(data[self.at : self.at + self.end - self.start]) == (
+            self.compute(data)
+        )
+
+
+MITSUBISHI136_MODE = {  # kMitsubishi136*, as IRMitsubishi136::convertMode
+    "fan": 0b000,  # kMitsubishi136Fan
+    "cool": 0b001,  # kMitsubishi136Cool
+    "heat": 0b010,  # kMitsubishi136Heat
+    "auto": 0b011,  # kMitsubishi136Auto
+    "dry": 0b101,  # kMitsubishi136Dry
+}
+MITSUBISHI136_FAN = {  # canonical fan -> kMitsubishi136Fan*
+    "auto": 0b10,  # convertFan's default: kMitsubishi136FanMed (no auto code)
+    "1": 0b00,  # lowest: kMitsubishi136FanMin (see Mitsubishi136Device)
+    "2": 0b01,  # kMitsubishi136FanLow
+    "3": 0b10,  # kMitsubishi136FanMed
+    "4": 0b11,  # high: kMitsubishi136FanMax, as convertFan
+    "5": 0b11,  # highest: kMitsubishi136FanMax
+}
+MITSUBISHI136_FAN_QUIET = 0b00  # kMitsubishi136FanQuiet (= FanMin)
+MITSUBISHI136_SWING_V = {  # canonical swing -> kMitsubishi136SwingV*
+    "off": 0b1100,  # convertSwingV(kOff): kMitsubishi136SwingVAuto (no off)
+    "auto": 0b1100,  # kMitsubishi136SwingVAuto
+    "1": 0b0011,  # 90°: kMitsubishi136SwingVHighest (topmost, counting down)
+    "2": 0b0010,  # 60°: kMitsubishi136SwingVHigh
+    "3": 0b0001,  # 30°: kMitsubishi136SwingVLow
+    "4": 0b0000,  # 0°: kMitsubishi136SwingVLowest
+}
+MITSUBISHI136_MIN_TEMP, MITSUBISHI136_MAX_TEMP = 17, 30  # kMitsubishi136Min/MaxTemp
+MITSUBISHI136_TEMP_OFFSET = 16  # setTemp stores degrees - kMitsubishiAcMinTemp
+
+# Skeleton: IRMitsubishi136::stateReset (kReset, zero-padded to 17 bytes;
+# memcpy writes every byte, so nothing comes from stale memory) with the
+# fields and the inverted section cleared. Byte 7 bit 0 stays set, as in
+# kReset and the PEAD-RP71JAA capture of ir_Mitsubishi_test.cpp.
+MITSUBISHI136_LAYOUT = Layout(
+    bytes.fromhex("23cb262100000001040000000000000000"),
+    {
+        "power": Field.at(5, 6, 1),
+        "mode": Field.at(6, 0, 3, values=MITSUBISHI136_MODE),
+        "temperature": Field.at(6, 4, 4),  # °C - 16 (kMitsubishiAcMinTemp)
+        "fan": Field.at(7, 1, 2),
+        "swing_v": Field.at(7, 4, 4),
+    },
+    checksum=Mitsubishi136Checksum(5, 11, 11),
+)
+
+
+class Mitsubishi136Device(Device):
+    """Mitsubishi136 (PEAD-RP71JAA, PAR-FA32MA): a full-state protocol with
+    no toggle bits, ``previous`` is ignored.
+
+    As the C path (IRac::mitsubishi136): an off message carries mode auto
+    (IRac passes mode "off", convertMode's default), the setpoint is whole
+    degrees clamped to 17-30, auto fan sends Med, swing off sends Auto
+    (there is no off code), and quiet forces kMitsubishi136FanQuiet.
+
+    Two documented values differ from the C output (declared Defects):
+    - fan lowest sends kMitsubishi136FanMin: convertFan maps kMin there,
+      but IRac's setQuiet(false) then turns it into FanLow because FanMin is
+      also FanQuiet;
+    - swing positions count down from kMitsubishi136SwingVHighest: the
+      legacy labels 90° and 60° reach C as kHigh and kUpperMiddle, which
+      convertSwingV maps to High and Auto.
+    """
+
+    PROTOCOL = MITSUBISHI136
+    LAYOUTS = (MITSUBISHI136_LAYOUT,)
+    capabilities = Capabilities(
+        modes=("auto", "cool", "fan", "dry", "heat"),
+        temperature=TemperatureRange(16.0, 25.0),
+        fan=Choice(
+            ("auto", "1", "2", "3", "4", "5"),
+            {
+                "auto": "auto",
+                "1": "lowest",
+                "2": "low",
+                "3": "medium",
+                "4": "high",
+                "5": "highest",
+            },
+        ),
+        swing_v=Choice(
+            ("off", "auto", "1", "2", "3", "4"),
+            {
+                "off": "off",
+                "auto": "auto",
+                "1": "90°",
+                "2": "60°",
+                "3": "30°",
+                "4": "0°",
+            },
+        ),
+        features={"quiet": Choice((False, True), {False: "off", True: "on"})},
+    )
+
+    def frames(self, previous, target, actions):
+        mode = target.mode if target.power else "auto"
+        degrees = min(
+            max(int(target.temperature), MITSUBISHI136_MIN_TEMP),
+            MITSUBISHI136_MAX_TEMP,
+        )
+        if target.features.get("quiet"):
+            fan = MITSUBISHI136_FAN_QUIET
+        else:
+            fan = MITSUBISHI136_FAN[target.fan]
+        data = MITSUBISHI136_LAYOUT.build(
+            power=target.power,
+            mode=mode,
+            temperature=degrees - MITSUBISHI136_TEMP_OFFSET,
+            fan=fan,
+            swing_v=MITSUBISHI136_SWING_V[target.swing_v],
+        )
+        return [Frame("main", bytes(data))]
+
+
+MITSUBISHI136_MODELS = (
+    "PEAD-RP71JAA Ducted",
+    "001CP T7WE10714 remote",
+    "PAR-FA32MA remote",
+    "generic 136",
+)
+
+
+DEVICES.update({m: Mitsubishi136Device for m in MITSUBISHI136_MODELS})
+
+
 # Now the match between models and objects
 class PluginObject(GenPluginObject):
     MODELS = {

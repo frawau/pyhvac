@@ -24,7 +24,10 @@
 #
 
 from .hvaclib import PulseBased, GenPluginObject
-from .mirage import Miragev2
+from .mirage import MIRAGE_TRONITECHNIK_MODELS, MirageDevice, Miragev2
+
+DEVICES = {}
+DEVICES.update({m: MirageDevice for m in MIRAGE_TRONITECHNIK_MODELS})
 
 
 # Now the match between models and objects

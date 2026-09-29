@@ -1,611 +1,183 @@
 # pyhvac
 
-THIS IS WORK IN PROGRESS
+pyhvac generates infrared commands for air conditioners and heat pumps, in
+pure Python. Give it a brand, a model and the state you want (power, mode,
+setpoint, fan, swing, features); it returns the IR signal, ready for a
+Broadlink (or any IR blaster that takes Pronto or raw timings). It decodes
+those signals too.
 
-LG is not tested. "auto" mode for Sharp J-Tech is flaky
+It covers 416 models from 77 brands. Most protocols were ported from
+[IRremoteESP8266](https://github.com/crankyoldgit/IRremoteESP8266) and checked
+against recordings of what that library sent; the others are pyhvac's own.
 
-Although most of the devices associated with IRremoteESP8266 seems to produce reasonable
-output, this has, obviously, not been checked.
-
-
-pyhvac is a Python 3 library/utility to generate IR code for A/C device.
-
-
-This library uses code/work from:
+Credits for the protocol work go to:
  - Scott Kyle https://gist.github.com/appden/42d5272bf128125b019c45bc2ed3311f
- - mat_fr     https://www.instructables.com/id/Reverse-engineering-of-an-Air-Conditioning-control/
+ - mat_fr https://www.instructables.com/id/Reverse-engineering-of-an-Air-Conditioning-control/
  - user two, mathieu, vincent https://www.analysir.com/blog/2014/12/27/reverse-engineering-panasonic-ac-infrared-protocol/
  - all the people who contributed to https://github.com/crankyoldgit/IRremoteESP8266
 
-# Installation
+## Installation
 
-We are on PyPi so
+    pip install pyhvac
 
-     pip3 install pyhvac
-     or
-     python3 -m pip install pyhvac
+pyhvac has no dependencies and no compiled code.
 
-     After installation, the utility
+## Use
 
-     gaccode, gcpanasonic, gcdaikin, gclg, gcsharp
+```python
+from pyhvac import registry
+from pyhvac.ir.formats import to_broadlink
+from pyhvac.state import HvacState
 
-     can be used to generate codes. Use the -h option for help.
+device = registry.get_device("Daikin", registry.models("Daikin")[0])
+command = device.encode(None, HvacState(True, "cool", 24.0))
+packet = to_broadlink(command.signal)  # send it with a Broadlink RM
+```
 
-     Note that the utilities cannot fully excercise all the capabilities of their respective plugin.
-     For instance, the code for a Sharp A/C can depend on the state of the device. gcsharp does not keep track of the
-     state of the device.
+- `registry.brands()` lists the brands, `registry.models(brand)` a brand's
+  models. Names are written as the manufacturers write them; lookups ignore
+  case, spaces and punctuation (`"mitsubishi_heavy_industries"` finds
+  "Mitsubishi Heavy Industries").
+- `HvacState(power, mode, temperature, fan="auto", swing_v="off",
+  swing_h="off", features={})` is what you want the unit to do. Temperatures
+  are in °C.
+- `device.encode(previous, target, actions=())` returns a `Command`: its
+  `signal` is the IR signal, its `state` the target as the device can
+  actually send it (setpoint snapped to the device's range and step, values
+  the device lacks replaced by its defaults). Store `command.state` and pass
+  it back as `previous` next time: some protocols send a toggle ("power",
+  "swing", "light") only when the value changes. `previous=None` means "not
+  known", as after a restart.
 
-# Supported IR codes
+## Capabilities
 
-With the inclusion of the library from IRremoteESP8266 there is a lot of supported A/C. :
+`device.capabilities` says what a device can do:
 
-- aeg
-  - Chillflex Pro AXP26U338CW
-- airspool
-  - mini-split (Tuya-style)
-  - generic
-- airton
-  - SMVH09B-2A2A3NH
-  - RD1A1
-  - generic
-- airwell
-  - DC Series
-  - RC08W remote
-  - RC04 remote
-  - generic
-  - RC08B remote
-- alaska
-  - SAC9010QC
-  - SAC9010QC remote
-- amana
-  - PBC093G00CC
-  - YX1FF remote
-- amcor
-  - ADR-853H
-  - TAC-495 remote
-  - TAC-444 remote
-  - generic
-- argo
-  - Ulisse 13 DCI
-  - WREM2 remote
-  - Ulisse Eco Mobile
-  - WREM3 remote
-  - generic
-  - generic 2
-- aux
-  - KFR-35GW/BpNFW=3
-  - YKR-T/011 remote
-- beko
-  - RG57K7(B)/BGEF Remote
-  - BINR 070/071
-- bosch
-  - CL3000i-Set 26 E
-  - RG10A(G2S)BGEF remote
-  - generic
-  - RG36B4/BGE remote
-  - B1ZAI2441W
-  - B1ZAO2441W
-- carrier
-  - 42QG5A55970 remote
-  - 619EGX0090E0
-  - 619EGX0120E0
-  - 619EGX0180E0
-  - 619EGX0220E0
-  - 53NGK009/012
-  - generic
-  - 42NQV060M2 / 38NYV060M2
-  - 42NQV050M2 / 38NYV050M2
-  - 42NQV035M2 / 38NYV035M2
-  - 42NQV025M2 / 38NYV025M2
-- centek
-  - SCT-65Q09
-  - YKR-P/002E remote
-- comfee
-  - MPD1-12CRN7
-- coolix
-  - generic
-- cooper & hunter: YB1F2 remote
-  - CH-S09FTXG
-- corona
-  - CSH-N2211
-  - CSH-N2511
-  - CSH-N2811
-  - CSH-N4011
-  - AR-01 remote
-  - generic
-- daewoo
-  - DSB-F0934ELH-V
-  - GYKQ-52E remote
-- daikin
-  - generic
-  - smash 2
-  - ARC433 remote
-  - ARC477A1 remote
-  - FTXZ25NV1B
-  - FTXZ35NV1B
-  - FTXZ50NV1B
-  - ARC433B69 remote
-  - ARC423A5 remote
-  - FTE12HV2S
-  - BRC4C153 remote
-  - FFQ35B8V1B
-  - BRC4C151 remote
-  - 17 Series FTXB09AXVJU
-  - 17 Series FTXB12AXVJU
-  - 17 Series FTXB24AXVJU
-  - BRC52B63 remote
-  - ARC480A5 remote
-  - FFN-C/FCN-F Series
-  - DGS01 remote
-  - M Series
-  - FTXM-M
-  - ARC466A12 remote
-  - ARC466A33 remote
-  - ARC466A67 remote
-  - FTXM20R5V1B
-  - FTWX35AXV1
-  - ARC484A4 remote
-  - FTQ60TV16U2
-  - Daikin
-  - Daikin2
-  - Daikin64
-  - Daikin128
-  - Daikin152
-  - Daikin160
-  - Daikin176
-  - Daikin216
-  - Daikin312
-- danby
-  - DAC080BGUWDB
-  - DAC100BGUWDB
-  - DAC120BGUWDB
-  - R09C/BCGE remote
-- delonghi
-  - PAC A95
-  - generic
-  - PAC EM90
-- ecoclim
-  - HYSFR-P348 remote
-  - ZC200DPO
-  - generic
-- ekokai
-  - generic
-- electra
-  - Classic INV 17
-  - AXW12DCS
-  - YKR-M/003E remote
-  - generic
-- electrolux
-  - YKR-H/531E
-- eurom
-  - Polar 16CH
-  - generic
-- frigidaire
-  - FGPC102AB1
-- fujitsu
-  - AR-RAH2E remote
-  - ASYG30LFCA
-  - General AR-RCE1E remote
-  - General ASHG09LLCA
-  - General AOHG09LLC
-  - AR-DB1 remote
-  - AST9RSGCW
-  - AR-REB1E remote
-  - ASYG7LMCA
-  - AR-RAE1E remote
-  - AGTV14LAC
-  - AR-RAC1E remote
-  - ASTB09LBC
-  - AR-RY4 remote
-  - General AR-JW2 remote
-  - AR-DL10 remote
-  - ASU30C1
-  - AR-RAH1U remote
-  - AR-RAH2U remote
-  - ASU12RLF
-  - AR-REW4E remote
-  - ASYG09KETA-B
-  - AR-REB4E remote
-  - ASTG09K
-  - ASTG18K
-  - AR-REW1E remote
-  - AR-REG1U remote
-  - General AR-RCL1E remote
-  - General AR-JW17 remote
-  - generic
-  - generic 2
-  - generic 3
-  - generic 4
-  - generic 5
-  - generic 6
-- ge
-  - AG1BH09AW101
-  - 6711AR2853M Remote
-- goodweather
-  - ZH/JT-03 remote
-  - generic
-- gree
-  - YAA1FBF remote
-  - YB1F2F remote
-  - YAN1F1 remote
-  - YX1F2F remote
-  - VIR09HP115V1AH
-  - VIR12HP230V1AH
-  - gemeric
-  - YAPOF3 remote
-  - YAP0F8 remote
-- green
-  - YBOFB remote
-  - YBOFB2 remote
-- haier
-  - HSU07-HEA03 remote
-  - YR-W02 remote
-  - HSU-09HMC203
-  - V9014557 M47 8D remote
-  - Daichi D-H
-  - KFR-26GW/83@UI-Ge
-  - generic
-  - YR-W02 Code A
-  - YR-W02 Code B
-  - generic 176 code a
-  - generic 176 code b
-  - generic 160
-- hitachi
-  - RAS-35THA6 remote
-  - LT0541-HTA remote
-  - Series VI
-  - RAR-8P2 remote
-  - RAS-AJ25H
-  - PC-LH3B
-  - KAZE-312KSDP
-  - R-LT0541-HTA/Y.K.1.1-1 V2.3 remote
-  - RAS-22NK
-  - RF11T1
-  - RAR-2P2 remote
-  - RAK-25NH5
-  - RAR-3U3 remote
-  - RAS-70YHA3
-  - generic
-  - generic 1 code a
-  - generic 1 code b
-  - generic 424
-  - generic 3
-  - generic 344
-  - generic 264
-  - generic 296
-- kastron
-  - RG57A7/BGEF remote
-- kaysun
-  - Casual CF
-  - Casual CF Alt
-- kelon
-  - remote
-- kelvinator
-  - YALIF remote
-  - KSV26CRC
-  - KSV26HRC
-  - KSV35CRC
-  - KSV35HRC
-  - KSV53HRC
-  - KSV62HRC
-  - KSV70CRC
-  - KSV70HRC
-  - KSV80HRC
-  - generic
-- keystone
-  - RG57H4(B)BGEF remote
-- leberg
-  - LBS-TOR07
-- lennox
-  - RG57A6/BGEFU1 remote
-  - MWMA009S4-3P
-  - MWMA012S4-3P
-  - MCFA
-  - MCFB
-  - MMDA
-  - MMDB
-  - MWMA
-  - MWMB
-  - M22A
-  - M33A
-  - M33B
-- lg
-  - generic
-  - inverter v
-  - dual inverter
-  - 6711A20083V  remote
-  - TS-H122ERM1  remote
-  - AKB74395308  remote
-  - S4-W12JA3AA
-  - AKB75215403  remote
-  - AKB74955603  remote
-  - A4UW30GFA2
-  - AMNW09GSJA0
-  - AMNW24GTPA1
-  - AKB73757604  remote
-  - AKB73315611  remote
-  - MS05SQ NW0
-- mabe
-  - MMI18HDBWCA6MI8
-  - V12843 HJ200223 remote
-- maxell
-  - Maxell MX-CH18CF
-  - Maxell KKG9A-C1 remote
-- midea
-  - generic
-  - RG52D/BGE Remote
-  - MS12FU-10HRDN1-QRD0GW(B)
-  - MSABAU-07HRFN1-QRD0GW
-- mirage
-  - VLU series
-  - generic
-  - generic 2
-- mitsubishi electric
-  - MS-GK24VA
-  - KM14A 0179213 remote
-  - PEAD-RP71JAA Ducted
-  - 001CP T7WE10714 remote
-  - MSH-A24WV
-  - MUH-A24WV
-  - KPOA remote
-  - MLZ-RX5017AS
-  - SG153/M21EDF426 remote
-  - MSZ-GV2519
-  - RH151/M21ED6426 remote
-  - MSZ-SF25VE3
-  - SG15D remote
-  - MSZ-ZW4017S
-  - MSZ-FHnnVE
-  - RH151 remote
-  - PAR-FA32MA remote
-  - generic
-  - generic 136
-  - generic 112
-- mitsubishi heavy industries
-  - RLA502A700B remote
-  - SRKxxZM-S A/C
-  - SRKxxZMXA-S A/C
-  - RKX502A001C remote
-  - SRKxxZJ-S A/C
-  - gemeric
-  - gemeric 152
-  - generic 88
-- mr cool
-  - RG57A6/BGEFU1 remote
-- neoclima
-  - NS-09AHTI
-  - ZH/TY-01 remote
-  - generic
-- panasonic
-  - generic
-  - 4 way cassette
-  - NKE series
-  - DKE series
-  - DKW series
-  - PKR series
-  - JKE series
-  - CKP series
-  - RKR series
-  - CS-ME10CKPG
-  - CS-ME12CKPG
-  - CS-ME14CKPG
-  - CS-E7PKR
-  - CS-Z9RKR
-  - CS-Z24RKR
-  - CS-YW9MKD
-  - CS-E12QKEW
-  - A75C2311remote
-  - A75C2616-1remote
-  - A75C3704remote
-  - PN1122Vremote
-  - A75C3747remote
-  - CS-E9CKP series
-  - A75C2295remote
-  - A75C4762remote
-  - generic 32
-- pioneer system:
-  - RYBO12GMFILCAD
-  - RUBO18GMFILCAD
-  - WS012GMFI22HLD
-  - WS018GMFI22HLD
-  - UB018GMFILCFHD
-  - RG66B6(B)/BGEFU1 remote
-- rhoss
-  - Idrowall MPCV
-  - generic
-- rusclimate
-  - EACS/I-09HAR_X/N3
-  - YAW1F remote
-- samsung
-  - AR09FSSDAWKNFA
-  - AR09HSFSBWKN
-  - AR12KSFPEWQNET
-  - AR12HSSDBWKNEU
-  - AR12NXCXAWKXEU
-  - AR12TXEAAWKNEU
-  - DB93-14195A remote
-  - DB96-24901C remote
-  - generic
-- sanyo
-  - SAP-K121AHA
-  - RCS-2HS4E remote
-  - SAP-K242AH
-  - RCS-2S4E remote
-  - generic
-  - generic 88
-- sharp
-  - generic
-  - j-tech
-  - YB1FA remote
-  - A5VEY
-  - Sharp AY-ZP40KR
-  - AH-AxSAY
-  - CRMC-A907 JBEZ remote
-  - CRMC-A950 JBEZ
-  - AH-PR13-GL
-  - CRMC-A903JBEZ remote
-  - AH-XP10NRY
-  - CRMC-820 JBEZ remote
-  - CRMC-A705 JBEZ remote
-  - AH-A12REVP-1
-  - CRMC-A863 JBEZ remote
-  - generic A907
-  - generic A903
-  - generic A705
-- soleus
-  - Air window
-  - Air TTWM1-10-01
-  - Air ZCF/TL-05 remote
-- subtropic
-  - SUB-07HN1_18Y
-  - YKR-H/102E remote
-- tcl
-  - TAC-09CHSD/XA31I
-  - generic
-  - generic v1
-  - generic v2
-- technibel
-  - IRO PLUS
-  - generic
-- technopoint
-  - Allegro SSA-09H
-  - GZ-055B-E1 remote
-- teco
-  - generic
-- tokio
-  - AATOEMF17-12CHR1SW
-  - RG51|50/BGE Remote
-- toshiba
-  - RAS-B13N3KV2
-  - Akita EVO II
-  - RAS-B13N3KVP-E
-  - RAS 18SKP-ES
-  - WH-TA04NE
-  - WC-L03SE
-  - WH-UB03NJ remote
-  - RAS-2558V
-  - WH-TA01JE remote
-  - RAS-25SKVP2-ND
-  - generic
-  - RAS-M10YKV-E
-  - RAS-M13YKV-E
-  - RAS-4M27YAV-E
-  - WH-E1YE remote
-- transcold
-  - M1-F-NO-6
-  - generic
-- tronitechnik
-  - Reykir 9000
-  - KKG29A-C1 remote
-- trotech
-  - PAC 2100 X
-  - PAC 3900 X
-  - RG57H(B)/BGE remote
-  - RG57H3(B)/BGCEF-M remote
-  - PAC 3200
-  - PAC 3550 Pro
-  - Duux Blizzard Smart 10K / DXMA04
-  - generic
-  - generic 3550
-- truma
-  - Aventa
-  - 40091-86700 remote
-  - generic
-- ultimate
-  - Heat Pump
-- vailland
-  - YACIFB remote
-  - VAI5-035WNI
-- vestel
-  - BIOX CXP-9
-  - generic
-- voltas
-  - 122LZF 4011252
-  - generic
-  - generic 2
-- whirlpool
-  - DG11J1-3A remote
-  - DG11J1-04 remote
-  - DG11J1-91 remote
-  - SPIS409L
-  - SPIS412L
-  - SPIW409L
-  - SPIW412L
-  - SPIW418L
-  - generic
-  - generic 2
+```python
+caps = device.capabilities
+caps.modes                                   # ("auto", "cool", "dry", ...)
+caps.temperature.min, caps.temperature.max   # the setpoint range, °C
+caps.fan.values, caps.fan.labels             # canonical values and their labels
+caps.swing_v, caps.swing_h                   # Choice or None
+caps.features                                # {"powerful": Choice, ...}
+```
 
-# Library
+Canonical values are the same for every device (`"auto"`, `"1"`..`"n"` for
+fan speeds or vane positions, `"swing"`, `"off"`); labels are what the
+remote calls them (`"lowest"`, `"90°"`, ...). Capabilities offer what the
+protocol documents and pyhvac can send, nothing that would do nothing.
 
-pyhvac uses plugin to add support.
+## Formats
 
-Each plugin file must have a
+`pyhvac.ir.formats` turns a signal into a Broadlink packet (`to_broadlink`),
+Pronto hex (`to_pronto`) or raw signed microseconds (`to_raw`), and back
+(`from_broadlink`, `from_pronto`). `pyhvac.ir.codec.decode(protocol, pulses)`
+decodes a captured signal into frames of the device's `PROTOCOL`.
 
-       PluginObject
+## Command line
 
-class that must have a "get_device" method to return HVAC objects, a 'brand' attribute
-and a 'models' attribute containing a dictionary matching models to objects. Note that brand and models MUST BE lowercased.
+    python -m pyhvac --list                      # brands
+    python -m pyhvac --list-models Daikin        # a brand's models
+    python -m pyhvac Daikin "ARC433**" --mode cool --temperature 24
+    python -m pyhvac LG "AKB74955603" --mode heat --fan 2 --format pronto
 
-Each HVAC object describes a specific way of generating codes for IR transmission.
+## Adding a protocol
 
-The codes should be returned as a list of bytes in either lsb or msb format. The
-HVAC object must have its "is_msb" attribute set to False or True accordingly.
+Protocol code lives in `pyhvac/protocols/`: a `Protocol` (timings, sections)
+and a `Device` subclass whose `frames()` builds the frames with a `Layout`
+(`pyhvac.fields`). `tools/portkit.py` helps derive timings, fields and
+checksums from captures. Register the models in `pyhvac/brands.py`.
 
-All HVAC objects are required to have at the minimum 2 capabilities:
+## Migrating from 0.1.x
 
-    mode   with at least "off" and another value ("auto", "cool", ....)
-    temperature  with the accepted range
+| 0.1.x | 0.2.0 |
+|---|---|
+| `importlib.import_module(f"pyhvac.plugins.{brand}").PluginObject().get_device(model)` | `registry.get_device(brand, model)` |
+| `dev.set_value("mode", "cool")`, `set_value("temperature", 24)`, ... | `HvacState(power=True, mode="cool", temperature=24.0, fan=..., swing_v=..., features={...})` |
+| `frames = dev.build_ircode(); dev.to_broadlink(frames)` | `to_broadlink(device.encode(previous, state).signal)` |
+| `dev.capabilities["temperature"]`, `dev.all_capabilities["fan"]` | `device.capabilities.temperature`, `device.capabilities.fan` (values and labels) |
+| brand = plugin module name, e.g. `"mitsubishi_heavy_industries"` | brand as the maker writes it; lookups ignore case and punctuation |
+| model strings of 0.1.x | the new names below; 0.1.x names still work for the former pure-Python devices (Daikin, LG and Panasonic "generic" and their variants, Airspool, Sharp "j-tech") |
 
-Other capabilities are expected.
+The full old -> new name table is in
+`docs/superpowers/plans/2026-09-29-phase4/tables/names.md`.
 
-To simplify things, it is requested that some sort of normalization
-of function names occur. In most cases an AC unit will have the following
+## Supported models
 
-    mode: the operating mode. Values are expected to be amongst
-          "off"   turned off (This is mandatory)
-          "auto"  automatic mode sometines known as "feel", "ai", ...
-          "cool"  Cooling
-          "heat"  Heating
-          "dry"   dehumidifying
-          "fan"   fan mode only
-
-    temperature:  The full range of temperatures. If there
-                  are 2 distinct ranges for cooling or heating,
-                  the union should be used here.
-
-                  The attribute 'temperature_step' can be used to
-                  specify fractioanl temperature e.g. 0.5, 0.1
-
-
-    fan: The air flow power. Values are expecterd to be amongst
-           "auto"   Automatic mode
-           lowest   The lowest air flow setting
-           low
-           medium
-           high
-           highest
-
-           When there are only 3 modes, highest, medium and lowest should be used if possible
-
-    swing: The use of the vertical orientation of the air flow..
-            It can be a switch on/off (values 'off' and 'on') or more complex
-
-            auto  automatic (in many cases similar to the on/off switch function)
-            ceiling up up up
-            90°    Horizontal orientation
-            60°
-            45°
-            30°
-            0°     Vertical orientation
-
-Many other functions are possible, but still some canonization is recommended.
-
-For instance, many manufactures trademarked their air purifying technology: nanoe, nanoex (Panasonic),
-plasmacluster (Sharp), plasma (LG).... In this case it is recommended to use the name "purifier" for that functionm
-
-
-The HVAC object offers to convenience methods:
-       to_lirs, to transform the frames into lirc codes
-       to_broadlink, to trnaform the frames into Broadlink compatible codes
-
-TO BE CONTINUED
+- **AEG**: Chillflex Pro AXP26U338CW
+- **Airspool**: AIRSPOOL protocol (remote), Mini-split
+- **Airton**: AIRTON protocol (remote), RD1A1 (remote), SMVH09B-2A2A3NH
+- **Airwell**: AIRWELL protocol (remote), DC Series, RC04 (remote), RC08B (remote), RC08W (remote)
+- **Alaska**: SAC9010QC
+- **Amana**: PBC093G00CC, YX1FF (remote)
+- **Amcor**: ADR-853H, AMCOR protocol (remote), TAC-444 (remote), TAC-495 (remote)
+- **Argo**: ARGO SAC_WREM2 protocol (remote), ARGO SAC_WREM3 protocol (remote), Ulisse 13 DCI, Ulisse Eco, WREM2 (remote), WREM3 (remote)
+- **AUX**: KFR-35GW/BpNFW=3, YKR-T/011 (remote)
+- **Beko**: BINR 070/071, RG57K7(B)/BGEF (remote)
+- **Bosch**: B1ZAI2441W, B1ZAO2441W, BOSCH144 protocol (remote), CL3000i-Set 26 E, RG10A(G2S)BGEF (remote), RG36B4/BGE (remote)
+- **Carrier**: 42NQV025M2 / 38NYV025M2, 42NQV035M2 / 38NYV035M2, 42NQV050M2 / 38NYV050M2, 42NQV060M2 / 38NYV060M2, 42QG5A55970 (remote), 53NGK009/012, 619EGX0090E0, 619EGX0120E0, 619EGX0180E0, 619EGX0220E0, CARRIER_AC64 protocol (remote)
+- **Centek**: SCT-65Q09, YKR-P/002E (remote)
+- **Comfee**: MPD1-12CRN7
+- **Cooper & Hunter**: CH-S09FTXG, YB1F2 (remote)
+- **Corona**: AR-01 (remote), CORONA_AC protocol (remote), CSH-N2211, CSH-N2511, CSH-N2811, CSH-N4011
+- **Daewoo**: DSB-F0934ELH-V, GYKQ-52E (remote)
+- **Daichi**: D-H
+- **Daikin**: 17 Series FTXB09AXVJU, 17 Series FTXB12AXVJU, 17 Series FTXB24AXVJU, ARC423A5 (remote), ARC433** (remote), ARC433B69 (remote), ARC466A12 (remote), ARC466A33 (remote), ARC466A67 (remote), ARC477A1 (remote), ARC480A5 (remote), ARC484A4 (remote), BRC4C151 (remote), BRC4C153 (remote), BRC52B63 (remote), DAIKIN protocol (remote), DAIKIN128 protocol (remote), DAIKIN152 protocol (remote), DAIKIN160 protocol (remote), DAIKIN176 protocol (remote), DAIKIN2 protocol (remote), DAIKIN216 protocol (remote), DAIKIN312 protocol (remote), DAIKIN64 protocol (remote), DAIKIN_NATIVE protocol (remote), DGS01 (remote), FFN-C/FCN-F Series, FFQ35B8V1B, FTE12HV2S, FTQ60TV16U2, FTWX35AXV1, FTXM-M, FTXM20R5V1B, FTXZ25NV1B, FTXZ35NV1B, FTXZ50NV1B, M Series, Smash II
+- **Danby**: DAC080BGUWDB, DAC100BGUWDB, DAC120BGUWDB, R09C/BCGE (remote)
+- **De'Longhi**: DELONGHI_AC protocol (remote), PAC A95, PAC EM90
+- **Duux**: Blizzard Smart 10K / DXMA04
+- **EcoClim**: ECOCLIM protocol (remote), HYSFR-P348 (remote), ZC200DPO
+- **EKOKAI**: GREE YAW1F protocol (remote)
+- **Electra**: AXW12DCS, Classic INV 17, ELECTRA_AC protocol (remote), YKR-M/003E (remote)
+- **Electrolux**: YKR-H/531E
+- **Eurom**: EUROM protocol (remote), Polar 16CH
+- **Frigidaire**: FGPC102AB1
+- **Fujitsu**: AGTV14LAC, AR-DB1 (remote), AR-DL10 (remote), AR-RAC1E (remote), AR-RAE1E (remote), AR-RAH1U (remote), AR-RAH2E (remote), AR-RAH2U (remote), AR-REB1E (remote), AR-REB4E (remote), AR-REG1U (remote), AR-REW1E (remote), AR-REW4E (remote), AR-RY4 (remote), AST9RSGCW, ASTB09LBC, ASTG09K, ASTG18K, ASU12RLF, ASU30C1, ASYG09KETA-B, ASYG30LFCA, ASYG7LMCA, FUJITSU_AC ARDB1 protocol (remote), FUJITSU_AC ARJW2 protocol (remote), FUJITSU_AC ARRAH2E protocol (remote), FUJITSU_AC ARREB1E protocol (remote), FUJITSU_AC ARREW4E protocol (remote), FUJITSU_AC ARRY4 protocol (remote)
+- **Fujitsu General**: AOHG09LLC, AR-JW17 (remote), AR-JW2 (remote), AR-RCE1E (remote), ASHG09LLCA
+- **GE**: 6711AR2853M (remote), AG1BH09AW101
+- **Goodweather**: GOODWEATHER protocol (remote), ZH/JT-03 (remote)
+- **Gree**: GREE YAW1F protocol (remote), VIR09HP115V1AH, VIR12HP230V1AH, YAA1FBF (remote), YAN1F1 (remote), YAP0F8 (remote), YAPOF3 (remote), YB1F2F (remote), YX1F2F (remote)
+- **Green**: YBOFB (remote), YBOFB2 (remote)
+- **Haier**: HAIER_AC protocol (remote), HAIER_AC160 protocol (remote), HAIER_AC176 V9014557_A protocol (remote), HAIER_AC176 V9014557_B protocol (remote), HAIER_AC_YRW02 V9014557_A protocol (remote), HAIER_AC_YRW02 V9014557_B protocol (remote), HSU-09HMC203, HSU07-HEA03 (remote), KFR-26GW/83@UI-Ge, V9014557 M47 8D (remote), YR-W02 (remote)
+- **Hitachi**: HITACHI_AC protocol (remote), HITACHI_AC1 R_LT0541_HTA_A protocol (remote), HITACHI_AC1 R_LT0541_HTA_B protocol (remote), HITACHI_AC264 protocol (remote), HITACHI_AC296 protocol (remote), HITACHI_AC344 protocol (remote), HITACHI_AC424 protocol (remote), KAZE-312KSDP, LT0541-HTA (remote), R-LT0541-HTA/Y.K.1.1-1 V2.3 (remote), RAK-25NH5, RAR-2P2 (remote), RAR-3U3 (remote), RAR-8P2 (remote), RAS-22NK, RAS-35THA6 (remote), RAS-70YHA3, RAS-AJ25H, RF11T1 (remote), Series VI
+- **Kastron**: RG57A7/BGEF (remote)
+- **Kaysun**: Casual CF, Casual CF (COOLIX)
+- **Kelon**: ON/OFF 9000-12000
+- **Kelvinator**: KELVINATOR protocol (remote), KSV26CRC, KSV26HRC, KSV35CRC, KSV35HRC, KSV53HRC, KSV62HRC, KSV70CRC, KSV70HRC, KSV80HRC, YALIF (remote)
+- **Keystone**: RG57H4(B)BGEF (remote)
+- **Leberg**: LBS-TOR07
+- **Lennox**: M22A, M33A, M33B, MCFA, MCFB, MMDA, MMDB, MWMA, MWMA009S4-3P, MWMA012S4-3P, MWMB, RG57A6/BGEFU1 (remote)
+- **LG**: 6711A20083V (remote), A4UW30GFA2, AKB73315611 (remote), AKB73757604 (remote), AKB74395308 (remote), AKB74955603 (remote), AKB75215403 (remote), AMNW09GSJA0, AMNW24GTPA1, Dual Inverter, Inverter V, LG_NATIVE protocol (remote), MS05SQ NW0, S4-W12JA3AA, TS-H122ERM1 (remote)
+- **Mabe**: MMI18HDBWCA6MI8, V12843 HJ200223 (remote)
+- **Maxell**: KKG9A-C1 (remote), MX-CH18CF
+- **Midea**: COOLIX protocol (remote), MIDEA protocol (remote), MS12FU-10HRDN1-QRD0GW(B), MSABAU-07HRFN1-QRD0GW, RG52D/BGE (remote)
+- **Mirage**: MIRAGE KKG29AC1 protocol (remote), MIRAGE KKG9AC1 protocol (remote), VLU series
+- **Mitsubishi Electric**: 001CP T7WE10714 (remote), KM14A 0179213 (remote), KPOA (remote), MITSUBISHI112 protocol (remote), MITSUBISHI136 protocol (remote), MITSUBISHI_AC protocol (remote), MLZ-RX5017AS, MS-GK24VA, MSH-A24WV, MSZ-FHnnVE, MSZ-GV2519, MSZ-SF25VE3, MSZ-ZW4017S, MUH-A24WV, PAR-FA32MA (remote), PEAD-RP71JAA, RH151 (remote), RH151/M21ED6426 (remote), SG153/M21EDF426 (remote), SG15D (remote)
+- **Mitsubishi Heavy Industries**: MITSUBISHI_HEAVY_152 protocol (remote), MITSUBISHI_HEAVY_88 protocol (remote), RKX502A001C (remote), RLA502A700B (remote), SRKxxZJ-S, SRKxxZM-S, SRKxxZMXA-S
+- **MRCOOL**: RG57A6/BGEFU1 (remote)
+- **Neoclima**: NEOCLIMA protocol (remote), NS-09AHTI, ZH/TY-01 (remote)
+- **O General**: AR-RCL1E (remote)
+- **Panasonic**: 4-Way Cassette, A75C2295 (remote), A75C2311 (remote), A75C2616-1 (remote), A75C3704 (remote), A75C3747 (remote), A75C4762 (remote), CKP series, CS-E12QKEW, CS-E7PKR, CS-E9CKP series, CS-ME10CKPG, CS-ME12CKPG, CS-ME14CKPG, CS-YW9MKD, CS-Z24RKR, CS-Z9RKR, DKE series, DKW series, JKE series, NKE series, PANASONIC_AC32 protocol (remote), PANASONIC_NATIVE protocol (remote), PKR series, PN1122V (remote), RKR series
+- **Pioneer System**: RG66B6(B)/BGEFU1 (remote), RUBO18GMFILCAD, RYBO12GMFILCAD, UB018GMFILCFHD, WS012GMFI22HLD, WS018GMFI22HLD
+- **Rhoss**: Idrowall MPCV 20-30-35-40, RHOSS protocol (remote)
+- **RusClimate**: EACS/I-09HAR_X/N3, YAW1F (remote)
+- **Samsung**: AR09FSSDAWKNFA, AR09HSFSBWKN, AR12HSSDBWKNEU, AR12KSFPEWQNET, AR12NXCXAWKXEU, AR12TXEAAWKNEU, DB93-14195A (remote), DB96-24901C (remote), SAMSUNG_AC protocol (remote)
+- **Sanyo**: RCS-2HS4E (remote), RCS-2S4E (remote), SANYO_AC protocol (remote), SANYO_AC88 protocol (remote), SAP-K121AHA, SAP-K242AH
+- **Sharp**: A5VEY, AH-A12REVP-1, AH-AxSAY, AH-PR13-GL, AH-XP10NRY, AY-ZP40KR, CRMC-820 JBEZ (remote), CRMC-A705 JBEZ (remote), CRMC-A863 JBEZ (remote), CRMC-A903JBEZ (remote), CRMC-A907 JBEZ (remote), CRMC-A950 JBEZ (remote), J-Tech, SHARP_AC A705 protocol (remote), SHARP_AC A903 protocol (remote), SHARP_AC A907 protocol (remote), YB1FA (remote)
+- **Soleus Air**: TTWM1-10-01, window, ZCF/TL-05 (remote)
+- **Subtropic**: SUB-07HN1_18Y, YKR-H/102E (remote)
+- **TCL**: TAC-09CHSD/XA31I, TCL112AC GZ055BE1 protocol (remote), TCL112AC TAC09CHSD protocol (remote)
+- **Technibel**: IRO PLUS, TECHNIBEL_AC protocol (remote)
+- **Teco**: TECHNIBEL_AC protocol (remote)
+- **Teknopoint**: Allegro SSA-09H, GZ-055B-E1 (remote)
+- **Tokio**: AATOEMF17-12CHR1SW, RG51|50/BGE (remote)
+- **Toshiba**: Akita EVO II, RAS 18SKP-ES, RAS-2558V, RAS-25SKVP2-ND, RAS-4M27YAV-E, RAS-B13N3KV2, RAS-B13N3KVP-E, RAS-M10YKV-E, RAS-M13YKV-E, TOSHIBA_AC protocol (remote), WC-L03SE (remote), WH-E1YE (remote), WH-TA01JE (remote), WH-TA04NE (remote), WH-UB03NJ (remote)
+- **Transcold**: M1-F-NO-6, TRANSCOLD protocol (remote)
+- **Tronitechnik**: KKG29A-C1 (remote), Reykir 9000
+- **Trotec**: PAC 2100 X, PAC 3200, PAC 3550 Pro, PAC 3900 X, RG57H(B)/BGE (remote), RG57H3(B)/BGCEF-M (remote), TROTEC protocol (remote), TROTEC_3550 protocol (remote)
+- **Truma**: 40091-86700 (remote), Aventa, TRUMA protocol (remote)
+- **Ultimate**: Heat Pump
+- **Vaillant**: VAI5-035WNI, YACIFB (remote)
+- **Vestel**: BIOX CXP-9, VESTEL_AC protocol (remote)
+- **Voltas**: 122LZF 4011252, VOLTAS kVoltas122LZF protocol (remote), VOLTAS kVoltasUnknown protocol (remote)
+- **Whirlpool**: DG11J1-04 (remote), DG11J1-3A (remote), DG11J1-91 (remote), SPIS409L, SPIS412L, SPIW409L, SPIW412L, SPIW418L, WHIRLPOOL_AC DG11J13A protocol (remote), WHIRLPOOL_AC DG11J191 protocol (remote)

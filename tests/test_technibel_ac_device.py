@@ -246,7 +246,9 @@ def test_sleep_sets_the_documented_bit(power):
 
 
 def test_light_sends_nothing():
-    # The teco entity offers light; the protocol has no light field.
+    # The teco entity offers light; TECHNIBEL_AC has no light field. (Legacy
+    # parity: the Teco class drove TECHNIBEL_AC, though ir_Teco.h lists
+    # its Alaska models under TECO, which has a light.)
     assert data(on(light=True), brand="teco") == data(on(light=False), brand="teco")
 
 

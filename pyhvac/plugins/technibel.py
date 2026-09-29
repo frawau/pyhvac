@@ -164,6 +164,12 @@ class TechnibelAcDevice(Device):
     - no timer; light (the teco entity's) sends nothing: the protocol has
       no light.
 
+    Legacy parity: the "teco" variant serves the old Teco class (teco.py,
+    alaska.py), which always drove TECHNIBEL_AC. ir_Teco.h lists the Alaska
+    SAC9010QC among TECO (a different 35-bit protocol, with a light), so
+    those units probably expect TECO; the port keeps what 0.1.x sent until
+    that is decided.
+
     ``previous`` is ignored: the word is a full state, the Fan/Temp/Timer
     Change bits are never written by IRTechnibelAc (0 in C and in the real
     capture), and IRac::handleToggles has no TECHNIBEL_AC case.

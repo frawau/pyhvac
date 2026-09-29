@@ -25,7 +25,10 @@
 # Description of the various ": Greev1, devices supported. Can be a remote control name
 
 from .hvaclib import GenPluginObject
-from .electra import Electra
+from .electra import ELECTRA_AC_AEG_MODELS, Electra, ElectraAcDevice
+
+DEVICES = {}
+DEVICES.update({m: ElectraAcDevice for m in ELECTRA_AC_AEG_MODELS})
 
 
 # Now the match between models and objects

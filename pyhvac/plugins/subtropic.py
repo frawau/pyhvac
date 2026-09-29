@@ -24,7 +24,10 @@
 #
 
 from .hvaclib import GenPluginObject
-from .electra import Electra
+from .electra import ELECTRA_AC_SUBTROPIC_MODELS, Electra, ElectraAcDevice
+
+DEVICES = {}
+DEVICES.update({m: ElectraAcDevice for m in ELECTRA_AC_SUBTROPIC_MODELS})
 
 
 # Now the match between models and objects

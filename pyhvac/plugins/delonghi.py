@@ -24,7 +24,7 @@
 #
 
 from .hvaclib import PulseBased, GenPluginObject
-from .electra import Electra
+from .electra import ELECTRA_AC_DELONGHI_MODELS, Electra, ElectraAcDevice
 from ..device import Device
 from ..fields import Field, Layout, Sum8
 from ..ir.model import Frame, Protocol, PulseDistance, Section
@@ -147,6 +147,7 @@ DELONGHI_AC_MODELS = ("PAC A95", "generic")
 
 
 DEVICES.update({m: DelonghiAcDevice for m in DELONGHI_AC_MODELS})
+DEVICES.update({m: ElectraAcDevice for m in ELECTRA_AC_DELONGHI_MODELS})
 
 
 # Now the match between models and objects

@@ -1,7 +1,7 @@
 import random
 
 import portkit
-from pyhvac.fields import Field, Layout, Sum8
+from pyhvac.fields import Copy, Field, HighNibbleSum, InvertedPairs, Layout, Sum8
 from pyhvac.ir.codec import encode
 from pyhvac.ir.model import Frame, Protocol, PulseDistance, Section
 
@@ -83,3 +83,66 @@ def test_find_checksums_finds_the_planted_sum():
 def test_smoke_on_real_fixture():
     text = portkit.timings_report(portkit.load_records("DAIKIN2"))
     assert "(10024, 200)" in text
+
+
+def test_header_durations_cluster_apart_from_bit_durations():
+    # A 1500 µs header space lies within the tolerance of the 1270 µs bit
+    # space: clustered together, both would snap to one value.
+    close = Protocol(
+        "close",
+        {
+            "main": Section(
+                PulseDistance(460, 420, 1270),
+                header=(3500, 1500),
+                footer=(460,),
+                gap=40000,
+            )
+        },
+    )
+    recs = [
+        {
+            "state": {"n": n},
+            "pulses": list(encode(close, [Frame("main", bytes([n, 255 - n]))]).pulses),
+        }
+        for n in range(0, 256, 17)
+    ]
+    text = portkit.timings_report(recs)
+    assert "header=(3500, 1500) 16 bits footer=(460,)" in text
+    assert "PulseDistance(460, 420, 1270)" in text
+
+
+def _random_frames(n, planted, count=30, seed=3):
+    rng = random.Random(seed)
+    frames = []
+    for _ in range(count):
+        data = bytearray(rng.randrange(256) for _ in range(n))
+        for checksum in planted:
+            checksum.apply(data)
+        frames.append(bytes(data))
+    return frames
+
+
+def test_find_checksums_at_any_byte():
+    # A section sum in the middle of the frame (Haier-style) and one after it.
+    found = portkit.find_checksums(_random_frames(10, [Sum8(0, 4, 4), Sum8(5, 9, 9)]))
+    assert Sum8(0, 4, 4, False) in found and Sum8(5, 9, 9, False) in found
+
+
+def test_find_checksums_finds_a_high_nibble_sum():
+    found = portkit.find_checksums(
+        _random_frames(8, [HighNibbleSum(0, 7, 7, with_low=True)], count=60)
+    )
+    assert HighNibbleSum(0, 7, 7, with_low=True) in found
+
+
+def test_find_checksums_finds_a_complement_block():
+    found = portkit.find_checksums(_random_frames(9, [Copy(2, 5, 5, invert=True)]))
+    assert Copy(2, 5, 5, invert=True) in found
+
+
+def test_find_checksums_finds_inverted_pairs_with_an_odd_start():
+    found = portkit.find_checksums(_random_frames(9, [InvertedPairs(1, 9)]))
+    assert InvertedPairs(1, 9) in found
+    # the longest run only: pairs from byte 3 hold too, but add nothing
+    assert InvertedPairs(3, 9) not in found
+    assert Copy(3, 4, 4, invert=True) not in found  # one of the pairs

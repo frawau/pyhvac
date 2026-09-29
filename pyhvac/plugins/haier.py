@@ -28,6 +28,7 @@ from .hvaclib import PulseBased, GenPluginObject
 from ..device import Device
 from ..fields import Checksums, Field, Layout, Sum8
 from ..ir.model import Frame, Protocol, PulseDistance, Section
+from ..choices import FAN_3, ON_OFF, SWING_H_5
 from ..state import Capabilities, Choice, TemperatureRange
 
 try:
@@ -138,11 +139,6 @@ def _haier_protocol(name):
 
 
 # The canonical fan and on/off feature entities every Haier port offers.
-_FAN = Choice(
-    ("auto", "1", "2", "3"),
-    {"auto": "auto", "1": "low", "2": "medium", "3": "high"},
-)
-_ON_OFF = Choice((False, True), {False: "off", True: "on"})
 
 
 # ---------------------------------------------------------------- HaierAc
@@ -239,11 +235,11 @@ class HaierAcDevice(Device):
     capabilities = Capabilities(
         modes=("auto", "cool", "dry", "heat", "fan"),
         temperature=TemperatureRange(16.0, 30.0),
-        fan=_FAN,
+        fan=FAN_3,
         swing_v=Choice(
             ("off", "1", "2"), {"off": "off", "1": "auto high", "2": "auto low"}
         ),
-        features={"purifier": _ON_OFF, "sleep": _ON_OFF},
+        features={"purifier": ON_OFF, "sleep": ON_OFF},
     )
 
     def frames(self, previous, target, actions):
@@ -442,7 +438,7 @@ class _HaierAc176Device(Device):
     capabilities = Capabilities(
         modes=("auto", "cool", "dry", "heat", "fan"),
         temperature=TemperatureRange(16.0, 30.0),
-        fan=_FAN,
+        fan=FAN_3,
         swing_v=Choice(
             ("off", "auto", "1", "2", "3", "4"),
             {
@@ -454,22 +450,12 @@ class _HaierAc176Device(Device):
                 "4": "0°",
             },
         ),
-        swing_h=Choice(
-            ("auto", "1", "2", "3", "4", "5"),
-            {
-                "auto": "auto",
-                "1": "far left",
-                "2": "left",
-                "3": "middle",
-                "4": "right",
-                "5": "far right",
-            },
-        ),
+        swing_h=SWING_H_5,
         features={
-            "purifier": _ON_OFF,
-            "sleep": _ON_OFF,
-            "powerful": _ON_OFF,
-            "quiet": _ON_OFF,
+            "purifier": ON_OFF,
+            "sleep": ON_OFF,
+            "powerful": ON_OFF,
+            "quiet": ON_OFF,
         },
     )
     LAYOUT = None
@@ -666,7 +652,7 @@ class Haier160Device(Device):
     capabilities = Capabilities(
         modes=("auto", "cool", "dry", "heat", "fan"),
         temperature=TemperatureRange(16.0, 30.0),
-        fan=_FAN,
+        fan=FAN_3,
         swing_v=Choice(
             ("off", "auto", "1", "2", "3", "4", "5"),
             {
@@ -680,7 +666,7 @@ class Haier160Device(Device):
             },
         ),
         features={
-            name: _ON_OFF
+            name: ON_OFF
             for name in ("purifier", "sleep", "powerful", "quiet", "cleaning", "light")
         },
     )

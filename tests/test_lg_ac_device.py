@@ -1,7 +1,14 @@
 import pytest
 
 from oracle import load_oracle
-from port_oracle import Defect, assert_matches_oracle, oracle_params, state_from_record
+from port_oracle import (
+    Defect,
+    assert_matches_oracle,
+    c_sequence,
+    oracle_params,
+    sequence_params,
+    state_from_record,
+)
 from pyhvac import registry
 from pyhvac.ir.codec import decode
 from pyhvac.plugins.lg import (
@@ -67,10 +74,10 @@ class _StateWordOnly:
         return self.dev.frames(previous, target, actions)[:1]
 
 
-def assert_matches(dev, record, defects=DEFECTS):
+def assert_matches(dev, record, defects=DEFECTS, previous=None):
     """assert_matches_oracle, with the swing toggle word accepted only when
     its Defect is declared (and only as exactly kLgAcSwingVToggle)."""
-    ours = dev.frames(None, state_from_record(dev, record["state"]), ())
+    ours = dev.frames(previous, state_from_record(dev, record["state"]), ())
     if len(ours) > 1:
         assert [f.data for f in ours[1:]] == [TOGGLE], record["state"]
         declared = {(d.field, d.ours, d.theirs) for d in defects}
@@ -80,12 +87,24 @@ def assert_matches(dev, record, defects=DEFECTS):
             SWING_TOGGLE.theirs,
         ) in declared, f"undeclared swing toggle word for {record['state']}"
         dev = _StateWordOnly(dev)
-    assert_matches_oracle(dev, record, (LG_AC_LAYOUT,), defects)
+    assert_matches_oracle(dev, record, (LG_AC_LAYOUT,), defects, previous=previous)
 
 
 @pytest.mark.parametrize("record", oracle_params("LG"))
 def test_matches_c_library(record):
     assert_matches(device(record["model"]), record)
+
+
+@pytest.mark.parametrize("record, states", sequence_params("LG"))
+def test_sequence_matches_a_persistent_c_object(record, states):
+    # The swing toggle word depends on the message before, but the 0.1.7
+    # glue never passes swing on (SWING_TOGGLE), so this cannot catch a
+    # wrong toggle: it checks that nothing else depends on the message before.
+    dev = device(record["model"])
+    previous = None
+    for rec in c_sequence(record, states):
+        assert_matches(dev, rec, previous=previous)
+        previous = state_from_record(dev, rec["state"])
 
 
 def test_oracle_covers_both_variants():

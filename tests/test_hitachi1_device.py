@@ -1,7 +1,14 @@
 import pytest
 
 from oracle import load_oracle
-from port_oracle import Defect, assert_matches_oracle, oracle_params, state_from_record
+from port_oracle import (
+    Defect,
+    assert_matches_oracle,
+    assert_sequence_matches_c,
+    oracle_params,
+    sequence_params,
+    state_from_record,
+)
 from pyhvac import registry
 from pyhvac.plugins.hitachi import (
     HITACHI1_LAYOUT,
@@ -50,6 +57,13 @@ def _device_for(record):
 def test_matches_c_library(record):
     dev = _device_for(record)
     assert_matches_oracle(dev, record, dev.LAYOUTS, DEFECTS)
+
+
+@pytest.mark.parametrize("record, states", sequence_params("HITACHI_AC1"))
+def test_sequence_matches_a_persistent_c_object(record, states):
+    # Power and swing toggles depend on the message before, which C's IRac keeps.
+    dev = _device_for(record)
+    assert_sequence_matches_c(dev, record, states, dev.LAYOUTS, DEFECTS)
 
 
 def test_oracle_covers_both_variants():

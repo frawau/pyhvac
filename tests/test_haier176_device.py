@@ -33,7 +33,7 @@ def device_for(record):
 def with_hswing(record):
     # A record without "hswing" leaves IRac's swingh at kOff, which
     # IRHaierAC176::convertSwingH maps to its default, SwingHMiddle: canonical
-    # "3" (checked against the C path in cpath_check.py). The port has no
+    # "3" (the oracle records match only so). The port has no
     # "off" swing_h (the legacy entity has none), so the record is read as
     # "middle".
     if "hswing" in record["state"]:

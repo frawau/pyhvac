@@ -1,7 +1,14 @@
 import pytest
 
 from oracle import load_oracle
-from port_oracle import Defect, assert_matches_oracle, oracle_params, state_from_record
+from port_oracle import (
+    Defect,
+    assert_matches_oracle,
+    assert_sequence_matches_c,
+    oracle_params,
+    sequence_params,
+    state_from_record,
+)
 from pyhvac import registry
 from pyhvac.plugins.panasonic import (
     PANASONIC_AC32_HIGH_LAYOUT,
@@ -58,6 +65,13 @@ def read(state, previous=None):
 def test_matches_c_library(record):
     dev = device(record["model"])
     assert_matches_oracle(dev, record, dev.LAYOUTS, DEFECTS)
+
+
+@pytest.mark.parametrize("record, states", sequence_params("PANASONIC_AC32"))
+def test_sequence_matches_a_persistent_c_object(record, states):
+    # The power toggle depends on the message before, which C's IRac keeps.
+    dev = device(record["model"])
+    assert_sequence_matches_c(dev, record, states, dev.LAYOUTS, DEFECTS)
 
 
 def test_layout_round_trips_every_oracle_state():
@@ -195,7 +209,7 @@ def test_power_toggle_without_previous_is_the_target_power():
 )
 def test_power_toggle_with_previous_toggles_on_change(before, after, toggle):
     # As the C path from a persistent IRac: handleToggles XORs the power
-    # for PANASONIC_AC32 (checked in cpath_check.py).
+    # for PANASONIC_AC32 (test_sequence_matches_a_persistent_c_object).
     previous = HvacState(before, "cool", 22.0)
     target = HvacState(after, "cool", 22.0)
     assert read(target, previous)["power_toggle"] is toggle

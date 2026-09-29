@@ -1,7 +1,14 @@
 import pytest
 
 from oracle import load_oracle
-from port_oracle import Defect, assert_matches_oracle, oracle_params, state_from_record
+from port_oracle import (
+    Defect,
+    assert_matches_oracle,
+    assert_sequence_matches_c,
+    oracle_params,
+    sequence_params,
+    state_from_record,
+)
 from pyhvac import registry
 from pyhvac.fields import Sum8
 from pyhvac.ir.codec import decode
@@ -73,6 +80,13 @@ def read(state, previous=None, variant="DKE"):
 def test_matches_c_library(record):
     dev = device_for(record)
     assert_matches_oracle(dev, record, dev.LAYOUTS, DEFECTS)
+
+
+@pytest.mark.parametrize("record, states", sequence_params("PANASONIC_AC"))
+def test_sequence_matches_a_persistent_c_object(record, states):
+    # The CKP power toggle depends on the message before, which C's IRac keeps.
+    dev = device_for(record)
+    assert_sequence_matches_c(dev, record, states, dev.LAYOUTS, DEFECTS)
 
 
 def test_oracle_covers_every_variant():
@@ -346,9 +360,8 @@ def test_real_capture_decodes():
 
 
 def test_ckp_power_toggles_only_on_a_change():
-    # IRac::handleToggles: for kPanasonicCkp, power = desired ^ prev->power.
-    # (Checked against the C path, the old object sending twice, in
-    # cpath_check.py.)
+    # IRac::handleToggles: for kPanasonicCkp, power = desired ^ prev->power
+    # (test_sequence_matches_a_persistent_c_object checks it against C).
     on, off = HvacState(True, "cool", 22.0), HvacState(False, "cool", 22.0)
     assert read(on, previous=off, variant="CKP")["power"] == 1
     assert read(off, previous=on, variant="CKP")["power"] == 1

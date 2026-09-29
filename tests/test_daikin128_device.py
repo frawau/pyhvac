@@ -1,7 +1,14 @@
 import pytest
 
 from oracle import load_oracle
-from port_oracle import Defect, assert_matches_oracle, oracle_params, state_from_record
+from port_oracle import (
+    Defect,
+    assert_matches_oracle,
+    assert_sequence_matches_c,
+    oracle_params,
+    sequence_params,
+    state_from_record,
+)
 from pyhvac import registry
 from pyhvac.plugins.daikin import (
     DAIKIN128_FIRST,
@@ -43,6 +50,13 @@ def off(mode="cool", temperature=24.0, **kw):
 def test_matches_c_library(record):
     dev = device()
     assert_matches_oracle(dev, record, dev.LAYOUTS, DEFECTS)
+
+
+@pytest.mark.parametrize("record, states", sequence_params("DAIKIN128"))
+def test_sequence_matches_a_persistent_c_object(record, states):
+    # Power and swing toggles depend on the message before, which C's IRac keeps.
+    dev = device()
+    assert_sequence_matches_c(dev, record, states, dev.LAYOUTS, DEFECTS)
 
 
 def test_layouts_round_trip_every_oracle_state():

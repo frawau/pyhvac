@@ -1,7 +1,14 @@
 import pytest
 
 from oracle import load_oracle
-from port_oracle import Defect, assert_matches_oracle, oracle_params, state_from_record
+from port_oracle import (
+    Defect,
+    assert_matches_oracle,
+    assert_sequence_matches_c,
+    oracle_params,
+    sequence_params,
+    state_from_record,
+)
 from pyhvac import registry
 from pyhvac.ir.codec import decode
 from pyhvac.plugins.hitachi import (
@@ -27,8 +34,8 @@ def device():
 def with_hswing(record):
     # A record without "hswing" leaves IRac's swingh at kOff, which
     # IRHitachiAc344::convertSwingH maps to its default, Middle: canonical "3"
-    # (checked against the C path in cpath_check.py). The port has no "off"
-    # swing_h (the legacy entity has none), so the record is read as "middle".
+    # (the oracle records match only so). The port has no "off" swing_h (the
+    # legacy entity has none), so the record is read as "middle".
     if "hswing" in record["state"]:
         return record
     return {**record, "state": {**record["state"], "hswing": "middle"}}
@@ -46,6 +53,17 @@ def read(state, previous=None):
 def test_matches_c_library(record):
     dev = device()
     assert_matches_oracle(dev, with_hswing(record), dev.LAYOUTS, DEFECTS)
+
+
+@pytest.mark.parametrize("record, states", sequence_params("HITACHI_AC344"))
+def test_sequence_matches_a_persistent_c_object(record, states):
+    # The swing button depends on the message before, but the 0.1.7 glue
+    # never passes swing on (DEFECTS), so this cannot catch a wrong swing
+    # toggle: it checks that no other field depends on the message before.
+    dev = device()
+    assert_sequence_matches_c(
+        dev, record, states, dev.LAYOUTS, DEFECTS, adapt=with_hswing
+    )
 
 
 def test_layout_round_trips_every_oracle_state():

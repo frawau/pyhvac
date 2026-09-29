@@ -1,7 +1,16 @@
+import dataclasses
+
 import pytest
 
 from oracle import load_oracle
-from port_oracle import Defect, assert_matches_oracle, oracle_params, state_from_record
+from port_oracle import (
+    Defect,
+    assert_matches_oracle,
+    c_sequence,
+    oracle_params,
+    sequence_params,
+    state_from_record,
+)
 from pyhvac import registry
 from pyhvac.ir.codec import DecodeError, decode
 from pyhvac.plugins.lg import (
@@ -45,6 +54,10 @@ DEFECTS = (
 # command): AKB74955603's swing "2" (60°), which C turns into
 # kLgAcSwingVOff and so never sends.
 C_DROPS = {("2", "swing_v_high")}
+# ... unless C's previous swing was another position: then it sends Off.
+SWING_60_AFTER_SWING = (
+    Defect("command", "swing_v_high", "swing_v_off", "C sends Off for 60°"),
+)
 
 # Real captures (ir_LG_test.cpp).
 ISSUE_548 = 0x880094D  # TestDecodeLG2.RealLG2Example: cool, 24 C, fan max
@@ -114,15 +127,51 @@ class AsC:
         ]
 
 
-def check(record, defects=DEFECTS, drops=C_DROPS):
+def check(record, defects=DEFECTS, drops=C_DROPS, previous=None):
     dev = AsC(device(variant_of(record)), drops)
     state = state_from_record(dev, record["state"])
-    assert_matches_oracle(dev, record, layouts(dev.frames(None, state, ())), defects)
+    assert_matches_oracle(
+        dev,
+        record,
+        layouts(dev.frames(previous, state, ())),
+        defects,
+        previous=previous,
+    )
 
 
 @pytest.mark.parametrize("record", oracle_params("LG2"))
 def test_matches_c_library(record):
     check(record)
+
+
+@pytest.mark.parametrize("record, states", sequence_params("LG2"))
+def test_sequence_matches_a_persistent_c_object(record, states):
+    # The swing words depend on the message before, which C's IRac keeps.
+    variant = variant_of(record)
+    dev = device(variant)
+    previous = None
+    for rec in c_sequence(record, states):
+        state = state_from_record(dev, rec["state"])
+        if variant == V3 and previous is not None:
+            # previous only decides the swing_h word (the last one): C sends
+            # it every time (stale _swingh_prev), the port only on a change
+            # (see Lg2Device). Nothing else may depend on it.
+            fresh = dev.frames(None, state, ())
+            ours = dev.frames(previous, state, ())
+            kept = previous.swing_h != state.swing_h or not state.power
+            assert ours == (fresh if kept else fresh[:-1]), rec["state"]
+            check(rec)
+        elif previous is not None and previous.swing_v != "off":
+            # C turns 60° into kLgAcSwingVOff: after another swing, where
+            # the port sends swing_v_high, C sends the Off word.
+            check(rec, DEFECTS + SWING_60_AFTER_SWING, drops=(), previous=previous)
+        else:
+            check(rec, previous=previous)
+        previous = state
+        if variant == V2 and state.swing_v == "2":
+            # ... and C's previous swing after 60° is off (C_DROPS), so a
+            # change from "2" to "off" sends no word.
+            previous = dataclasses.replace(state, swing_v="off")
 
 
 def test_every_oracle_record_is_served_by_its_variant():

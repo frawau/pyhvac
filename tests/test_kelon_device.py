@@ -1,7 +1,14 @@
 import pytest
 
 from oracle import load_oracle
-from port_oracle import Defect, assert_matches_oracle, oracle_params, state_from_record
+from port_oracle import (
+    Defect,
+    assert_matches_oracle,
+    assert_sequence_matches_c,
+    oracle_params,
+    sequence_params,
+    state_from_record,
+)
 from pyhvac import registry
 from pyhvac.plugins.kelon import KELON_LAYOUT, KELON_MODELS, KelonDevice
 from pyhvac.state import HvacState
@@ -41,6 +48,13 @@ def read(target, previous=None):
 def test_matches_c_library(record):
     dev = device()
     assert_matches_oracle(dev, record, dev.LAYOUTS, DEFECTS)
+
+
+@pytest.mark.parametrize("record, states", sequence_params("KELON"))
+def test_sequence_matches_a_persistent_c_object(record, states):
+    # The power toggle depends on the message before, which C's IRac keeps.
+    dev = device()
+    assert_sequence_matches_c(dev, record, states, dev.LAYOUTS, DEFECTS)
 
 
 def test_layout_round_trips_every_oracle_state():
@@ -168,7 +182,7 @@ def test_power_toggle_without_previous_is_the_target_power():
 )
 def test_power_toggle_with_previous_toggles_on_change(before, after, toggle):
     # IRac::handleToggles' KELON rule (power ^ prev.power), which a persistent
-    # IRac applies; cpath_check.py confirms it against the C library.
+    # IRac applies (test_sequence_matches_a_persistent_c_object checks it).
     previous = state(before, "cool", 22.0)
     target = state(after, "cool", 22.0)
     assert read(target, previous)["power_toggle"] == toggle

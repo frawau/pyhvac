@@ -6,6 +6,7 @@ declared as a ``Defect``: a field where the C library is known to deviate
 from the documented protocol.
 """
 
+import importlib
 from dataclasses import dataclass
 
 import pytest
@@ -64,15 +65,16 @@ def oracle_params(name):
     ]
 
 
-def assert_matches_oracle(device, record, layouts, defects=()):
+def assert_matches_oracle(device, record, layouts, defects=(), previous=None):
     """Assert the port reproduces ``record``.
 
     ``layouts`` gives one Layout (or None for bitless frames) per frame of the
     message, in order. Frames must be byte-identical, except for fields listed
-    in ``defects`` (and the checksums they change).
+    in ``defects`` (and the checksums they change). ``previous`` is the port's
+    previous state (None: a fresh C object, as the fixtures were recorded).
     """
     state = state_from_record(device, record["state"])
-    ours = device.frames(None, state, ())
+    ours = device.frames(previous, state, ())
     names = [f.section for f in ours]
     theirs = decode(device.PROTOCOL, record["pulses"], expected=names)
     assert len(layouts) == len(ours), "one layout (or None) per frame is required"
@@ -101,3 +103,60 @@ def assert_matches_oracle(device, record, layouts, defects=()):
         deviated = True
     if not deviated:
         check_against_oracle(device.PROTOCOL, record, ours)
+
+
+def c_sequence(record, states):
+    """C-gated: the records one persistent legacy (C) object produces for
+    ``states`` (old vocabulary), sent in order. IRac keeps the last message
+    sent (its _prev), so toggle protocols toggle as on a real remote.
+
+    ``record`` is an oracle record naming the legacy plugin and class.
+    """
+    pytest.importorskip("pyhvac.irhvac")
+    module = importlib.import_module(f"pyhvac.plugins.{record['plugin']}")
+    cls = getattr(module, record["class"])
+    legacy = cls()
+    status = dict(legacy.status)
+    out = []
+    for old in states:
+        # Only IRac's memory of the last message sent carries over: the
+        # glue's status and IRac's next state (which keep keys a state does
+        # not mention) start fresh, as for a new object.
+        legacy.status = dict(status)
+        legacy.irac.next = cls().irac.next
+        # Bypass the setters, as tools/oracle_generate.py does.
+        legacy.to_set = dict(old)
+        pulses = [int(x) for x in legacy.to_lirc(legacy.build_ircode())]
+        out.append({**record, "state": old, "pulses": pulses})
+    return out
+
+
+def assert_sequence_matches_c(
+    device, record, states, layouts, defects=(), adapt=lambda rec: rec
+):
+    """Send ``states`` in order through one persistent C object and through
+    the port, each message with the one before it as ``previous``; every
+    message must match (see ``assert_matches_oracle``). ``adapt`` maps each
+    C record to the one the port is compared against (as the test's
+    oracle comparison does)."""
+    previous = None
+    for rec in c_sequence(record, states):
+        rec = adapt(rec)
+        assert_matches_oracle(device, rec, layouts, defects, previous=previous)
+        previous = state_from_record(device, rec["state"])
+
+
+def sequence_params(name):
+    """pytest params, one per legacy class of fixture ``name``: the class's
+    first record and its old-vocabulary states in order and then back.
+    Consecutive grid states differ in a key or two, so every toggle gets
+    exercised both ways."""
+    by_class = {}
+    for rec in load_oracle(name):
+        by_class.setdefault(rec["class"], []).append(rec)
+    return [
+        pytest.param(
+            recs[0], [r["state"] for r in recs + recs[::-1]], id=f"{name}-{cls}"
+        )
+        for cls, recs in by_class.items()
+    ]

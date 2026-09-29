@@ -271,8 +271,8 @@ def with_hswing(record):
     # A record without "hswing" leaves IRac's swingh at kOff, which
     # convertSwingH sends as kHaierAcYrw02SwingHMiddle (0). The legacy entity
     # has no "off" swing_h; its "middle" (canonical "3") is the value the C
-    # path sends as 0, so the record is read as "middle" (checked against
-    # the C path in cpath_check.py).
+    # path sends as 0, so the record is read as "middle" (the oracle records
+    # match only so).
     if "hswing" in record["state"]:
         return record
     return {**record, "state": {**record["state"], "hswing": "middle"}}

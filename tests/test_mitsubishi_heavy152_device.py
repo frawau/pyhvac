@@ -45,7 +45,7 @@ def with_hswing(record):
     # convertSwingH sends as kMitsubishiHeavy152SwingHOff (8). The legacy
     # entity has no "off" swing_h; its "wide" (canonical "6") is the value
     # the C path sends as 8 (convertSwingH has no kWide case), so the record
-    # is read as "wide" (checked against the C path in cpath_check.py).
+    # is read as "wide" (the oracle records match only so).
     if "hswing" in record["state"]:
         return record
     return {**record, "state": {**record["state"], "hswing": "wide"}}

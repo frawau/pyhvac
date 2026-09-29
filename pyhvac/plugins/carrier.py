@@ -27,7 +27,7 @@
 from dataclasses import dataclass
 
 from .hvaclib import PulseBased, GenPluginObject
-from .toshiba import Toshiba
+from .toshiba import TOSHIBA_AC_CARRIER_MODELS, Toshiba, ToshibaAcDevice
 from ..device import Device
 from ..fields import Checksum, Field, Layout
 from ..ir.model import Frame, Protocol, PulseDistance, Section
@@ -184,6 +184,7 @@ CARRIER_AC64_MODELS = (
 
 
 DEVICES.update({m: CarrierAc64Device for m in CARRIER_AC64_MODELS})
+DEVICES.update({m: ToshibaAcDevice for m in TOSHIBA_AC_CARRIER_MODELS})
 
 
 # Now the match between models and objects

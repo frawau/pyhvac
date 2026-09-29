@@ -462,6 +462,139 @@ MITSUBISHI136_MODELS = (
 DEVICES.update({m: Mitsubishi136Device for m in MITSUBISHI136_MODELS})
 
 
+# ----------------------------------------------------------- Mitsubishi112
+# Layout from IRremoteESP8266's Mitsubishi112Protocol (ir_Mitsubishi.h): 14
+# bytes sent LSB first in one frame (sendMitsubishi112 -> sendGeneric with
+# MSBfirst false), closed by a sum of bytes 0-12 (IRMitsubishi112::checksum
+# uses IRTcl112Ac::calcChecksum; byte 3 is never 0x02, so no offset).
+
+MITSUBISHI112 = Protocol(
+    "mitsubishi112",
+    {
+        "main": Section(
+            PulseDistance(450, 385, 1250),  # kMitsubishi112BitMark/Zero/OneSpace
+            header=(3450, 1696),  # kMitsubishi112HdrMark/HdrSpace
+            footer=(450,),
+            gap=100000,  # kMitsubishi112Gap (kDefaultMessageGap)
+        ),
+    },
+    carrier=38000,  # sendGeneric(..., 38, ...)
+)
+
+MITSUBISHI112_MODE = {  # kMitsubishi112*, as convertMode (no fan-only mode)
+    "auto": 0b111,
+    "cool": 0b011,
+    "heat": 0b001,
+    "dry": 0b010,
+}
+MITSUBISHI112_FAN = {  # canonical fan -> kMitsubishi112Fan*, as convertFan
+    "1": 0b010,  # lowest: kMitsubishi112FanMin (= kMitsubishi112FanQuiet)
+    "2": 0b011,  # kMitsubishi112FanLow
+    "3": 0b101,  # kMitsubishi112FanMed
+    "4": 0b000,  # highest: kMitsubishi112FanMax
+}
+MITSUBISHI112_SWING_V = {  # kMitsubishi112SwingV*; the header has no "off"
+    "auto": 0b111,
+    "off": 0b111,  # as the C path: convertSwingV maps kOff to auto
+    "1": 0b001,  # highest
+    "2": 0b010,  # high
+    "3": 0b011,  # middle
+    "4": 0b100,  # low
+    "5": 0b101,  # lowest
+}
+MITSUBISHI112_SWING_H = {  # kMitsubishi112SwingH*, as convertSwingH
+    "auto": 0b1100,
+    "1": 0b0001,  # far left: kMitsubishi112SwingHLeftMax
+    "2": 0b0010,  # left
+    "3": 0b0011,  # middle
+    "4": 0b0100,  # right
+    "5": 0b0101,  # far right: kMitsubishi112SwingHRightMax
+    "6": 0b1000,  # wide
+}
+MITSUBISHI112_MAX_TEMP = 31  # kMitsubishiAcMaxTemp: Temp holds 31 - setpoint
+
+# Skeleton: IRMitsubishi112::stateReset (kReset, byte 13 zero-initialised),
+# which writes every byte, so no padding bit comes from stale memory.
+MITSUBISHI112_LAYOUT = Layout(
+    bytes.fromhex("23cb260100240308100000003000"),
+    {
+        "power": Field.at(5, 2, 1),
+        "mode": Field.at(6, 0, 3, values=MITSUBISHI112_MODE),
+        "temperature": Field.at(7, 0, 4),  # 31 - whole °C
+        "fan": Field.at(8, 0, 3, values=MITSUBISHI112_FAN),
+        "swing_v": Field.at(8, 3, 3, values=MITSUBISHI112_SWING_V),
+        "swing_h": Field.at(12, 2, 4, values=MITSUBISHI112_SWING_H),
+    },
+    checksum=Sum8(0, 13, 13),
+)
+
+
+class Mitsubishi112Device(Device):
+    """Mitsubishi112 (KPOA remote): a full-state protocol, ``previous`` is
+    ignored (no toggle bits; IRac::handleToggles has no MITSUBISHI112 case).
+
+    Quiet has no bit of its own: as IRMitsubishi112::setQuiet, it sends
+    kMitsubishi112FanQuiet (= kMitsubishi112FanMin) whatever the fan.
+    """
+
+    PROTOCOL = MITSUBISHI112
+    LAYOUTS = (MITSUBISHI112_LAYOUT,)
+    capabilities = Capabilities(
+        modes=("auto", "cool", "dry", "heat"),
+        temperature=TemperatureRange(16.0, 25.0),
+        fan=Choice(
+            ("1", "2", "3", "4"),
+            {"1": "lowest", "2": "low", "3": "medium", "4": "highest"},
+        ),
+        swing_v=Choice(
+            ("off", "auto", "1", "2", "3", "4", "5"),
+            {
+                "off": "off",
+                "auto": "auto",
+                "1": "90°",
+                "2": "60°",
+                "3": "45°",
+                "4": "30°",
+                "5": "0°",
+            },
+        ),
+        swing_h=Choice(
+            ("auto", "1", "2", "3", "4", "5", "6"),
+            {
+                "auto": "auto",
+                "1": "far left",
+                "2": "left",
+                "3": "middle",
+                "4": "right",
+                "5": "far right",
+                "6": "wide",
+            },
+        ),
+        features={"quiet": Choice((False, True), {False: "off", True: "on"})},
+    )
+
+    def frames(self, previous, target, actions):
+        # As the C path: an off message carries mode auto (IRac passes mode
+        # "off", which convertMode maps to auto) and the setpoint as given.
+        # Quiet overrides the fan (setQuiet runs after setFan).
+        fan = "1" if target.features["quiet"] else target.fan
+        data = MITSUBISHI112_LAYOUT.build(
+            power=target.power,
+            mode=target.mode if target.power else "auto",
+            temperature=MITSUBISHI112_MAX_TEMP - int(target.temperature),
+            fan=fan,
+            swing_v=target.swing_v,
+            swing_h=target.swing_h,
+        )
+        return [Frame("main", bytes(data))]
+
+
+MITSUBISHI112_MODELS = ("MSH-A24WV", "MUH-A24WV", "KPOA remote", "generic 112")
+
+
+DEVICES.update({m: Mitsubishi112Device for m in MITSUBISHI112_MODELS})
+
+
 # Now the match between models and objects
 class PluginObject(GenPluginObject):
     MODELS = {

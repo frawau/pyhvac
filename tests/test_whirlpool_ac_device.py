@@ -194,23 +194,7 @@ def test_states_beyond_the_oracle_grid_match_the_c_path(model):
 def _glue_fixed_c(model, cls_name, target):
     """C's bytes for ``target`` with sleep and swing "on" set on IRac
     directly (the two keys the legacy glue drops); frozen."""
-
-    def live():
-        from pyhvac import irhvac
-        from pyhvac.legacy import LegacyDevice
-        from pyhvac.plugins import whirlpool
-
-        cls = getattr(whirlpool, cls_name)
-        legacy = cls()
-        old = LegacyDevice("whirlpool", model, cls).to_old(target)
-        legacy.to_set = {k: v for k, v in old.items() if k not in ("swing", "sleep")}
-        legacy.irac.next.sleep = 0 if target.features["sleep"] else -1
-        legacy.irac.next.swingv = (
-            irhvac.swingv_t_kAuto if target.swing_v == "swing" else irhvac.swingv_t_kOff
-        )
-        return [int(x) for x in legacy.to_lirc(legacy.build_ircode())]
-
-    return c_data(c_frozen(["glue fixed", model, target], live))
+    return c_data(c_frozen(["glue fixed", model, target]))
 
 
 @pytest.mark.parametrize("model", [V1, V2])

@@ -373,23 +373,9 @@ def test_swing_and_sleep_match_c_with_the_glue_bypassed():
     # With swing and sleep set on IRac directly (the glue drops them), C
     # sets the Swing and Sleep bits exactly as the port does.
 
-    def live(swing, sleep):
-        from pyhvac import irhvac
-        from pyhvac.protocols.technibel import Technibel
-
-        legacy = Technibel()
-        legacy.irac.next.swingv = (
-            irhvac.swingv_t_kAuto if swing == "swing" else irhvac.swingv_t_kOff
-        )
-        legacy.irac.next.sleep = 0 if sleep else -1
-        legacy.to_set = {"mode": "heat", "temperature": 24, "fan": "high"}
-        return [int(x) for x in legacy.to_lirc(legacy.build_ircode())]
-
     for swing in ("off", "swing"):
         for sleep in (False, True):
-            pulses = c_frozen(
-                ["glue bypassed", swing, sleep], lambda: live(swing, sleep)
-            )
+            pulses = c_frozen(["glue bypassed", swing, sleep])
             if len(pulses) % 2:
                 pulses.append(100000)
             target = on("heat", 24.0, fan="3", swing=swing, sleep=sleep)

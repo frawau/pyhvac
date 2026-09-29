@@ -215,15 +215,7 @@ def test_previous_is_ignored(previous):
 def test_c_path_turns_irac_sleep_into_a_bool(sleep, bit):
     # IRac::eurom's bool sleep: IRac's "off" (-1) sends kEuromSleepEnabled,
     # and sleep from minute 0 sends it disabled.
-    def live():
-        from pyhvac.protocols.eurom import Eurom
-
-        legacy = Eurom()
-        legacy.irac.next.sleep = sleep
-        legacy.to_set = {"mode": "cool", "temperature": 24, "fan": "low"}
-        return [int(x) for x in legacy.to_lirc(legacy.build_ircode())]
-
-    pulses = c_frozen(["irac sleep", sleep], live)
+    pulses = c_frozen(["irac sleep", sleep])
     (main,) = decode(EUROM, pulses, ["main"])
     assert EUROM_LAYOUT.read(main.data)["sleep"] == bit
 

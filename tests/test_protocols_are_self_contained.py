@@ -10,7 +10,7 @@ DEVICES = {
 
 
 def test_native_devices_do_not_read_legacy_classes():
-    root = Path(__file__).resolve().parents[1] / "pyhvac" / "plugins"
+    root = Path(__file__).resolve().parents[1] / "pyhvac" / "protocols"
     for name, device in DEVICES.items():
         tree = ast.parse((root / name).read_text())
         cls = next(

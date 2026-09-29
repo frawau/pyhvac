@@ -113,64 +113,7 @@ def read(state, previous=None):
 def c_raws(states):
     """The AirwellProtocol words C built for ``states`` sent in order through
     one legacy object; frozen in tests/fixtures/oracle_extra."""
-    return c_frozen(["c_raws", states], lambda: _c_raws_live(states))
-
-
-def _c_raws_live(states):
-    """C-gated: the AirwellProtocol word the C path builds for each
-    old-vocabulary state, sent in order through one legacy Airwell object
-    (its IRac keeps the last message sent, as in c_sequence)."""
-    from pyhvac import irhvac
-    import ctypes
-
-    from pyhvac.protocols.airwell import Airwell
-
-    lib = ctypes.CDLL(irhvac._irhvac.__file__)
-    ctor = lib._ZN11IRAirwellAcC1Etbb  # IRAirwellAc(pin, inverted, modulation)
-    ctor.argtypes = [ctypes.c_void_p, ctypes.c_uint16, ctypes.c_bool, ctypes.c_bool]
-    ctor.restype = None
-    # IRac::airwell(IRAirwellAc*, on, opmode_t, degrees, fanspeed_t)
-    airwell = lib._ZN4IRac7airwellEP11IRAirwellAcbN5stdAc8opmode_tEfNS2_10fanspeed_tE
-    airwell.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_bool,
-        ctypes.c_int,
-        ctypes.c_float,
-        ctypes.c_int,
-    ]
-    airwell.restype = None
-    get_raw = lib._ZNK11IRAirwellAc6getRawEv
-    get_raw.argtypes = [ctypes.c_void_p]
-    get_raw.restype = ctypes.c_uint64
-
-    legacy = Airwell()
-    status = dict(legacy.status)
-    out = []
-    for old in states:
-        legacy.status = dict(status)
-        legacy.irac.next = Airwell().irac.next
-        prev = legacy.irac.getStatePrev()
-        legacy.to_set = dict(old)
-        legacy.build_ircode()  # sends: IRac's _prev becomes this message
-        send = irhvac.IRac.handleToggles(
-            irhvac.IRac.cleanState(legacy.irac.getState()), prev
-        )
-        # The library is built with UNIT_TEST: IRAirwellAc holds an
-        # IRsendTest of about 110 kB.
-        ac = ctypes.create_string_buffer(1 << 20)
-        ctor(ac, 4, False, True)
-        airwell(
-            int(legacy.irac.this),
-            ac,
-            send.power,
-            send.mode,
-            send.degrees,
-            send.fanspeed,
-        )
-        legacy.irac.resetTiming()
-        out.append(get_raw(ac))
-    return out
+    return c_frozen(["c_raws", states])
 
 
 # ------------------------------------------------------------- acceptance

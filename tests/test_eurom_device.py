@@ -215,16 +215,6 @@ def test_registry_serves_the_port(model):
     assert isinstance(registry.get_device("eurom", model), EuromDevice)
 
 
-@pytest.mark.parametrize("model", EUROM_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.eurom import Eurom
-
-    legacy = LegacyDevice("eurom", model, Eurom)
-    assert device(model).capabilities == legacy.capabilities
-
-
 @pytest.mark.parametrize("sleep, bit", [(-1, 1), (0, 0), (30, 1)])
 def test_c_path_turns_irac_sleep_into_a_bool(sleep, bit):
     # IRac::eurom's bool sleep: IRac's "off" (-1) sends kEuromSleepEnabled,
@@ -268,3 +258,15 @@ def test_layouts_must_cover_every_frame():
     record = load_oracle("EUROM")[0]
     with pytest.raises(AssertionError, match="layout"):
         assert_matches_oracle(dev, record, (), DEFECTS)
+
+
+def test_capabilities_are_the_headers():
+    # ir_Eurom.h: kEuromMinTempC/MaxTempC 16-32; kEuromFan{Low,Med,High} (no
+    # auto); kEuromCool/Heat/Dehumidify/Ventilate; kEuromSwingOn;
+    # kEuromSleepEnabled.
+    caps = device().capabilities
+    assert set(caps.modes) == {"cool", "heat", "fan", "dry"}
+    assert (caps.temperature.min, caps.temperature.max) == (16.0, 32.0)
+    assert caps.fan.values == ("1", "2", "3")
+    assert caps.swing_v.values == ("off", "swing")
+    assert set(caps.features) == {"sleep"}

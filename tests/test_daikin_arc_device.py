@@ -104,19 +104,35 @@ def test_swing_sends_the_documented_value():
     assert data[8] & 0x0F == 0xF and data[9] & 0x0F == 0xF
 
 
+# IRDaikinESP::setFan: kDaikinFanAuto (0xA), kDaikinFanQuiet (0xB), and
+# kDaikinFanMin (1) .. kDaikinFanMax (5) sent as the speed plus 2.
+@pytest.mark.parametrize(
+    "fan,raw",
+    [("auto", 0xA), ("1", 0xB), ("2", 3), ("3", 4), ("4", 5), ("5", 6), ("6", 7)],
+)
+def test_every_fan_step_uses_its_documented_value(fan, raw):
+    dev = device()
+    state = dev.normalise(HvacState(True, "cool", 24.0, fan=fan))
+    assert state.fan == fan
+    data = dev.frames(None, state, ())[3].data
+    assert DAIKIN_ARC_THIRD.read_raw(data, "fan") == raw
+
+
+def test_old_fan_labels_are_the_speeds_the_c_path_sent():
+    # IRDaikinESP::convertFan: kLow -> kDaikinFanMin, kMedium -> kDaikinFanMed,
+    # kHigh -> kDaikinFanMax - 1; kMin (quiet) is the slowest step.
+    labels = device().capabilities.fan.labels
+    assert (labels["1"], labels["2"], labels["4"], labels["5"]) == (
+        "quiet",
+        "low",
+        "medium",
+        "high",
+    )
+
+
 def test_registry_serves_the_port():
     for model in DAIKIN_ARC_MODELS:
         assert isinstance(registry.get_device("daikin", model), DaikinArcDevice)
-
-
-def test_capabilities_match_the_legacy_entity():
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.daikin import Daikin
-
-    for model in DAIKIN_ARC_MODELS:
-        legacy = LegacyDevice("daikin", model, Daikin)
-        assert DaikinArcDevice("daikin", model).capabilities == legacy.capabilities
 
 
 def test_undeclared_deviation_is_reported():

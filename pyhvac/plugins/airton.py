@@ -124,8 +124,11 @@ class AirtonDevice(Device):
     - economy is sent in cool only (setEcono);
     - powerful sets Turbo and forces the fan to kAirtonFanMax (setTurbo);
     - purifier is the Health bit;
-    - Sleep stays clear (the entity has no sleep), and quiet sends nothing
-      ("No Quiet setting available").
+    - sleep is the Sleep bit, cleared in auto and fan (setSleep: "Sleep not
+      available in fan or auto mode"), and so in off messages too.
+
+    The setpoint is kAirtonMinTemp..kAirtonMaxTemp (16-31 °C). Quiet is not
+    offered: the header has no quiet bit ("No Quiet setting available").
 
     The real light captures in ir_Airton_test.cpp clear NotAutoOn and set
     the unknown bit 5.3 in cool and dry; the port follows the C path there.
@@ -140,15 +143,15 @@ class AirtonDevice(Device):
     LAYOUTS = (AIRTON_LAYOUT,)
     capabilities = Capabilities(
         modes=("auto", "cool", "fan", "dry", "heat"),
-        temperature=TemperatureRange(16.0, 25.0),
+        temperature=TemperatureRange(16.0, 31.0),  # kAirtonMinTemp..MaxTemp
         fan=FAN_5,
         swing_v=SWING,
         features={
             "purifier": ON_OFF,
             "powerful": ON_OFF,
-            "quiet": ON_OFF,
             "economy": ON_OFF,
             "light": ON_OFF,
+            "sleep": ON_OFF,
         },
     )
 
@@ -167,6 +170,8 @@ class AirtonDevice(Device):
             ),
             swing_v=target.swing_v != "off",
             econo=features["economy"] and mode == "cool",
+            # IRAirtonAc::setSleep: not available in fan or auto mode.
+            sleep=features.get("sleep", False) and mode not in ("auto", "fan"),
             not_auto_on=mode != "auto" or not power,
             heat_on=mode == "heat" and power,
             health=features["purifier"],

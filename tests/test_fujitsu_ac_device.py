@@ -377,6 +377,75 @@ def test_setpoint_encoding(variant, t):
     assert raw == ((t - 8) * 2 if variant == "ARREW4E" else (t - 16) * 4)
 
 
+@pytest.mark.parametrize("tenths", range(160, 301, 5))
+def test_arrew4e_setpoint_has_half_degrees(tenths):
+    # IRFujitsuAC::setTemp for ARREW4E: Temp = (C - kFujitsuAcTempOffsetC / 2)
+    # * 2, so every half degree from kFujitsuAcMinTemp to kFujitsuAcMaxTemp.
+    t = tenths / 10
+    target = state("ARREW4E", temperature=t)
+    assert target.temperature == t
+    assert read("ARREW4E", target)["temp"] == round((t - 8) * 2)
+
+
+def test_arrew4e_half_degree_is_the_real_capture():
+    # TestIRFujitsuACClass.Temperature, arrew4e_25_5c (a real ARREW4E
+    # message, getTemp 25.5): its Temp field is the port's 25.5 C. The
+    # capture's timers and power bit are not what IRac sends.
+    capture = FUJITSU_AC_LONG_LAYOUT.read(ARREW4E_25_5)
+    ours = read("ARREW4E", state("ARREW4E", temperature=25.5))
+    assert ours["temp"] == capture["temp"] == 35
+    capture_18 = FUJITSU_AC_LONG_LAYOUT.read(ARREW4E_18)
+    assert read("ARREW4E", state("ARREW4E", temperature=18.0))["temp"] == (
+        capture_18["temp"]
+    )
+
+
+@pytest.mark.parametrize("variant", ["ARRAH2E", "ARDB1", "ARREB1E", "ARJW2", "ARRY4"])
+def test_other_variants_snap_to_whole_degrees(variant):
+    # Their Temp is (C - 16) * 4 and getTemp reads it back in whole degrees.
+    caps = device(variant).capabilities
+    assert caps.temperature.decimals == (0,)
+    assert state(variant, temperature=22.5).temperature == 22.0
+
+
+def test_arrew4e_half_degrees_match_the_c_path():
+    # The old glue passes the setpoint through; IRac::fujitsu's setTemp
+    # encodes the half degree.
+    pytest.importorskip("pyhvac.irhvac")
+    record = next(r for r in load_oracle("FUJITSU_AC") if r["class"] == "Fujitsuv6")
+    dev = AsC(device("ARREW4E"))
+    states = [
+        {"mode": mode, "temperature": t, "fan": "medium", "swing": "off"}
+        for mode in MODES
+        for t in (16.5, 22.5, 25.5, 29.5)
+    ]
+    for rec in c_sequence(record, states):
+        assert_matches_oracle(dev, rec, dev.layouts, DEFECTS)
+
+
+@pytest.mark.parametrize("variant", VARIANTS)
+def test_capabilities_are_the_documented_ones(variant):
+    caps = device(variant).capabilities
+    assert caps.modes == MODES
+    assert (caps.temperature.min, caps.temperature.max) == (16.0, 30.0)
+    # kFujitsuAcFanAuto, kFujitsuAcFanQuiet .. kFujitsuAcFanHigh
+    assert caps.fan.values == ("auto", "1", "2", "3", "4")
+    swing_v = variant not in ("ARDB1", "ARJW2")  # checkSum forces Swing off
+    swing_h = variant in ("ARRAH2E", "ARREW4E")  # setSwing: Horiz and Both
+    assert (caps.swing_v is not None, caps.swing_h is not None) == (swing_v, swing_h)
+    assert (
+        set(caps.features)
+        == {
+            "ARRAH2E": {"quiet"},
+            "ARDB1": {"quiet"},
+            "ARREB1E": {"powerful", "quiet", "economy"},
+            "ARJW2": {"quiet"},
+            "ARRY4": {"purifier", "quiet", "cleaning"},
+            "ARREW4E": {"powerful", "quiet", "economy"},
+        }[variant]
+    )
+
+
 @pytest.mark.parametrize(
     "variant, unknown, protocol",
     [
@@ -394,12 +463,12 @@ def test_long_code_constants_per_variant(variant, unknown, protocol):
 
 @pytest.mark.parametrize("variant", ["ARDB1", "ARJW2"])
 def test_ardb1_and_arjw2_send_15_bytes_and_never_swing(variant):
+    # IRFujitsuAC::checkSum forces kFujitsuAcSwingOff for these remotes, so
+    # they offer no swing; a swing passed anyway is dropped by normalise.
     caps = device(variant).capabilities
-    target = state(
-        variant,
-        swing_v="swing",
-        swing_h="swing" if caps.swing_h else "off",
-    )
+    assert caps.swing_v is None and caps.swing_h is None
+    target = state(variant, swing_v="swing", swing_h="swing")
+    assert (target.swing_v, target.swing_h) == ("off", "off")
     data = long_code(variant, target)
     assert len(data) == 15
     values = FUJITSU_AC_LONG15_LAYOUT.read(data)
@@ -453,19 +522,6 @@ def test_registry_serves_the_port(model):
     dev = registry.get_device("fujitsu", model)
     assert isinstance(dev, FujitsuAcDevice)
     assert dev.variant == FUJITSU_AC_VARIANT[model]
-
-
-@pytest.mark.parametrize("model", FUJITSU_AC_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins import fujitsu
-
-    legacy_class = fujitsu.PluginObject.MODELS[model]
-    legacy = LegacyDevice("fujitsu", model, legacy_class)
-    dev = FujitsuAcDevice("fujitsu", model)
-    assert LEGACY_CLASS[dev.variant] == legacy_class.__name__
-    assert dev.capabilities == legacy.capabilities
 
 
 @pytest.mark.parametrize("key", ["swing", "hswing"])

@@ -234,18 +234,19 @@ def test_registry_serves_the_port(model):
     assert isinstance(registry.get_device("bosch", model), Bosch144Device)
 
 
-@pytest.mark.parametrize("model", BOSCH144_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.bosch import Bosch
-
-    legacy = LegacyDevice("bosch", model, Bosch)
-    assert Bosch144Device("bosch", model).capabilities == legacy.capabilities
-
-
 def test_layouts_must_cover_every_frame():
     dev = device()
     record = wire(load_oracle("BOSCH144")[-1])
     with pytest.raises(AssertionError, match="layout"):
         assert_matches_oracle(dev, record, dev.OFF_LAYOUTS)
+
+
+def test_capabilities_are_the_headers():
+    # ir_Bosch.h: kBosch144CelsiusMin/Max 16-30; kBosch144Fan20..Fan100 and
+    # kBosch144FanAuto; kBosch144{Cool,Dry,Auto,Heat,Fan}; the Quiet bit.
+    caps = device().capabilities
+    assert set(caps.modes) == {"auto", "cool", "fan", "dry", "heat"}
+    assert (caps.temperature.min, caps.temperature.max) == (16.0, 30.0)
+    assert caps.fan.values == ("auto", "1", "2", "3", "4", "5")
+    assert (caps.swing_v, caps.swing_h) == (None, None)
+    assert set(caps.features) == {"quiet"}

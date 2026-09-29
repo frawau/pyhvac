@@ -29,8 +29,8 @@ from .hvaclib import PulseBased, GenPluginObject
 from ..device import Device
 from ..fields import Checksum, Field, InvertedPairs, Layout, NibbleSum, bit_reverse
 from ..ir.model import Frame, Protocol, PulseDistance, Section
-from ..choices import FAN_3, FAN_5, ON_OFF, SWING, SWING_H_5
-from ..state import Capabilities, TemperatureRange
+from ..choices import FAN_3, FAN_4, FAN_5, ON_OFF, SWING, SWING_H_5
+from ..state import Capabilities, Choice, TemperatureRange
 
 try:
     from ..irhvac import R_LT0541_HTA_A, R_LT0541_HTA_B
@@ -248,8 +248,15 @@ HITACHI_AC_FANS = {  # IRHitachiAc::convertFan
     "auto": 1,  # kHitachiAcFanAuto
     "1": 2,  # kHitachiAcFanLow (kLow)
     "2": 3,  # kHitachiAcFanMed (kMedium)
-    "3": 4,  # kHitachiAcFanHigh - 1 (kHigh; kMax would be kHitachiAcFanHigh)
+    "3": 4,  # kHitachiAcFanHigh - 1 (kHigh)
+    "4": 5,  # kHitachiAcFanHigh (kMax)
 }
+# The four speeds IRHitachiAc::setFan allows (kHitachiAcFanLow up to
+# kHitachiAcFanHigh), with the legacy labels for the first three.
+HITACHI_AC_FAN = Choice(
+    ("auto", "1", "2", "3", "4"),
+    {"auto": "auto", "1": "low", "2": "medium", "3": "high", "4": "highest"},
+)
 HITACHI_AC_MIN_TEMP = 16  # kHitachiAcMinTemp
 
 # Skeleton: IRHitachiAc::stateReset with the written fields and the sum
@@ -283,8 +290,8 @@ class HitachiAcDevice(Device):
     LAYOUTS = (HITACHI_AC_LAYOUT,)
     capabilities = Capabilities(
         modes=("auto", "heat", "cool", "dry", "fan"),
-        temperature=TemperatureRange(16.0, 32.0),
-        fan=FAN_3,
+        temperature=TemperatureRange(16.0, 32.0),  # kHitachiAcMin/MaxTemp
+        fan=HITACHI_AC_FAN,
         swing_v=SWING,
         swing_h=SWING,
     )
@@ -297,7 +304,7 @@ class HitachiAcDevice(Device):
         # (kHitachiAcFanLow..+1), fan has no auto (minimum kHitachiAcFanLow).
         fan = target.fan
         if mode == "dry":
-            fan = {"auto": "1", "3": "2"}.get(fan, fan)
+            fan = {"auto": "1", "3": "2", "4": "2"}.get(fan, fan)
         elif mode == "fan" and fan == "auto":
             fan = "1"
         # setMode(kHitachiAcFan) writes the special temperature 64, but IRac
@@ -780,23 +787,22 @@ class Hitachi264Device(Device):
     always sends kHitachiAc264ButtonPowerMode; the port does the same, with
     or without ``previous`` (the frame carries the full state either way).
 
-    Swing and the features (purifier, powerful, quiet, economy, light) are
-    kept for the legacy entity but have no bits: IRac::hitachi264 has "No
-    Swing(V) setting available" and IRHitachiAc264::toCommon forces swingv
-    off, so the kHitachiAc264ButtonSwingV press is never sent.
+    Capabilities are what HitachiAC264Protocol can carry: kHitachiAc264
+    has no auto mode (IRHitachiAc424::convertMode sends cool for it), and
+    no swing or feature bits. The legacy entity offered auto, swing and
+    purifier/powerful/quiet/economy/light, none of which changed the frame:
+    IRac::hitachi264 has "No Swing(V) setting available" and
+    IRHitachiAc264::toCommon forces swingv off. The swing button
+    (kHitachiAc264ButtonSwingV) would need a toggle rule (as Hitachi424's),
+    which the C path never sends; it is not offered.
     """
 
     PROTOCOL = HITACHI264
     LAYOUTS = (HITACHI264_LAYOUT,)
     capabilities = Capabilities(
-        modes=("auto", "cool", "fan", "dry", "heat"),
-        temperature=TemperatureRange(16.0, 32.0),
-        fan=FAN_3,
-        swing_v=SWING,
-        features={
-            name: ON_OFF
-            for name in ("purifier", "powerful", "quiet", "economy", "light")
-        },
+        modes=("cool", "fan", "dry", "heat"),  # kHitachiAc264{Cool,Fan,Dry,Heat}
+        temperature=TemperatureRange(16.0, 32.0),  # kHitachiAc264Min/MaxTemp
+        fan=FAN_3,  # kHitachiAc264Fan{Low,Medium,High,Auto}
     )
 
     def frames(self, previous, target, actions):
@@ -839,12 +845,12 @@ HITACHI296_FAN = {  # canonical fan -> kHitachiAc296Fan*, as convertFan
     "1": 0b001,  # lowest: kHitachiAc296FanSilent
     "2": 0b010,  # kHitachiAc296FanLow
     "3": 0b011,  # kHitachiAc296FanMedium
-    "4": 0b100,  # kHitachiAc296FanHigh
-    "5": 0b100,  # highest: kHitachiAc296FanHigh (no higher code exists)
+    "4": 0b100,  # kHitachiAc296FanHigh (convertFan: kHigh and kMax)
     "auto": 0b101,  # kHitachiAc296FanAuto
 }
 HITACHI296_TEMP_AUTO = 1  # kHitachiAc296TempAuto
 HITACHI296_MIN_TEMP = 16  # kHitachiAc296MinTemp
+HITACHI296_MAX_TEMP = 31  # kHitachiAc296MaxTemp
 
 # IRHitachiAc296::stateReset, odd bytes only (the complements follow).
 # Byte 13 bits 0-1 ("unset_low") and bit 7 ("unset_high"), and byte 25
@@ -864,7 +870,7 @@ HITACHI296_LAYOUT = _hitachi424_layout(
     HITACHI296_RESET,
     37,  # kHitachiAc296StateLength
     HITACHI296_MODE,
-    None,  # raw: HITACHI296_FAN is not one-to-one
+    None,  # raw kHitachiAc296Fan* codes (HITACHI296_FAN)
     temp_width=5,  # whole °C, or kHitachiAc296TempAuto
     fan_width=3,
     unset_low=Field.at(13, 0, 2),  # padding the C path never initialises
@@ -890,8 +896,8 @@ class Hitachi296Device(Device):
     LAYOUTS = (HITACHI296_LAYOUT,)
     capabilities = Capabilities(
         modes=("auto", "cool", "dry", "heat"),
-        temperature=TemperatureRange(16.0, 25.0),
-        fan=FAN_5,
+        temperature=TemperatureRange(16.0, 31.0),  # kHitachiAc296Min/MaxTemp
+        fan=FAN_4,  # kHitachiAc296Fan{Silent,Low,Medium,High,Auto}
     )
 
     def frames(self, previous, target, actions):
@@ -902,7 +908,9 @@ class Hitachi296Device(Device):
         if mode == "auto":
             temperature = HITACHI296_TEMP_AUTO
         else:
-            temperature = max(int(target.temperature), HITACHI296_MIN_TEMP)
+            temperature = min(
+                max(int(target.temperature), HITACHI296_MIN_TEMP), HITACHI296_MAX_TEMP
+            )
         data = HITACHI296_LAYOUT.build(
             temperature=temperature,
             mode=mode,

@@ -633,8 +633,9 @@ _PANASONIC_AC_POSITIONS = SWING_H_5
 
 
 def _panasonic_ac_capabilities(variant):
+    # NKE offers no swing_h: setSwingHorizontal forces Middle on it, so the
+    # legacy entity's on/off (SWING) sent the same byte either way.
     swing_h = {
-        "NKE": SWING,
         "DKE": _PANASONIC_AC_POSITIONS,
         "RKR": _PANASONIC_AC_POSITIONS,
     }.get(variant)

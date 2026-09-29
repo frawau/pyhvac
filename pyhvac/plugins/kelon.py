@@ -27,7 +27,7 @@ from .hvaclib import PulseBased, GenPluginObject
 from ..device import Device
 from ..fields import Field, Layout
 from ..ir.model import Frame, Protocol, PulseDistance, Section
-from ..choices import FAN_3, ON_OFF
+from ..choices import FAN_3, ON_OFF, SWING
 from ..state import Capabilities, TemperatureRange
 
 
@@ -122,6 +122,7 @@ KELON_LAYOUT = Layout(
 # ir_Kelon_test.cpp (0x83040683, 0x83800683) carry 26C and the smart mode
 # capture (0x1679030683) carries 25C.
 KELON_FIXED_TEMPERATURE = {"auto": 26, "dry": 25, "fan": 25}
+KELON_MIN_TEMP = 18  # kKelonMinTemp
 
 
 class KelonDevice(Device):
@@ -131,9 +132,8 @@ class KelonDevice(Device):
     As IRac::kelon sends it:
     - the setpoint is sent in cool and heat only; auto sends 26 °C and dry and
       fan send 25 °C, the temperatures IRKelonAc::setMode forces;
-    - the dehumidifier grade, timer and super cool are never set (IRac passes
-      dryGrade 0 and the glue never passes turbo), and the swing toggle is
-      never set (the entity has no swing: IRac's swingv stays kOff);
+    - the dehumidifier grade and timer are never set (IRac passes dryGrade
+      0 and has no timer);
     - SmartModeEnabled stays clear, as in the C output and the real smart
       mode capture 0x1679030683 (ir_Kelon_test.cpp, Timer12HSmartMode).
 
@@ -143,6 +143,19 @@ class KelonDevice(Device):
     is ``target.power``, as a fresh IRac sends (its previous state is of
     protocol UNKNOWN, so handleToggles does nothing): an "on" toggles, an
     "off" toggles nothing.
+
+    SwingVToggle follows the same rule for swing_v ("off" / "swing"):
+    handleToggles' KELON case toggles when the swing changes between off
+    and not-off, and IRac::sendAc passes ``swingv != kOff`` as the toggle;
+    without ``previous`` it is set when the target swing is on. The legacy
+    entity had no swing, so the oracle fixtures only hold it clear.
+
+    Powerful is Super Cool, as IRac::kelon's setSupercool(turbo): both
+    SuperCoolEnabled bits, and, as IRKelonAc::setSupercool(true) does, cool
+    at kKelonMinTemp (18 °C) with the fan at kKelonFanMax, whatever the
+    target's mode, setpoint and fan (the real SendDataOnly capture
+    0x900002010683). The legacy entity had no powerful, so the fixtures only
+    hold it clear.
 
     An off message carries the target's mode, with that mode's temperature
     rule. It does not carry what C's convertMode maps IRac's "off" to
@@ -167,21 +180,31 @@ class KelonDevice(Device):
         modes=("auto", "cool", "fan", "dry", "heat"),
         temperature=TemperatureRange(18.0, 32.0),
         fan=FAN_3,
-        features={"sleep": ON_OFF},
+        swing_v=SWING,
+        features={"sleep": ON_OFF, "powerful": ON_OFF},
     )
 
     def frames(self, previous, target, actions):
-        mode = target.mode
+        mode, fan = target.mode, target.fan
+        temperature = KELON_FIXED_TEMPERATURE.get(mode, int(target.temperature))
+        swing = target.swing_v != "off"
         if previous is None:
-            toggle = target.power
+            toggle, swing_toggle = target.power, swing
         else:
             toggle = target.power != previous.power
+            swing_toggle = swing != (previous.swing_v != "off")
+        super_cool = target.features.get("powerful", False)
+        if super_cool:  # IRKelonAc::setSupercool(true)
+            mode, temperature, fan = "cool", KELON_MIN_TEMP, "3"
         data = KELON_LAYOUT.build(
-            fan=target.fan,
+            fan=fan,
             power_toggle=toggle,
             sleep=target.features["sleep"],
+            swing_toggle=swing_toggle,
             mode=mode,
-            temperature=KELON_FIXED_TEMPERATURE.get(mode, int(target.temperature)),
+            temperature=temperature,
+            super_cool1=super_cool,
+            super_cool2=super_cool,
         )
         return [Frame("main", bytes(data))]
 

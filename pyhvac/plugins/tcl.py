@@ -138,7 +138,7 @@ TCL112AC_LAYOUT = Layout(
         ),
         "health": Field.at(6, 4, 1),
         "turbo": Field.at(6, 5, 1),
-        # kTcl112AcTempMax - degrees (setTemp), whole degrees.
+        # kTcl112AcTempMax - whole degrees (setTemp); HalfDegree adds 0.5.
         "temperature": Field.at(7, 0, 4, values={t: 31 - t for t in range(16, 32)}),
         "fan": Field.at(  # kTcl112AcFan{Auto,Min,Low,Med,High}
             8, 0, 3, values={"auto": 0, "1": 1, "2": 2, "3": 3, "4": 5}
@@ -185,6 +185,8 @@ class Tcl112AcDevice(Device):
     message:
     - an off message carries mode auto (IRac passes mode "off", which
       convertMode maps to its default, kTcl112AcAuto);
+    - the setpoint is kTcl112AcTempMin..kTcl112AcTempMax in half degrees:
+      Temp holds the whole degrees, HalfDegree the half (setTemp);
     - powerful sets Turbo, and setTurbo (called after setFan and
       setSwingVertical) forces kTcl112AcFanHigh and kTcl112AcSwingVOn;
     - purifier sets Health; the Light bit is cleared when the light is on.
@@ -212,8 +214,9 @@ class Tcl112AcDevice(Device):
     PROTOCOL = TCL112AC
     LAYOUTS = (TCL112AC_LAYOUT,)
     capabilities = Capabilities(
-        modes=("cool", "dry", "fan", "heat"),
-        temperature=TemperatureRange(16.0, 31.0),
+        modes=("auto", "cool", "dry", "fan", "heat"),  # kTcl112Ac{Auto,...}
+        # kTcl112AcTempMin..kTcl112AcTempMax, 0.5 steps (HalfDegree)
+        temperature=TemperatureRange(TCL112AC_MIN, TCL112AC_MAX, (0, 5)),
         fan=FAN_4,
         swing_v=SWING_V_ANGLES,
         swing_h=SWING,
@@ -251,6 +254,7 @@ class Tcl112AcDevice(Device):
             health=features["purifier"],
             turbo=powerful,
             temperature=min(max(int(target.temperature), TCL112AC_MIN), TCL112AC_MAX),
+            half_degree=target.temperature % 1 == 0.5,
             # setTurbo(true) forces kTcl112AcFanHigh and kTcl112AcSwingVOn.
             fan="4" if powerful else target.fan,
             swing_v="auto" if powerful else target.swing_v,

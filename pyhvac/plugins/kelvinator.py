@@ -26,7 +26,7 @@
 from dataclasses import dataclass
 
 from .hvaclib import PulseBased, GenPluginObject
-from ..choices import FAN_3, ON_OFF, SWING, SWING_V_ANGLES
+from ..choices import FAN_5, ON_OFF, SWING, SWING_V_ANGLES
 from ..device import Device
 from ..fields import Checksums, Copy, Field, Joined, Layout
 from ..ir.model import Frame, Protocol, PulseDistance, Section
@@ -113,10 +113,12 @@ KELVINATOR_MODE = {  # kKelvinator{Auto,Cool,Dry,Fan,Heat}
     "fan": 3,
     "heat": 4,
 }
-# IRac::kelvinator passes the stdAc fan speed unconverted ("No conversion
-# needed"): kLow 2, kMedium 3, kHigh 4, of kKelvinatorFanAuto (0) to
-# kKelvinatorFanMax (5).
-KELVINATOR_FAN = {"auto": 0, "1": 2, "2": 3, "3": 4}
+# Fan: kKelvinatorFanAuto (0), then speeds kKelvinatorFanMin (1) to
+# kKelvinatorFanMax (5), as setFan takes them ("0 is auto, 1-5 is the
+# speed"). IRac::kelvinator passes the stdAc fan speed unconverted ("No
+# conversion needed"): kLow 2, kMedium 3, kHigh 4, so the legacy entity's
+# low/medium/high are "2"/"3"/"4" (FAN_5's labels).
+KELVINATOR_FAN = {"auto": 0, "1": 1, "2": 2, "3": 3, "4": 4, "5": 5}
 KELVINATOR_BASIC_FAN_MAX = 3  # kKelvinatorBasicFanMax
 KELVINATOR_SWING_V = {  # kKelvinatorSwingV*: canonical "1" highest .. "5" lowest
     "off": 0b0000,
@@ -217,8 +219,9 @@ class KelvinatorDevice(Device):
       "off"), with the requested setpoint, fan and settings;
     - the requested setpoint is sent in every mode: setMode's 25 C for auto
       and dry is overwritten by setTemp;
-    - fan low/medium/high are the stdAc speeds 2/3/4 (Fan), BasicFan being
-      the same capped at kKelvinatorBasicFanMax;
+    - fan "1".."5" is Fan 1..5 (kKelvinatorFanMin..kKelvinatorFanMax;
+      the legacy low/medium/high, IRac's stdAc speeds 2/3/4, are "2"/"3"/
+      "4"), BasicFan being the same capped at kKelvinatorBasicFanMax;
     - cleaning (XFan) is cleared outside cool and dry (fixup), so also in
       every off message;
     - powerful is Turbo, purifier is IonFilter; the sleep and timer bits
@@ -247,7 +250,7 @@ class KelvinatorDevice(Device):
     capabilities = Capabilities(
         modes=("auto", "cool", "fan", "dry", "heat"),
         temperature=TemperatureRange(16.0, 30.0),
-        fan=FAN_3,
+        fan=FAN_5,  # kKelvinatorFanMin..kKelvinatorFanMax, and auto
         swing_v=SWING_V_ANGLES,
         swing_h=SWING,
         features={

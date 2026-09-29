@@ -28,6 +28,7 @@ from .hvaclib import PulseBased, GenPluginObject
 from ..device import Device
 from ..fields import Field, Layout, NibbleSum
 from ..ir.model import Frame, Protocol, PulseWidth, Section
+from ..choices import ON_OFF
 from ..state import Capabilities, Choice, TemperatureRange
 
 
@@ -92,6 +93,9 @@ AMCOR_FAN = {  # canonical fan -> kAmcorFan*, as convertFan
 AMCOR_POWER_ON, AMCOR_POWER_OFF = 0b0011, 0b1100  # kAmcorPowerOn / Off
 AMCOR_VENT_ON = 0b11  # kAmcorVentOn: set with mode fan (setMode)
 AMCOR_MIN_TEMP, AMCOR_MAX_TEMP = 12, 32  # kAmcorMinTemp / MaxTemp
+AMCOR_MAX = 0b11  # kAmcorMax
+# The setpoint IRAmcorAc::setMax writes with Max, in the modes it allows.
+AMCOR_MAX_TEMPS = {"cool": AMCOR_MIN_TEMP, "heat": AMCOR_MAX_TEMP}
 
 # Skeleton: IRAmcorAc::stateReset (byte 0 0x01, every other byte written
 # as 0, so nothing comes from stale memory) with the named fields cleared.
@@ -118,8 +122,13 @@ class AmcorDevice(Device):
     carries kAmcorPowerOff and mode auto (IRac passes mode "off", which
     convertMode maps to kAmcorAuto), with the requested setpoint and fan;
     the Vent bits are set in mode fan only (setMode); the setpoint is whole
-    degrees clamped to 12-32; Max stays off (IRac never calls setMax).
-    Fan lowest and highest are kAmcorFanMin and kAmcorFanMax, as C sends.
+    degrees clamped to 12-32. Fan lowest and highest are kAmcorFanMin and
+    kAmcorFanMax, as C sends.
+
+    powerful is Max ("Maximum Cooling or Heating", i.e. Turbo), which IRac
+    never sets: the port writes it as IRAmcorAc::setMax does, in cool (with
+    the setpoint forced to kAmcorMinTemp) and heat (kAmcorMaxTemp) only;
+    in other modes, and so in off messages, it is not sent.
     """
 
     PROTOCOL = AMCOR
@@ -131,17 +140,24 @@ class AmcorDevice(Device):
             ("auto", "1", "2", "3"),
             {"auto": "auto", "1": "lowest", "2": "medium", "3": "highest"},
         ),
+        features={"powerful": ON_OFF},
     )
 
     def frames(self, previous, target, actions):
         mode = target.mode if target.power else "auto"
+        temp = min(max(int(target.temperature), AMCOR_MIN_TEMP), AMCOR_MAX_TEMP)
+        # IRAmcorAc::setMax: cool at kAmcorMinTemp, heat at kAmcorMaxTemp,
+        # "Not allowed in all other operating modes".
+        boost = target.features.get("powerful", False) and mode in AMCOR_MAX_TEMPS
+        if boost:
+            temp = AMCOR_MAX_TEMPS[mode]
         data = bytes(
             AMCOR_LAYOUT.build(
                 mode=mode,
                 fan=target.fan,
-                temp=min(max(int(target.temperature), AMCOR_MIN_TEMP), AMCOR_MAX_TEMP),
+                temp=temp,
                 power=AMCOR_POWER_ON if target.power else AMCOR_POWER_OFF,
-                max=0,
+                max=AMCOR_MAX if boost else 0,
                 vent=AMCOR_VENT_ON if mode == "fan" else 0,
             )
         )

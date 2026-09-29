@@ -166,6 +166,23 @@ WHIRLPOOL_AC_LAYOUT = Layout(
 WHIRLPOOL_AC_RANGE = {"DG11J13A": (18, 32), "DG11J191": (16, 30)}
 
 
+def _whirlpool_ac_capabilities(low, high):
+    return Capabilities(
+        modes=("auto", "cool", "dry", "fan", "heat"),  # kWhirlpoolAc*
+        temperature=TemperatureRange(float(low), float(high)),
+        fan=FAN_3,  # kWhirlpoolAcFan{Auto,Low,Medium,High}
+        swing_v=SWING,  # Swing1/Swing2
+        features={"light": ON_OFF, "sleep": ON_OFF, "powerful": ON_OFF},
+    )
+
+
+# Remote variant -> capabilities: the same but for the setpoint range.
+WHIRLPOOL_AC_CAPABILITIES = {
+    variant: _whirlpool_ac_capabilities(low, high)
+    for variant, (low, high) in WHIRLPOOL_AC_RANGE.items()
+}
+
+
 WHIRLPOOL_AC_MODELS = {  # model -> remote variant (whirlpool_ac_remote_model_t)
     "DG11J1-3A remote": "DG11J13A",
     "DG11J1-04 remote": "DG11J13A",
@@ -184,8 +201,8 @@ class WhirlpoolAcDevice(Device):
     """Whirlpool DG11J1 remotes: full state, except that the power bit is a
     toggle. The model picks the remote variant (MODELS: DG11J13A or
     DG11J191, whirlpool_ac_remote_model_t), which sets J191 and the
-    setpoint range (18-32 °C, or 16-30 °C for DG11J191; the entity keeps
-    18-32 °C, as the legacy entity, and DG11J191 sends 31-32 °C as 30 °C).
+    setpoint range the capabilities offer: kWhirlpoolAcMinTemp..MaxTemp
+    (18-32 °C), or the same minus DG11J191's offset of 2 (16-30 °C).
 
     Power: with ``previous`` the toggle bit is set only when the power
     changes, as C does with a persistent IRac (IRac::handleToggles toggles
@@ -218,19 +235,15 @@ class WhirlpoolAcDevice(Device):
     # The Sum1 checksum spans the first two sections: one layout, 3 frames.
     LAYOUTS = (Joined(WHIRLPOOL_AC_LAYOUT, 3),)
     MODELS = WHIRLPOOL_AC_MODELS
-    capabilities = Capabilities(
-        modes=("auto", "cool", "dry", "fan", "heat"),
-        temperature=TemperatureRange(18.0, 32.0),
-        fan=FAN_3,
-        swing_v=SWING,
-        features={"light": ON_OFF, "sleep": ON_OFF, "powerful": ON_OFF},
-    )
+    VARIANT_CAPABILITIES = WHIRLPOOL_AC_CAPABILITIES
+    capabilities = WHIRLPOOL_AC_CAPABILITIES["DG11J13A"]
 
     def __init__(self, brand, model, variant=None):
         super().__init__(brand, model)
         self.variant = variant or self.MODELS.get(model, "DG11J13A")
         if self.variant not in WHIRLPOOL_AC_RANGE:
             raise ValueError(f"unknown Whirlpool variant {self.variant!r}")
+        self.capabilities = self.VARIANT_CAPABILITIES[self.variant]
 
     def frames(self, previous, target, actions):
         low, high = WHIRLPOOL_AC_RANGE[self.variant]

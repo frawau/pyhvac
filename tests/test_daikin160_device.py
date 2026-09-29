@@ -27,15 +27,32 @@ def device():
     return Daikin160Device("daikin", "ARC423A5 remote")
 
 
+def c_record(record):
+    """``record`` with the old vocabulary's swing "off" read as "auto".
+
+    The header has no SwingV off value and the port no longer offers one:
+    IRDaikin160::convertSwingV sent kOff as kDaikin160SwingVAuto, so the C
+    frame recorded for "off" is the frame for "auto".
+    """
+    state = dict(record["state"])
+    if state.get("swing") == "off":
+        state["swing"] = "auto"
+    return {**record, "state": state}
+
+
+def records():
+    return [c_record(r) for r in load_oracle("DAIKIN160")]
+
+
 @pytest.mark.parametrize("record", oracle_params("DAIKIN160"))
 def test_matches_c_library(record):
     dev = device()
-    assert_matches_oracle(dev, record, dev.LAYOUTS, DEFECTS)
+    assert_matches_oracle(dev, c_record(record), dev.LAYOUTS, DEFECTS)
 
 
 def test_layouts_round_trip_every_oracle_state():
     dev = device()
-    for record in load_oracle("DAIKIN160"):
+    for record in records():
         state = state_from_record(dev, record["state"])
         first, second = dev.frames(None, state, ())
         for layout, frame in ((DAIKIN160_FIRST, first), (DAIKIN160_SECOND, second)):
@@ -68,15 +85,36 @@ def test_temperature_is_stored_as_degrees_minus_10(temperature):
     assert DAIKIN160_SECOND.read(second.data)["temperature"] == temperature - 10
 
 
-def test_swing_off_is_sent_as_auto():
-    # The header has no "off" value; the C path falls back to auto (0xF).
+def test_swing_off_is_not_offered():
+    # The header documents kDaikin160SwingVAuto and five positions, no off:
+    # a state asking for off normalises to auto (0xF), which is what the C
+    # path sent for it.
     dev = device()
-    off = dev.frames(None, dev.normalise(HvacState(True, "cool", 24.0)), ())
-    auto = dev.frames(
-        None, dev.normalise(HvacState(True, "cool", 24.0, swing_v="auto")), ()
-    )
-    assert off == auto
-    assert DAIKIN160_SECOND.read_raw(off[1].data, "swing_v") == 0xF
+    assert "off" not in dev.capabilities.swing_v.values
+    state = dev.normalise(HvacState(True, "cool", 24.0, swing_v="off"))
+    assert state.swing_v == "auto"
+    _, second = dev.frames(None, state, ())
+    assert DAIKIN160_SECOND.read_raw(second.data, "swing_v") == 0xF
+
+
+# setFan: kDaikinFanAuto (0xA), kDaikinFanMin (1) .. kDaikinFanMax (5) sent as
+# the speed plus 2.
+@pytest.mark.parametrize(
+    "fan,raw", [("auto", 0xA), ("1", 3), ("2", 4), ("3", 5), ("4", 6), ("5", 7)]
+)
+def test_every_fan_speed_uses_its_documented_value(fan, raw):
+    dev = device()
+    state = dev.normalise(HvacState(True, "cool", 24.0, fan=fan))
+    assert state.fan == fan
+    _, second = dev.frames(None, state, ())
+    assert DAIKIN160_SECOND.read_raw(second.data, "fan") == raw
+
+
+def test_old_fan_labels_are_the_speeds_the_c_path_sent():
+    # IRDaikin160::convertFan: kLow -> kDaikinFanMin + 1, kMedium -> + 2,
+    # kHigh -> kDaikinFanMax - 1.
+    labels = device().capabilities.fan.labels
+    assert (labels["2"], labels["3"], labels["4"]) == ("low", "medium", "high")
 
 
 def test_swing_positions_follow_the_header():
@@ -98,21 +136,11 @@ def test_registry_serves_the_port():
         assert isinstance(registry.get_device("daikin", model), Daikin160Device)
 
 
-@pytest.mark.parametrize("model", DAIKIN160_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.daikin import Daikin160
-
-    legacy = LegacyDevice("daikin", model, Daikin160)
-    assert Daikin160Device("daikin", model).capabilities == legacy.capabilities
-
-
 def test_undeclared_deviation_is_reported():
     dev = device()
     record = next(
         r
-        for r in load_oracle("DAIKIN160")
+        for r in records()
         if r["state"]["swing"] == "60°" and r["state"]["mode"] != "off"
     )
     with pytest.raises(AssertionError, match="swing_v"):
@@ -121,7 +149,7 @@ def test_undeclared_deviation_is_reported():
 
 def test_layouts_must_cover_every_frame():
     dev = device()
-    record = load_oracle("DAIKIN160")[0]
+    record = records()[0]
     with pytest.raises(AssertionError, match="layout"):
         assert_matches_oracle(dev, record, dev.LAYOUTS[:1], DEFECTS)
 

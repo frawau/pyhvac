@@ -512,13 +512,26 @@ def test_registry_serves_the_port(model):
 
 
 @pytest.mark.parametrize("model", SAMSUNG_AC_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.samsung import Samsung
-
-    legacy = LegacyDevice("samsung", model, Samsung)
-    assert device(model).capabilities == legacy.capabilities
+def test_capabilities_are_what_the_protocol_documents(model):
+    # The audit found nothing to add or remove: kSamsungAc{Auto,Cool,Dry,
+    # Fan,Heat}, kSamsungAcMinTemp..kSamsungAcMaxTemp, kSamsungAcFan{Auto,
+    # Low,Med,High} (Turbo is powerful), Swing V/H, Quiet, FanSpecial
+    # Powerful/Econo, Display, Ion, CleanToggle. Sleep (Sleep5/Sleep12) is
+    # a sleep timer, set only with the off timer (_setSleepTimer): deferred
+    # with the timers. Breeze (FanSpecial) has no feature name yet.
+    caps = device(model).capabilities
+    assert caps.modes == ("auto", "cool", "dry", "heat", "fan")
+    assert (caps.temperature.min, caps.temperature.max) == (16.0, 30.0)
+    assert caps.fan.values == ("auto", "1", "2", "3")
+    assert caps.swing_v.values == caps.swing_h.values == ("off", "swing")
+    assert set(caps.features) == {
+        "cleaning",
+        "quiet",
+        "powerful",
+        "economy",
+        "light",
+        "purifier",
+    }
 
 
 def _record(**match):

@@ -115,13 +115,50 @@ def test_checksum_writes_only_the_low_nibble():
     assert CarrierAc64Checksum(3, 8, 2).bits() == {16, 17, 18, 19}
 
 
-def test_port_reproduces_the_real_capture_but_swing_and_timers():
-    # RealExample (heat, 30C, fan low, power on) with what the entity cannot
-    # express reset: swing off, and the timer hours of stateReset.
+def test_port_reproduces_the_real_capture_but_its_timer_hours():
+    # RealExample (heat, 30C, fan low, swing on, power on). Its disabled
+    # timers hold 4 h, where the port keeps stateReset's hours (9 and 1).
     capture = CARRIER_AC64_LAYOUT.read((0x404000102E5E5584).to_bytes(8, "little"))
-    capture.update(swing_v=0, on_timer=9, off_timer=1)
+    capture.update(on_timer=9, off_timer=1)
     expected = CARRIER_AC64_LAYOUT.build(**capture)
-    assert raw(state(True, "heat", 30.0, fan="1")) == int.from_bytes(expected, "little")
+    target = state(True, "heat", 30.0, fan="1", swing_v="swing")
+    assert raw(target) == int.from_bytes(expected, "little")
+
+
+def test_swing_and_sleep_are_offered():
+    # The header's SwingV and Sleep bits.
+    caps = device().capabilities
+    assert caps.swing_v.values == ("off", "swing")
+    assert set(caps.features) == {"sleep"}
+
+
+@pytest.mark.parametrize("power", [True, False])
+def test_swing_sets_swing_v(power):
+    # IRac::carrier64: setSwingV(swingv != kOff).
+    assert read(state(power, swing_v="swing"))["swing_v"] == 1
+    assert read(state(power, swing_v="off"))["swing_v"] == 0
+
+
+@pytest.mark.parametrize("power", [True, False])
+def test_sleep_sets_sleep_and_a_disabled_2h_off_timer(power):
+    # IRCarrierAc64::setSleep(true): setOffTimer(2 * 60), then
+    # _cancelOnTimer and _cancelOffTimer; Sleep set.
+    values = read(state(power, features={"sleep": True}))
+    assert (values["sleep"], values["off_timer"], values["on_timer"]) == (1, 2, 9)
+    assert (values["on_timer_enable"], values["off_timer_enable"]) == (0, 0)
+
+
+def test_port_reproduces_the_reconstructed_sleep_state_but_its_on_timer():
+    # ReconstructKnownState: heat 16C low, swing, sleep -> 0x2030009020555584.
+    # Its OnTimer hours (3) come from a setOnTimer the port never sends; the
+    # port keeps stateReset's 9.
+    known = CARRIER_AC64_LAYOUT.read((0x2030009020555584).to_bytes(8, "little"))
+    known.update(on_timer=9)
+    expected = CARRIER_AC64_LAYOUT.build(**known)
+    target = state(
+        True, "heat", 16.0, fan="1", swing_v="swing", features={"sleep": True}
+    )
+    assert raw(target) == int.from_bytes(expected, "little")
 
 
 @pytest.mark.parametrize("mode, code", [("heat", 1), ("cool", 2), ("fan", 3)])
@@ -158,6 +195,7 @@ def test_off_carries_cool_with_the_setpoint_and_fan(mode, fan):
 
 
 def test_unset_fields_keep_their_reset_values():
+    # Swing off and sleep off: nothing but the requested state changes.
     for target in (state(True, "heat", 30.0, fan="3"), state(False, "fan", 16.0)):
         values = read(target)
         assert (values["swing_v"], values["sleep"]) == (0, 0)
@@ -191,16 +229,6 @@ def test_layouts_must_cover_every_frame():
 @pytest.mark.parametrize("model", CARRIER_AC64_MODELS)
 def test_registry_serves_the_port(model):
     assert isinstance(registry.get_device("carrier", model), CarrierAc64Device)
-
-
-@pytest.mark.parametrize("model", CARRIER_AC64_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.carrier import Carrier
-
-    legacy = LegacyDevice("carrier", model, Carrier)
-    assert device(model).capabilities == legacy.capabilities
 
 
 @pytest.mark.parametrize("mode", ["cool", "fan", "heat"])

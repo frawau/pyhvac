@@ -27,7 +27,7 @@ from .hvaclib import PulseBased, GenPluginObject
 from ..device import Device
 from ..fields import Field, Layout
 from ..ir.model import Frame, Protocol, PulseDistance, Section
-from ..choices import FAN_3
+from ..choices import FAN_3, ON_OFF
 from ..state import Capabilities, TemperatureRange
 
 
@@ -150,6 +150,11 @@ class EcoclimDevice(Device):
     makes of the "off" mode the glue passes; the C output itself is sleep
     there (the mode defect below).
 
+    Sleep is a discrete operation mode (kEcoclimSleep), not a bit: as
+    IRac::ecoclim does for a sleep request, the "sleep" feature sends mode
+    kEcoclimSleep in place of the requested mode, off messages included.
+    The setpoint is kEcoclimTempMin..kEcoclimTempMax (5-36 °C).
+
     Where the C path contradicts the header, the port sends the documented
     value (see the Defects in tests/test_ecoclim_device.py):
     - mode: IRac::sendAc passes ``send.iFeel`` (false, i.e. 0) as
@@ -162,8 +167,10 @@ class EcoclimDevice(Device):
     LAYOUTS = (ECOCLIM_LAYOUT, ECOCLIM_LAYOUT, ECOCLIM_LAYOUT)
     capabilities = Capabilities(
         modes=("auto", "cool", "fan", "dry", "heat"),
-        temperature=TemperatureRange(5.0, 31.0),
+        # kEcoclimTempMin..kEcoclimTempMax (kEcoclimTempMin + 31)
+        temperature=TemperatureRange(5.0, 36.0),
         fan=FAN_3,
+        features={"sleep": ON_OFF},  # mode kEcoclimSleep
     )
 
     def frames(self, previous, target, actions):
@@ -172,7 +179,12 @@ class EcoclimDevice(Device):
             ECOCLIM_LAYOUT.build(
                 sensor_temperature=temperature,
                 temperature=temperature,
-                mode=target.mode if target.power else "auto",
+                # IRac::ecoclim: sleep overrides the requested mode.
+                mode=(
+                    "sleep"
+                    if target.features.get("sleep", False)
+                    else target.mode if target.power else "auto"
+                ),
                 fan=target.fan,
                 power=target.power,
             )

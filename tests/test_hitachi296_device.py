@@ -35,6 +35,20 @@ SYNTHETIC_EXAMPLE = bytes.fromhex(  # power on, cool, 24 C, fan quiet
 )
 
 
+# The legacy entity offered a fifth fan level, "highest", which C sends as
+# kHitachiAc296FanHigh like "high" (convertFan maps kMax and kHigh alike).
+# The port offers the four documented speeds only, so the oracle's "highest"
+# records are read as "high": same code, so C's frames are the expected ones.
+def adapt(record):
+    if record["state"].get("fan") != "highest":
+        return record
+    return {**record, "state": {**record["state"], "fan": "high"}}
+
+
+def records():
+    return [adapt(r) for r in load_oracle("HITACHI_AC296")]
+
+
 def device(model="RAR-3U3 remote"):
     return Hitachi296Device("hitachi", model)
 
@@ -48,12 +62,12 @@ def read(state):
 @pytest.mark.parametrize("record", oracle_params("HITACHI_AC296"))
 def test_matches_c_library(record):
     dev = device()
-    assert_matches_oracle(dev, record, dev.LAYOUTS, DEFECTS)
+    assert_matches_oracle(dev, adapt(record), dev.LAYOUTS, DEFECTS)
 
 
 def test_layout_round_trips_every_oracle_state():
     dev = device()
-    for record in load_oracle("HITACHI_AC296"):
+    for record in records():
         state = state_from_record(dev, record["state"])
         (frame,) = dev.frames(None, state, ())
         values = HITACHI296_LAYOUT.read(frame.data)
@@ -108,18 +122,53 @@ def test_auto_ignores_the_setpoint():
 
 
 @pytest.mark.parametrize("mode", ["cool", "dry", "heat"])
-def test_setpoint_is_whole_degrees_clamped_to_16_25(mode):
+def test_setpoint_is_whole_degrees_clamped_to_16_31(mode):
+    # kHitachiAc296MinTemp = 16, kHitachiAc296MaxTemp = 31 (the legacy
+    # entity stopped at 25).
     assert read(HvacState(True, mode, 10.0))["temperature"] == 16
     assert read(HvacState(True, mode, 21.0))["temperature"] == 21
-    assert read(HvacState(True, mode, 30.0))["temperature"] == 25
+    assert read(HvacState(True, mode, 26.0))["temperature"] == 26
+    assert read(HvacState(True, mode, 31.0))["temperature"] == 31
+    assert read(HvacState(True, mode, 40.0))["temperature"] == 31
+
+
+def test_setpoint_range_is_the_headers():
+    temperature = device().capabilities.temperature
+    assert (temperature.min, temperature.max, temperature.decimals) == (
+        16.0,
+        31.0,
+        (0,),
+    )
+
+
+def test_frames_clamp_the_setpoint_to_the_header_maximum():
+    # setTemp clamps to kHitachiAc296MaxTemp even without normalise.
+    (frame,) = device().frames(None, HvacState(True, "cool", 40.0), ())
+    assert HITACHI296_LAYOUT.read(frame.data)["temperature"] == 31
 
 
 @pytest.mark.parametrize(
-    "fan, raw", [("auto", 5), ("1", 1), ("2", 2), ("3", 3), ("4", 4), ("5", 4)]
+    "fan, raw", [("auto", 5), ("1", 1), ("2", 2), ("3", 3), ("4", 4)]
 )
 def test_every_fan_level_uses_convert_fan(fan, raw):
-    # convertFan maps kMax (highest) to kHitachiAc296FanHigh, like kHigh.
+    # kHitachiAc296Fan{Auto,Silent,Low,Medium,High}.
     assert read(HvacState(True, "cool", 22.0, fan=fan))["fan"] == raw
+
+
+def test_no_fan_level_duplicates_high():
+    # The legacy "highest" (fan "5") sent kHitachiAc296FanHigh, as "4" does:
+    # a control with no code of its own, removed.
+    assert device().capabilities.fan.values == ("auto", "1", "2", "3", "4")
+
+
+def test_the_oracles_highest_records_match_as_high():
+    dev = device()
+    highest = [
+        r for r in load_oracle("HITACHI_AC296") if r["state"].get("fan") == "highest"
+    ]
+    assert highest
+    for record in highest:
+        assert_matches_oracle(dev, adapt(record), dev.LAYOUTS, DEFECTS)
 
 
 def test_mode_codes():
@@ -148,16 +197,6 @@ def test_message_shape():
 @pytest.mark.parametrize("model", HITACHI296_MODELS)
 def test_registry_serves_the_port(model):
     assert isinstance(registry.get_device("hitachi", model), Hitachi296Device)
-
-
-@pytest.mark.parametrize("model", HITACHI296_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.hitachi import Hitachi296
-
-    legacy = LegacyDevice("hitachi", model, Hitachi296)
-    assert device(model).capabilities == legacy.capabilities
 
 
 @pytest.mark.parametrize(

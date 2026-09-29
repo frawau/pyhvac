@@ -25,7 +25,7 @@
 
 
 from .hvaclib import PulseBased, GenPluginObject
-from ..choices import FAN_3, FAN_3_FIXED, ON_OFF, SWING
+from ..choices import FAN_3_FIXED, ON_OFF, SWING
 from ..device import Device
 from ..fields import Field, Layout, Sum8
 from ..ir.model import Frame, Protocol, PulseDistance, Section
@@ -120,55 +120,26 @@ TECHNIBEL_AC_LAYOUT = Layout(
     checksum=Sum8(1, 5, 6, base=0),  # IRTechnibelAc::calcChecksum: ~sum + 1
 )
 
-TECHNIBEL_AC_CAPABILITIES = {  # variant -> the legacy entity (old class)
-    "technibel": Capabilities(  # Technibel
-        modes=("cool", "dry", "fan", "heat"),
-        temperature=TemperatureRange(16.0, 31.0),
-        fan=FAN_3_FIXED,
-        swing_v=SWING,
-        features={"sleep": ON_OFF},
-    ),
-    "teco": Capabilities(  # Teco
-        modes=("auto", "cool", "dry", "fan", "heat"),
-        temperature=TemperatureRange(16.0, 30.0),
-        fan=FAN_3,
-        swing_v=SWING,
-        features={"sleep": ON_OFF, "light": ON_OFF},
-    ),
-}
-# brand -> variant. By brand, not model: "generic" is a teco and a
-# technibel model.
-TECHNIBEL_AC_BRAND_VARIANT = {
-    "technibel": "technibel",
-    "teco": "teco",
-    "alaska": "teco",
-}
-
 
 class TechnibelAcDevice(Device):
     """Technibel A/C (IRTechnibelAc, protocol TECHNIBEL_AC): one full-state
-    word, sent by the technibel, teco and alaska plugins.
-
-    The variant ("technibel" or "teco", after the legacy Technibel and Teco
-    classes) comes from the brand (TECHNIBEL_AC_BRAND_VARIANT) unless given,
-    and picks the capabilities (the legacy entities). The variants send the
-    same word.
+    word, sent by the technibel, teco and alaska plugins, all with the full
+    Technibel capabilities (the teco/alaska models' old "teco" variant, the
+    legacy Teco entity, is gone: phase 4 design, section 4).
 
     As IRac::technibel sends it:
     - an off message carries mode cool: convertMode maps IRac's mode "off"
       (and auto, which the protocol lacks) to its default, kTechnibelAcCool;
       the Power bit is clear, the other settings are sent as requested;
-    - fan auto is kTechnibelAcFanLow (convertFan's default), and dry mode
-      always sends kTechnibelAcFanLow (IRTechnibelAc::setFan's dry rule);
-    - the setpoint is clamped to kTechnibelAcTempMinC..MaxC, in Celsius;
-    - no timer; light (the teco entity's) sends nothing: the protocol has
-      no light.
+    - the protocol has no fan auto (kTechnibelAcFan{Low,Medium,High}); dry
+      mode always sends kTechnibelAcFanLow (IRTechnibelAc::setFan's dry
+      rule);
+    - the setpoint is kTechnibelAcTempMinC..MaxC, in Celsius;
+    - no timer, and no light: the protocol has none.
 
-    Legacy parity: the "teco" variant serves the old Teco class (teco.py,
-    alaska.py), which always drove TECHNIBEL_AC. ir_Teco.h lists the Alaska
-    SAC9010QC among TECO (a different 35-bit protocol, with a light), so
-    those units probably expect TECO; the port keeps what 0.1.x sent until
-    that is decided.
+    ir_Teco.h lists the Alaska SAC9010QC among TECO (a different 35-bit
+    protocol, with a light), so those units may expect TECO; the teco and
+    alaska models keep sending TECHNIBEL_AC, as 0.1.x did.
 
     ``previous`` is ignored: the word is a full state, the Fan/Temp/Timer
     Change bits are never written by IRTechnibelAc (0 in C and in the real
@@ -181,17 +152,20 @@ class TechnibelAcDevice(Device):
 
     PROTOCOL = TECHNIBEL_AC
     LAYOUTS = (TECHNIBEL_AC_LAYOUT,)
-    VARIANT_CAPABILITIES = TECHNIBEL_AC_CAPABILITIES
-    capabilities = TECHNIBEL_AC_CAPABILITIES["technibel"]
-
-    def __init__(self, brand, model, variant=None):
-        super().__init__(brand, model)
-        self.variant = variant or TECHNIBEL_AC_BRAND_VARIANT.get(brand, "technibel")
-        if self.variant not in self.VARIANT_CAPABILITIES:
-            raise ValueError(f"unknown Technibel A/C variant {self.variant!r}")
-        self.capabilities = self.VARIANT_CAPABILITIES[self.variant]
+    capabilities = Capabilities(
+        modes=("cool", "dry", "fan", "heat"),  # kTechnibelAc{Cool,Dry,Fan,Heat}
+        # kTechnibelAcTempMinC..kTechnibelAcTempMaxC
+        temperature=TemperatureRange(
+            float(TECHNIBEL_AC_MIN_TEMP), float(TECHNIBEL_AC_MAX_TEMP)
+        ),
+        fan=FAN_3_FIXED,  # kTechnibelAcFan{Low,Medium,High}, no auto
+        swing_v=SWING,  # Swing
+        features={"sleep": ON_OFF},  # Sleep
+    )
 
     def frames(self, previous, target, actions):
+        # Mode and fan auto are not offered (normalise never passes them);
+        # if given, they fall to convertMode's and convertFan's defaults.
         mode = target.mode if target.power and target.mode != "auto" else "cool"
         fan = "1" if target.fan == "auto" or mode == "dry" else target.fan
         temp = min(

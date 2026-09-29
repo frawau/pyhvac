@@ -83,6 +83,31 @@ def test_powerful_keeps_the_fan_speed():
     assert (read["fan"], read["powerful"]) == ("2", 1)
 
 
+# IRDaikin216::setFan: kDaikinFanAuto (0xA), and kDaikinFanMin (1) ..
+# kDaikinFanMax (5) sent as the speed plus 2. kDaikinFanQuiet stays the quiet
+# feature (setQuiet), not a fan step.
+@pytest.mark.parametrize(
+    "fan,raw", [("auto", 0xA), ("1", 3), ("2", 4), ("3", 5), ("4", 6), ("5", 7)]
+)
+def test_every_fan_speed_uses_its_documented_value(fan, raw):
+    dev = device()
+    state = dev.normalise(HvacState(True, "cool", 24.0, fan=fan))
+    assert state.fan == fan
+    _, frame = dev.frames(None, state, ())
+    assert DAIKIN216_SECOND.read_raw(frame.data, "fan") == raw
+
+
+def test_quiet_is_not_a_fan_step():
+    assert "quiet" not in device().capabilities.fan.values
+
+
+def test_old_fan_labels_are_the_speeds_the_c_path_sent():
+    # convertFan (IRDaikinESP's): kLow -> kDaikinFanMin, kMedium ->
+    # kDaikinFanMed, kHigh -> kDaikinFanMax - 1.
+    labels = device().capabilities.fan.labels
+    assert (labels["1"], labels["3"], labels["4"]) == ("low", "medium", "high")
+
+
 def test_swing_on_sets_the_documented_nibble():
     read = second(HvacState(True, "cool", 24.0, swing_v="swing", swing_h="swing"))
     assert (read["swing_v"], read["swing_h"]) == ("swing", "swing")
@@ -93,15 +118,6 @@ def test_swing_on_sets_the_documented_nibble():
 @pytest.mark.parametrize("model", DAIKIN216_MODELS)
 def test_registry_serves_the_port(model):
     assert isinstance(registry.get_device("daikin", model), Daikin216Device)
-
-
-def test_capabilities_match_the_legacy_entity():
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.daikin import Daikin216
-
-    legacy = LegacyDevice("daikin", "ARC433B69 remote", Daikin216)
-    assert device().capabilities == legacy.capabilities
 
 
 def test_undeclared_deviation_is_reported():

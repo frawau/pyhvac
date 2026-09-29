@@ -173,13 +173,17 @@ def test_registry_serves_the_port(model):
 
 
 @pytest.mark.parametrize("model", TROTEC3550_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.trotech import Trotech3550
-
-    legacy = LegacyDevice("trotech", model, Trotech3550)
-    assert device(model).capabilities == legacy.capabilities
+def test_capabilities_are_the_documented_values(model):
+    # Unchanged by the audit: the legacy entity already offered every
+    # documented Trotec3550Protocol value.
+    caps = device(model).capabilities
+    # kTrotec3550MinTempC / kTrotec3550MaxTempC, whole degrees.
+    assert (caps.temperature.min, caps.temperature.max) == (16.0, 30.0)
+    assert caps.modes == ("auto", "cool", "dry", "fan")
+    assert caps.fan.values == ("1", "2", "3")  # no auto code
+    assert caps.swing_v.values == ("off", "swing")  # the SwingV bit
+    assert caps.swing_h is None
+    assert dict(caps.features) == {}
 
 
 def test_undeclared_deviation_is_reported():

@@ -44,7 +44,12 @@ def _with_c_defaults(record):
     # A record without "fan" relied on IRac's default (kAuto), which
     # IRMitsubishi112::convertFan sends as kMitsubishi112FanMed ("medium").
     # Missing swing/hswing (kOff) fall back to auto, as the port's defaults.
-    return {**record, "state": {"fan": "medium", **record["state"]}}
+    # Swing "off" (no longer offered: the header has no off code) is what C
+    # sent for it, auto.
+    state = {"fan": "medium", **record["state"]}
+    if state.get("swing") == "off":
+        state["swing"] = "auto"
+    return {**record, "state": state}
 
 
 @pytest.mark.parametrize("record", oracle_params("MITSUBISHI112"))
@@ -87,7 +92,7 @@ def test_the_kpoa_capture_is_reproduced(state):
 @pytest.mark.parametrize("mode", ["auto", "cool", "dry", "heat"])
 def test_off_carries_mode_auto_and_the_setpoint(mode):
     # IRac passes mode "off"; convertMode maps it to auto.
-    for t in (16.0, 25.0):
+    for t in (16.0, 25.0, 31.0):
         values = read(HvacState(False, mode, t))
         assert (values["power"], values["mode"], values["temperature"]) == (
             0,
@@ -97,10 +102,32 @@ def test_off_carries_mode_auto_and_the_setpoint(mode):
 
 
 @pytest.mark.parametrize("mode", ["auto", "cool", "dry", "heat"])
-def test_setpoint_is_31_minus_whole_degrees_clamped_to_16_25(mode):
+def test_setpoint_is_31_minus_whole_degrees_clamped_to_16_31(mode):
+    # setTemp clamps to kMitsubishi112MinTemp/MaxTemp (16-31).
     assert read(HvacState(True, mode, 10.0))["temperature"] == 15
     assert read(HvacState(True, mode, 21.0))["temperature"] == 10
-    assert read(HvacState(True, mode, 30.0))["temperature"] == 6
+    assert read(HvacState(True, mode, 26.0))["temperature"] == 5
+    assert read(HvacState(True, mode, 31.0))["temperature"] == 0
+    assert read(HvacState(True, mode, 35.0))["temperature"] == 0
+
+
+def test_capabilities_are_the_documented_values():
+    caps = device().capabilities
+    # kMitsubishi112MinTemp / kMitsubishi112MaxTemp, whole degrees.
+    assert (caps.temperature.min, caps.temperature.max) == (16.0, 31.0)
+    assert caps.temperature.decimals == (0,)
+    assert caps.modes == ("auto", "cool", "dry", "heat")  # no fan-only mode
+    assert caps.fan.values == ("1", "2", "3", "4")  # no auto code
+    # kMitsubishi112SwingVAuto and five positions: no off code.
+    assert caps.swing_v.values == ("auto", "1", "2", "3", "4", "5")
+    assert caps.swing_h.values == ("auto", "1", "2", "3", "4", "5", "6")
+    assert set(caps.features) == {"quiet"}
+
+
+def test_swing_v_off_is_not_offered():
+    # Removed: C sent kMitsubishi112SwingVAuto for it.
+    assert "off" not in device().capabilities.swing_v.values
+    assert device().normalise(HvacState(True, "cool", 22.0)).swing_v == "auto"
 
 
 def test_mode_codes():
@@ -132,11 +159,11 @@ def test_quiet_overrides_the_fan(fan):
 
 @pytest.mark.parametrize(
     "swing, raw",
-    [("off", 7), ("auto", 7), ("1", 1), ("2", 2), ("3", 3), ("4", 4), ("5", 5)],
+    [("auto", 7), ("1", 1), ("2", 2), ("3", 3), ("4", 4), ("5", 5)],
 )
 def test_every_vertical_swing_value(swing, raw):
-    # "off" is auto, as the C path (the header documents no off value);
-    # positions count down from kMitsubishi112SwingVHighest.
+    # kMitsubishi112SwingVAuto, then the positions counting down from
+    # kMitsubishi112SwingVHighest.
     dev = device()
     state = dev.normalise(HvacState(True, "cool", 22.0, fan="3", swing_v=swing))
     (frame,) = dev.frames(None, state, ())
@@ -183,16 +210,6 @@ def test_registry_serves_the_port(model):
     assert isinstance(
         registry.get_device("mitsubishi_electric", model), Mitsubishi112Device
     )
-
-
-@pytest.mark.parametrize("model", MITSUBISHI112_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.mitsubishi_electric import Mitsubishi112
-
-    legacy = LegacyDevice("mitsubishi_electric", model, Mitsubishi112)
-    assert device(model).capabilities == legacy.capabilities
 
 
 @pytest.mark.parametrize(

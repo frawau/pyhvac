@@ -172,9 +172,9 @@ HAIER_AC_FAN = {  # canonical fan -> the raw Fan value IRHaierAC::setFan stores
 }
 HAIER_AC_SWING_V = {  # kHaierAcSwingV*, as IRHaierAC::convertSwingV
     "off": 0b00,  # Off (kOff)
+    "auto": 0b11,  # Chg (kAuto; toCommonSwingV reads it back as kAuto)
     "1": 0b01,  # Up ("auto high" = kHigh)
     "2": 0b10,  # Down ("auto low" = kLow)
-    "change": 0b11,  # Chg (kAuto): not offered by the entity
 }
 HAIER_AC_MIN_TEMP = 16  # kHaierAcMinTemp
 HAIER_AC_MAX_TEMP = 30  # kHaierAcMaxTemp
@@ -233,8 +233,11 @@ class HaierAcDevice(Device):
         modes=("auto", "cool", "dry", "heat", "fan"),
         temperature=TemperatureRange(16.0, 30.0),
         fan=FAN_3,
+        # Every kHaierAcSwingV* value; "auto" is Chg, which the legacy entity
+        # did not offer.
         swing_v=Choice(
-            ("off", "1", "2"), {"off": "off", "1": "auto high", "2": "auto low"}
+            ("off", "auto", "1", "2"),
+            {"off": "off", "auto": "auto", "1": "auto high", "2": "auto low"},
         ),
         features={"purifier": ON_OFF, "sleep": ON_OFF},
     )
@@ -593,14 +596,20 @@ HAIER160_BUTTON = {  # kHaierAcYrw02Button* / kHaierAc160Button*
     "aux_heating": 0b10110,
     "clean": 0b11001,
 }
-HAIER160_SWING_V = {  # canonical swing -> kHaierAc160SwingV*, as convertSwingV
+# Canonical swing -> kHaierAc160SwingV*, as convertSwingV, plus Highest,
+# which convertSwingV never picks (it sends Top for kHighest) but setSwingV
+# accepts and toCommonSwingV reads as kHighest. The positions run in the
+# header's order, Top first; the header does not say which of Top and
+# Highest is higher.
+HAIER160_SWING_V = {
     "off": 0b0000,
     "auto": 0b1100,  # airflow
     "1": 0b0001,  # ceiling (kHighest): kHaierAc160SwingVTop
-    "2": 0b0100,  # 90° (kHigh): kHaierAc160SwingVHigh
-    "3": 0b0110,  # 45° (kMiddle): kHaierAc160SwingVMiddle
-    "4": 0b1000,  # 30° (kLow): kHaierAc160SwingVLow
-    "5": 0b0011,  # 0° (kLowest): kHaierAc160SwingVLowest
+    "2": 0b0010,  # kHaierAc160SwingVHighest
+    "3": 0b0100,  # 90° (kHigh): kHaierAc160SwingVHigh
+    "4": 0b0110,  # 45° (kMiddle): kHaierAc160SwingVMiddle
+    "5": 0b1000,  # 30° (kLow): kHaierAc160SwingVLow
+    "6": 0b0011,  # 0° (kLowest): kHaierAc160SwingVLowest
 }
 
 # Skeleton: IRHaierAC160::stateReset (Model kHaierAcYrw02ModelA, Prefix
@@ -652,15 +661,16 @@ class Haier160Device(Device):
         temperature=TemperatureRange(16.0, 30.0),
         fan=FAN_3,
         swing_v=Choice(
-            ("off", "auto", "1", "2", "3", "4", "5"),
+            ("off", "auto", "1", "2", "3", "4", "5", "6"),
             {
                 "off": "off",
                 "auto": "auto",
                 "1": "ceiling",
-                "2": "90°",
-                "3": "45°",
-                "4": "30°",
-                "5": "0°",
+                "2": "highest",
+                "3": "90°",
+                "4": "45°",
+                "5": "30°",
+                "6": "0°",
             },
         ),
         features={

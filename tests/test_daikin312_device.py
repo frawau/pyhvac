@@ -67,6 +67,49 @@ def test_cool_raises_setpoint_to_18():
     assert DAIKIN312_SECOND.read(second.data)["temperature"] == 36  # 18 °C
 
 
+def test_normalise_reports_the_cool_minimum():
+    # setTemp: kDaikin312MinCoolTemp (18) in cool, kDaikinMinTemp otherwise.
+    dev = device()
+    assert dev.normalise(HvacState(True, "cool", 12.5)).temperature == 18.0
+    assert dev.normalise(HvacState(True, "heat", 12.5)).temperature == 12.5
+    assert dev.normalise(HvacState(False, "cool", 12.5)).temperature == 12.5
+
+
+# setFan (as IRDaikinESP's): kDaikinFanAuto (0xA), kDaikinFanQuiet (0xB), and
+# kDaikinFanMin (1) .. kDaikinFanMax (5) sent as the speed plus 2.
+@pytest.mark.parametrize(
+    "fan,raw",
+    [("auto", 0xA), ("1", 0xB), ("2", 3), ("3", 4), ("4", 5), ("5", 6), ("6", 7)],
+)
+def test_every_fan_step_uses_its_documented_value(fan, raw):
+    _, _, second = frames(power=True, mode="cool", temperature=24.0, fan=fan)
+    assert DAIKIN312_SECOND.read_raw(second.data, "fan") == raw
+
+
+def test_old_fan_labels_are_the_speeds_the_c_path_sent():
+    # convertFan (IRDaikinESP's): kLow -> kDaikinFanMin, kMedium ->
+    # kDaikinFanMed, kHigh -> kDaikinFanMax - 1.
+    labels = device().capabilities.fan.labels
+    assert (labels["2"], labels["4"], labels["5"]) == ("low", "medium", "high")
+
+
+# kDaikin312SwingVOff (0x0), kDaikin312SwingVAuto a.k.a. swing (0xF), and
+# kDaikin312SwingVHighest (0x1) .. kDaikin312SwingVLowest (0x6).
+@pytest.mark.parametrize(
+    "swing_v,raw",
+    [("off", 0x0), ("swing", 0xF)] + [(str(n), n) for n in range(1, 7)],
+)
+def test_every_swing_v_position_uses_its_documented_value(swing_v, raw):
+    _, _, second = frames(power=True, mode="cool", temperature=24.0, swing_v=swing_v)
+    assert DAIKIN312_SECOND.read_raw(second.data, "swing_v") == raw
+
+
+def test_swing_h_has_no_positions():
+    # kDaikin312SwingH{Wide,LeftMax,...,RightMax} are 0xA3..0xAC, which do not
+    # fit the header's 4-bit SwingH field: only off and swing are offered.
+    assert device().capabilities.swing_h.values == ("off", "swing")
+
+
 def test_off_clears_power_and_sets_power2():
     _, first, second = frames(power=False, mode="cool", temperature=24.0)
     assert DAIKIN312_SECOND.read(second.data)["power"] == 0
@@ -110,16 +153,6 @@ def test_beep_off_and_auto_clean_are_hardwired():
 def test_registry_serves_the_port():
     for model in DAIKIN312_MODELS:
         assert isinstance(registry.get_device("daikin", model), Daikin312Device)
-
-
-def test_capabilities_match_the_legacy_entity():
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.daikin import Daikin312
-
-    for model in DAIKIN312_MODELS:
-        legacy = LegacyDevice("daikin", model, Daikin312)
-        assert device().capabilities == legacy.capabilities
 
 
 def test_undeclared_deviation_is_reported():

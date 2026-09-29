@@ -216,14 +216,32 @@ def test_registry_serves_the_port(model):
     )
 
 
-@pytest.mark.parametrize("model", MITSUBISHI_AC_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.mitsubishi_electric import Mitsubishi
+def test_capabilities_are_the_documented_values():
+    caps = device().capabilities
+    # kMitsubishiAcMinTemp/MaxTemp, HalfDegree bit.
+    assert (caps.temperature.min, caps.temperature.max) == (16.0, 31.0)
+    assert caps.temperature.decimals == (0, 5)
+    assert caps.modes == ("auto", "cool", "fan", "dry", "heat")
+    assert caps.fan.values == ("auto", "1", "2", "3", "4", "5")
+    assert caps.swing_v.values == ("off", "auto", "1", "2", "3", "4", "5")
+    assert caps.swing_h.values == ("auto", "1", "2", "3", "4", "5", "6")
+    # Quiet has no bit (kMitsubishiAcFanQuiet = FanSilent = fan "1").
+    assert set(caps.features) == {"economy"}
 
-    legacy = LegacyDevice("mitsubishi_electric", model, Mitsubishi)
-    assert device(model).capabilities == legacy.capabilities
+
+@pytest.mark.parametrize("economy", [False, True])
+def test_economy_is_the_ecocool_bit(economy):
+    # Mitsubishi144Protocol byte 14 bit 5 (Ecocool, IRMitsubishiAC::setEcocool;
+    # toString's "Econo"). Nothing else changes.
+    state = HvacState(True, "cool", 22.0, features={"economy": economy})
+    values = read(state)
+    assert values["ecocool"] == economy
+    plain = read(HvacState(True, "cool", 22.0))
+    assert {**values, "ecocool": 0} == plain
+    dev = device()
+    first, _ = dev.frames(None, dev.normalise(state), ())
+    assert (first.data[14] >> 5) & 1 == economy
+    assert MITSUBISHI_AC_LAYOUT.checksum.check(first.data)
 
 
 @pytest.mark.parametrize("label, field", [("90°", "swing_v"), ("60°", "swing_v")])

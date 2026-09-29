@@ -30,7 +30,7 @@ from .kelvinator import (
     KelvinatorBlockSum,
     KelvinatorDevice,
 )
-from ..choices import FAN_3, ON_OFF, SWING_V_AUTO_ANGLES
+from ..choices import FAN_3, ON_OFF, SWING_V_ANGLES
 from ..device import Device
 from ..fields import Field, Joined, Layout
 from ..ir.model import Frame, Protocol, PulseDistance, Section
@@ -192,7 +192,7 @@ GREE_MODE = {  # kGree{Auto,Cool,Dry,Fan,Heat,Econo}
 }
 GREE_FAN = {"auto": 0, "1": 1, "2": 2, "3": 3}  # kGreeFan{Auto,Min,Med,Max}
 GREE_SWING_V = {  # kGreeSwing*: canonical "1" highest (Up) .. "5" lowest (Down)
-    "last": 0b0000,  # LastPos
+    "off": 0b0000,  # LastPos: convertSwingV's kOff (the vane stays put)
     "auto": 0b0001,
     "1": 0b0010,  # Up
     "2": 0b0011,  # MiddleUp
@@ -261,8 +261,10 @@ GREE_LAYOUT = Layout(
     checksum=KelvinatorBlockSum(0),
 )
 
-# The legacy entities (Greev1/v2/v3): they differ in economy only.
-_GREE_SWING_V = SWING_V_AUTO_ANGLES
+# The remotes differ in economy only. Swing "off" is kGreeSwingLastPos
+# (convertSwingV's kOff); the auto ranges (kGreeSwing{Down,Middle,Up}Auto)
+# have no canonical name.
+_GREE_SWING_V = SWING_V_ANGLES
 _GREE_SWING_H = Choice(
     ("off", "auto", "1", "2", "3", "4", "5"),
     {
@@ -288,10 +290,10 @@ def _gree_capabilities(*features):
     )
 
 
-GREE_CAPABILITIES = {  # variant (gree_ac_remote_model_t) -> legacy entity
-    "YAW1F": _gree_capabilities("powerful", "light", "cleaning"),  # Greev1
-    "YBOFB": _gree_capabilities("economy", "powerful", "light", "cleaning"),
-    "YX1FSF": _gree_capabilities("powerful", "light", "economy", "cleaning"),
+GREE_CAPABILITIES = {  # variant (gree_ac_remote_model_t)
+    "YAW1F": _gree_capabilities("powerful", "light", "cleaning", "sleep"),
+    "YBOFB": _gree_capabilities("economy", "powerful", "light", "cleaning", "sleep"),
+    "YX1FSF": _gree_capabilities("powerful", "light", "economy", "cleaning", "sleep"),
 }
 
 
@@ -313,17 +315,19 @@ class GreeDevice(Device):
       "off"), so the auto setpoint, with the requested fan and settings;
     - auto sends 25 C whatever the setpoint (setTemp's auto lock);
     - dry sends fan 1 whatever the fan (setFan's dry lock);
-    - swing_v auto sets SwingAuto and kGreeSwingAuto; a position clears
-      SwingAuto;
+    - swing_v auto sets SwingAuto and kGreeSwingAuto; a position, or off
+      (kGreeSwingLastPos), clears SwingAuto;
     - ModelA is set when the power is on and the variant is YAW1F
       (setPower);
     - economy sets Econo, and on YX1FSF also mode kGreeEcono (setEcono),
       in every mode and in off messages;
-    - powerful is Turbo, cleaning is XFan; sleep, iFeel, WiFi, the timer,
-      the display and Fahrenheit bits stay clear.
+    - powerful is Turbo, cleaning is XFan, sleep is Sleep (IRac's
+      setSleep(sleep >= 0)); iFeel, WiFi, the timer, the display and
+      Fahrenheit bits stay clear.
 
     Where the C path contradicts the header, the port sends the documented
-    value (see the Defects in tests/test_gree_device.py):
+    value (see the Defects in tests/test_gree_device.py; sleep is not one:
+    the old glue has no sleep to pass):
     - fan "1" (low): convertFan maps kLow, like kMedium, to kGreeFanMax - 1
       (kGreeFanMed). The port sends kGreeFanMin;
     - swing_v "1" and "2" (90°, 60°): the old glue passes kHigh and
@@ -365,6 +369,7 @@ class GreeDevice(Device):
             turbo=features["powerful"],
             light=features["light"],
             xfan=features["cleaning"],
+            sleep=features.get("sleep", False),
             econo=econo,
         )
         return [Frame("block1", bytes(data[:4])), Frame("block2", bytes(data[4:]))]

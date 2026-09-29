@@ -53,6 +53,65 @@ def test_heat_setpoint_floor_is_10():
     assert _read(HvacState(True, "heat", 10.0))["temperature"] == 10
 
 
+@pytest.mark.parametrize(
+    "mode, expected",
+    [("auto", 18.0), ("dry", 18.0), ("cool", 18.0), ("fan", 18.0), ("heat", 10.0)],
+)
+def test_normalise_reports_the_per_mode_floor(mode, expected):
+    # setTemp: kDaikinMinTemp (10) in heat, kDaikin2MinCoolTemp (18) in every
+    # other mode; the capabilities give the union (10..32).
+    assert device().normalise(HvacState(True, mode, 10.0)).temperature == expected
+
+
+def test_normalise_keeps_the_setpoint_of_an_off_state():
+    assert device().normalise(HvacState(False, "heat", 10.0)).temperature == 10.0
+
+
+# IRDaikin152::setFan: kDaikinFanAuto (0xA), kDaikinFanQuiet (0xB), and
+# kDaikinFanMin (1) .. kDaikinFanMax (5) sent as the speed plus 2.
+@pytest.mark.parametrize(
+    "fan,raw",
+    [("auto", 0xA), ("1", 0xB), ("2", 3), ("3", 4), ("4", 5), ("5", 6), ("6", 7)],
+)
+def test_every_fan_step_uses_its_documented_value(fan, raw):
+    dev = device()
+    state = dev.normalise(HvacState(True, "cool", 24.0, fan=fan))
+    assert state.fan == fan
+    _, main = dev.frames(None, state, ())
+    assert DAIKIN152_MAIN.read_raw(main.data, "fan") == raw
+
+
+def test_old_fan_labels_are_the_speeds_the_c_path_sent():
+    # convertFan (IRDaikinESP's): kLow -> kDaikinFanMin, kMedium ->
+    # kDaikinFanMed, kHigh -> kDaikinFanMax - 1.
+    labels = device().capabilities.fan.labels
+    assert (labels["2"], labels["4"], labels["5"]) == ("low", "medium", "high")
+
+
+# TestDecodeDaikin152.RealExample: "Power: Off, Mode: 0 (Auto), Temp: 26C,
+# Fan: 2 (UNKNOWN), Swing(V): Off, Powerful: Off, Quiet: On, Econo: Off".
+REAL_EXAMPLE = bytes(
+    [
+        0x11, 0xDA, 0x27, 0x00, 0x00, 0x00, 0x34, 0x00, 0x40, 0x00,
+        0x00, 0x00, 0x00, 0x20, 0x00, 0xC5, 0x40, 0x00, 0xAB,
+    ]
+)  # fmt: skip
+
+
+def test_real_capture_with_fan_speed_2():
+    dev = device()
+    state = dev.normalise(
+        HvacState(False, "auto", 26.0, fan="3", features={"quiet": True})
+    )
+    _, main = dev.frames(None, state, ())
+    # The remote also set byte 16 bit 6, a bit the header leaves unnamed;
+    # with it, the port's frame is the capture byte for byte.
+    ours = bytearray(main.data)
+    ours[16] |= 0x40
+    DAIKIN152_MAIN.checksum.apply(ours)
+    assert bytes(ours) == REAL_EXAMPLE
+
+
 @pytest.mark.parametrize("mode", ["dry", "fan"])
 def test_dry_and_fan_keep_the_requested_setpoint(mode):
     # setMode's kDaikin152DryTemp/FanTemp are overwritten by IRac's setTemp.
@@ -90,16 +149,6 @@ def test_feature_interplay_follows_the_c_path(features, expected):
 def test_registry_serves_the_port():
     for model in ("ARC480A5 remote", "Daikin152"):
         assert isinstance(registry.get_device("daikin", model), Daikin152Device)
-
-
-def test_capabilities_match_the_legacy_entity():
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.daikin import Daikin152
-
-    for model in ("ARC480A5 remote", "Daikin152"):
-        legacy = LegacyDevice("daikin", model, Daikin152)
-        assert Daikin152Device("daikin", model).capabilities == legacy.capabilities
 
 
 def test_undeclared_deviation_is_reported():

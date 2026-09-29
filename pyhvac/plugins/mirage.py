@@ -28,7 +28,7 @@ from ..device import Device
 from ..fields import Field, Layout, NibbleSum
 from ..ir.model import Frame, Protocol, PulseDistance, Section
 from ..choices import FAN_3, ON_OFF, SWING, SWING_V_ANGLES
-from ..state import Capabilities, TemperatureRange
+from ..state import Capabilities, Choice, TemperatureRange
 
 try:
     from ..irhvac import KKG9AC1, KKG29AC1
@@ -231,8 +231,14 @@ MIRAGE_KKG29AC1_LAYOUT = Layout(
     MIRAGE_CHECKSUM,
 )
 
+# KKG29AC1's SwingV is one bit: setSwingV sets it for every position but
+# kMirageAcSwingVOff, and getSwingV reads it back as kMirageAcSwingVAuto. The
+# fixed positions do nothing there, so the remote offers off and auto only
+# (auto, as KKG9AC1 names kMirageAcSwingVAuto).
+MIRAGE_KKG29AC1_SWING_V = Choice(("off", "auto"), {"off": "off", "auto": "auto"})
+
 _MIRAGE_FEATURES = {"powerful": ON_OFF, "sleep": ON_OFF, "light": ON_OFF}
-MIRAGE_CAPABILITIES = {  # remote variant -> the legacy entity (Miragev1 / v2)
+MIRAGE_CAPABILITIES = {  # remote variant -> what its layout can encode
     "KKG9AC1": Capabilities(
         modes=("cool", "fan", "dry", "heat"),
         temperature=TemperatureRange(float(MIRAGE_MIN_TEMP), float(MIRAGE_MAX_TEMP)),
@@ -244,7 +250,7 @@ MIRAGE_CAPABILITIES = {  # remote variant -> the legacy entity (Miragev1 / v2)
         modes=("cool", "fan", "dry", "heat"),
         temperature=TemperatureRange(float(MIRAGE_MIN_TEMP), float(MIRAGE_MAX_TEMP)),
         fan=FAN_3,
-        swing_v=SWING_V_ANGLES,
+        swing_v=MIRAGE_KKG29AC1_SWING_V,
         swing_h=SWING,
         features={
             **_MIRAGE_FEATURES,
@@ -265,8 +271,8 @@ class MirageDevice(Device):
 
     The variant (a mirage_ac_remote_model_t name: KKG9AC1 or KKG29AC1)
     comes from the model (MIRAGE_MODEL_VARIANT) unless given; unknown models
-    get KKG9AC1, IRMirageAc's default. It picks the capabilities (the legacy
-    Miragev1 / Miragev2 entities) and the layout.
+    get KKG9AC1, IRMirageAc's default. It picks the capabilities and the
+    layout.
 
     As IRac::mirage (fromCommon on a fresh object) sends it:
     - an off message carries mode cool (convertMode's default, which IRac's
@@ -274,8 +280,8 @@ class MirageDevice(Device):
     - powerful sets Turbo in cool only (setTurbo);
     - KKG9AC1: the vane position and the power share SwingAndPower (the
       position, plus kMirageAcPowerOff when off);
-    - KKG29AC1: SwingV is one bit, set for every position but off; purifier
-      sets Filter.
+    - KKG29AC1: SwingV is one bit (swing_v off or auto); purifier sets
+      Filter.
 
     ``previous`` matters for KKG29AC1 only, whose light and clean bits are
     toggles (LightToggle_Kkg29ac1, CleanToggle). IRac::handleToggles sends

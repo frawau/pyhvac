@@ -206,13 +206,16 @@ def test_registry_serves_the_port(model):
 
 
 @pytest.mark.parametrize("model", HITACHI424_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.hitachi import Hitachi424
-
-    legacy = LegacyDevice("hitachi", model, Hitachi424)
-    assert Hitachi424Device("hitachi", model).capabilities == legacy.capabilities
+def test_capabilities_are_the_documented_controls(model):
+    # Unchanged from the legacy entity, and what Hitachi424Protocol carries:
+    # kHitachiAc424{Fan,Cool,Dry,Heat} (no auto), kHitachiAc424Min/MaxTemp,
+    # kHitachiAc424Fan{Auto,Min,Low,Medium,High,Max}, the SwingV button.
+    caps = Hitachi424Device("hitachi", model).capabilities
+    assert caps.modes == ("fan", "heat", "cool", "dry")
+    assert (caps.temperature.min, caps.temperature.max) == (16.0, 32.0)
+    assert caps.fan.values == ("auto", "1", "2", "3", "4", "5")
+    assert caps.swing_v.values == ("off", "swing")
+    assert caps.swing_h is None and dict(caps.features) == {}
 
 
 def test_undeclared_deviation_is_reported():

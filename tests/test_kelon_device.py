@@ -206,14 +206,70 @@ def test_registry_serves_the_port(model):
     assert isinstance(registry.get_device("kelon", model), KelonDevice)
 
 
-@pytest.mark.parametrize("model", KELON_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.kelon import Kelon
+def test_capabilities_are_the_documented_values():
+    caps = device().capabilities
+    # kKelonMinTemp / kKelonMaxTemp, whole degrees.
+    assert (caps.temperature.min, caps.temperature.max) == (18.0, 32.0)
+    assert caps.modes == ("auto", "cool", "fan", "dry", "heat")
+    assert caps.fan.values == ("auto", "1", "2", "3")  # kKelonFan{Auto,Min..Max}
+    assert caps.swing_v.values == ("off", "swing")  # SwingVToggle: new
+    assert caps.swing_h is None
+    # SleepEnabled; SuperCoolEnabled1/2 as powerful (new).
+    assert set(caps.features) == {"sleep", "powerful"}
 
-    legacy = LegacyDevice("kelon", model, Kelon)
-    assert KelonDevice("kelon", model).capabilities == legacy.capabilities
+
+def test_swing_toggle_without_previous_is_the_target_swing():
+    # A fresh IRac: sendAc passes swingv != kOff as the toggle.
+    assert read(state(swing_v="swing"))["swing_toggle"] == 1
+    assert read(state(swing_v="off"))["swing_toggle"] == 0
+
+
+@pytest.mark.parametrize(
+    "before, after, toggle",
+    [
+        ("off", "off", 0),
+        ("off", "swing", 1),
+        ("swing", "swing", 0),
+        ("swing", "off", 1),
+    ],
+)
+def test_swing_toggle_with_previous_toggles_on_change(before, after, toggle):
+    # IRac::handleToggles' KELON case: toggle when off <-> not-off changes.
+    previous = state(True, "cool", 22.0, swing_v=before)
+    target = state(True, "cool", 22.0, swing_v=after)
+    values = read(target, previous)
+    assert (values["swing_toggle"], values["power_toggle"]) == (toggle, 0)
+
+
+def test_port_reproduces_the_swing_toggle_capture_but_for_its_dry_setpoint():
+    # TestSwingToggleDryMode, 0x83800683: dry, fan auto, swing toggle, no
+    # power toggle. The remote sent 26C in dry; the port (as the C path,
+    # IRKelonAc::setMode) sends 25C there (see KELON_FIXED_TEMPERATURE).
+    on = state(True, "dry", 22.0)
+    target = state(True, "dry", 22.0, swing_v="swing")
+    (main,) = device().frames(on, target, ())
+    capture = (0x83800683).to_bytes(6, "little")
+    assert KELON_LAYOUT.read(main.data) == {
+        **KELON_LAYOUT.read(capture),
+        "temperature": 25,
+    }
+
+
+@pytest.mark.parametrize("mode", ["auto", "cool", "dry", "fan", "heat"])
+@pytest.mark.parametrize("fan", ["auto", "1", "3"])
+def test_powerful_is_super_cool(mode, fan):
+    # IRKelonAc::setSupercool(true): kKelonMinTemp, cool, kKelonFanMax and
+    # both SuperCoolEnabled bits, whatever the target's mode, setpoint, fan.
+    values = read(state(True, mode, 27.0, fan=fan, features={"powerful": True}))
+    assert (values["mode"], values["temperature"], values["fan"]) == ("cool", 18, "3")
+    assert (values["super_cool1"], values["super_cool2"]) == (1, 1)
+
+
+def test_port_reproduces_the_super_cool_capture():
+    # SendDataOnly, 0x900002010683: 18C cool, fan max, super cool, no toggle.
+    on = state(True, "heat", 24.0, features={"powerful": True})
+    (main,) = device().frames(on, on, ())
+    assert main.data == (0x900002010683).to_bytes(6, "little")
 
 
 @pytest.mark.parametrize("mode", ["auto", "cool", "dry", "fan"])

@@ -142,9 +142,38 @@ def test_every_fan_level(fan, raw):
 
 @pytest.mark.parametrize("mode", ["cool", "heat"])
 @pytest.mark.parametrize("t", [12.0, 32.0])
-def test_max_is_never_set(mode, t):
+def test_max_is_clear_without_powerful(mode, t):
     # IRac::amcor never calls setMax, even at Max's own setpoints.
     assert read(HvacState(True, mode, t))["max"] == 0
+
+
+def test_powerful_is_offered():
+    assert device().capabilities.features["powerful"].values == (False, True)
+
+
+@pytest.mark.parametrize("mode, sent", [("cool", 12), ("heat", 32)])
+@pytest.mark.parametrize("t", [12.0, 22.0, 32.0])
+def test_powerful_sets_max_and_its_setpoint(mode, t, sent):
+    # IRAmcorAc::setMax: kAmcorMax (0b11), with Temp = kAmcorMinTemp in cool
+    # and kAmcorMaxTemp in heat (TestAmcorAcClass.Max).
+    data = frame(HvacState(True, mode, t, features={"powerful": True}))
+    values = AMCOR_LAYOUT.read(data)
+    assert (values["max"], values["temp"]) == (0b11, sent)
+    assert AMCOR_LAYOUT.checksum.check(data)
+
+
+@pytest.mark.parametrize("mode", ["auto", "fan", "dry"])
+def test_powerful_is_not_sent_outside_cool_and_heat(mode):
+    # setMax: "Not allowed in all other operating modes" (Temp unchanged).
+    on = HvacState(True, mode, 25.0, features={"powerful": True})
+    assert frame(on) == frame(HvacState(True, mode, 25.0))
+
+
+@pytest.mark.parametrize("mode", ["cool", "heat"])
+def test_powerful_is_not_sent_with_power_off(mode):
+    # An off message carries mode auto, where setMax does nothing.
+    off = HvacState(False, mode, 25.0, features={"powerful": True})
+    assert frame(off) == frame(HvacState(False, mode, 25.0))
 
 
 def test_previous_is_ignored():
@@ -160,16 +189,6 @@ def test_previous_is_ignored():
 def test_registry_serves_the_port(model):
     dev = registry.get_device("amcor", model)
     assert isinstance(dev, AmcorDevice)
-
-
-@pytest.mark.parametrize("model", AMCOR_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.amcor import Amcor
-
-    legacy = LegacyDevice("amcor", model, Amcor)
-    assert device(model).capabilities == legacy.capabilities
 
 
 # ir_Amcor_test.cpp DecodeAmcor.RealExample: two real captures, each the

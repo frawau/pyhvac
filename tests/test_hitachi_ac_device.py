@@ -110,23 +110,26 @@ def test_byte_9_flags_the_minimum_setpoint(mode):
             assert frame.data[9] == byte
 
 
-@pytest.mark.parametrize("fan, code", [("auto", 1), ("1", 2), ("2", 3), ("3", 4)])
+@pytest.mark.parametrize(
+    "fan, code", [("auto", 1), ("1", 2), ("2", 3), ("3", 4), ("4", 5)]
+)
 def test_fan_levels_follow_convert_fan(fan, code):
-    # kLow -> kHitachiAcFanLow, kMedium -> +1, kHigh -> kHitachiAcFanHigh - 1.
+    # kLow -> kHitachiAcFanLow, kMedium -> +1, kHigh -> kHitachiAcFanHigh - 1,
+    # kMax -> kHitachiAcFanHigh (5, the "4" the legacy entity did not offer).
     state = HvacState(True, "cool", 24.0, fan=fan)
     assert raw(state, "fan") == int(f"{code:08b}"[::-1], 2)
     assert read(state)["fan"] == fan
 
 
 @pytest.mark.parametrize(
-    "fan, sent", [("auto", "1"), ("1", "1"), ("2", "2"), ("3", "2")]
+    "fan, sent", [("auto", "1"), ("1", "1"), ("2", "2"), ("3", "2"), ("4", "2")]
 )
 def test_dry_has_only_low_and_medium(fan, sent):
     assert read(HvacState(True, "dry", 24.0, fan=fan))["fan"] == sent
 
 
 @pytest.mark.parametrize(
-    "fan, sent", [("auto", "1"), ("1", "1"), ("2", "2"), ("3", "3")]
+    "fan, sent", [("auto", "1"), ("1", "1"), ("2", "2"), ("3", "3"), ("4", "4")]
 )
 def test_fan_mode_has_no_auto(fan, sent):
     assert read(HvacState(True, "fan", 24.0, fan=fan))["fan"] == sent
@@ -166,14 +169,46 @@ def test_registry_serves_the_port(model):
     assert isinstance(registry.get_device("hitachi", model), HitachiAcDevice)
 
 
-@pytest.mark.parametrize("model", HITACHI_AC_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.hitachi import Hitachi
+def test_fan_offers_the_four_speeds_set_fan_allows():
+    # IRHitachiAc::setFan: kHitachiAcFanAuto (1) .. kHitachiAcFanHigh (5).
+    fan = device().capabilities.fan
+    assert fan.values == ("auto", "1", "2", "3", "4")
+    # The legacy labels keep their codes: the oracle's "high" is still 4.
+    assert [fan.label(v) for v in fan.values] == [
+        "auto",
+        "low",
+        "medium",
+        "high",
+        "highest",
+    ]
 
-    legacy = LegacyDevice("hitachi", model, Hitachi)
-    assert HitachiAcDevice("hitachi", model).capabilities == legacy.capabilities
+
+def test_capabilities():
+    caps = device().capabilities
+    assert caps.modes == MODES
+    assert (caps.temperature.min, caps.temperature.max) == (16.0, 32.0)
+    assert caps.swing_v.values == caps.swing_h.values == ("off", "swing")
+    assert dict(caps.features) == {}
+
+
+# ir_Hitachi_test.cpp DecodeHitachiAC.NormalRealExample2 (issue #417): on,
+# heat, 32 C, fan kHitachiAcFanHigh (5), no swing.
+REAL_EXAMPLE_2 = bytes.fromhex(
+    "80080c02fd807f884810c00200a000000001000000000000800000d0"
+)
+
+
+def test_real_capture_with_fan_high_is_reproduced_but_for_the_reset_bytes():
+    # Every field matches. Bytes 14 and 15 hold 0x60 below the swing bits in
+    # IRHitachiAc::stateReset (as C sends), 0x00 in this capture (and in
+    # NormalRealExample1); the checksum follows.
+    dev = device()
+    state = dev.normalise(HvacState(True, "heat", 32.0, fan="4"))
+    (frame,) = dev.frames(None, state, ())
+    assert HITACHI_AC_LAYOUT.read(frame.data) == HITACHI_AC_LAYOUT.read(REAL_EXAMPLE_2)
+    assert HITACHI_AC_LAYOUT.read_raw(REAL_EXAMPLE_2, "fan") == 0xA0  # 5 reversed
+    diff = {i for i, (a, b) in enumerate(zip(frame.data, REAL_EXAMPLE_2)) if a != b}
+    assert diff == {14, 15, 27}
 
 
 def test_undeclared_swing_v_deviation_is_reported():

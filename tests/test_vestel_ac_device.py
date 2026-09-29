@@ -36,10 +36,8 @@ HEAT_16 = Defect("temperature", 16, 18, "setTemp clamps to kVestelAcMinTempC")
 HEAT_17 = Defect("temperature", 17, 18, "setTemp clamps to kVestelAcMinTempC")
 DEFECTS = (SWING, SLEEP, TURBO, HEAT_16, HEAT_17)
 
-# Not a C defect: a record without "fan" leaves IRac's fanspeed at its
-# default, kAuto (kVestelAcFanAuto). The entity has no fan auto (the legacy
-# entity has none), so the port reads the record as its first fan, low.
-NO_FAN = Defect("fan", "1", "auto", "record has no fan: IRac's default kAuto")
+# A record without "fan" leaves IRac's fanspeed at its default, kAuto
+# (kVestelAcFanAuto): the port's fan auto, so no declaration is needed.
 
 # ir_Vestel_test.cpp, as 7 logical bytes (the uint64 sent LSB first).
 DEFAULT_STATE = (0x0F00D9001FEF201).to_bytes(7, "little")  # kVestelAcStateDefault
@@ -50,10 +48,6 @@ MODES = ("auto", "cool", "dry", "fan", "heat")
 
 def device(model="generic"):
     return VestelAcDevice("vestel", model)
-
-
-def defects_for(record):
-    return DEFECTS + (() if "fan" in record["state"] else (NO_FAN,))
 
 
 def state(power=True, mode="cool", temperature=22.0, **kw):
@@ -72,7 +66,7 @@ def read(target):
 @pytest.mark.parametrize("record", oracle_params("VESTEL_AC"))
 def test_matches_c_library(record):
     dev = device()
-    assert_matches_oracle(dev, record, dev.LAYOUTS, defects_for(record))
+    assert_matches_oracle(dev, record, dev.LAYOUTS, DEFECTS)
 
 
 def test_layout_round_trips_every_oracle_state():
@@ -179,15 +173,41 @@ def test_layout_reads_the_real_captures(data, fields):
     assert VESTEL_AC_LAYOUT.build(**values) == bytearray(data)
 
 
-def test_port_reproduces_the_real_heat_capture_but_its_fan():
-    # RealNormalExample: heat, 16C, ion on, fan auto. The entity has no fan
-    # auto; with the capture's fan code, the port's frame is the capture.
-    ours = bytearray(frame(state(True, "heat", 16.0, features={"purifier": True})))
-    VESTEL_AC_LAYOUT.write_raw(
-        ours, "fan", VESTEL_AC_LAYOUT.fields["fan"].values["auto"]
-    )
-    VESTEL_AC_LAYOUT.checksum.apply(ours)
-    assert bytes(ours) == REAL_NORMAL
+def test_port_reproduces_the_real_heat_capture():
+    # RealNormalExample: heat, 16C, ion on, fan auto (kVestelAcFanAuto).
+    target = state(True, "heat", 16.0, fan="auto", features={"purifier": True})
+    assert frame(target) == REAL_NORMAL
+
+
+def test_fan_offers_auto_and_the_three_speeds():
+    # kVestelAcFanAuto/Low/Med/High (the legacy entity had no auto).
+    fan = device().capabilities.fan
+    assert fan.values == ("auto", "1", "2", "3")
+    assert [fan.label(v) for v in fan.values] == ["auto", "low", "medium", "high"]
+
+
+def test_fan_auto_uses_its_documented_code():
+    # kVestelAcFanAuto = 1.
+    assert VESTEL_AC_LAYOUT.read_raw(frame(state(fan="auto")), "fan") == 1
+
+
+def test_fanless_records_are_fan_auto():
+    # IRac's default fanspeed kAuto is the port's fan auto.
+    dev = device()
+    for record in load_oracle("VESTEL_AC"):
+        if "fan" not in record["state"]:
+            assert state_from_record(dev, record["state"]).fan == "auto"
+            assert_matches_oracle(dev, record, dev.LAYOUTS, DEFECTS)
+
+
+@pytest.mark.parametrize("mode", ["auto", "cool", "dry", "fan"])
+@pytest.mark.parametrize("t, kept", [(16.0, 18.0), (17.0, 18.0), (18.0, 18.0)])
+def test_normalise_clamps_to_18_outside_heat(mode, t, kept):
+    # kVestelAcMinTempC outside heat; capabilities give the union 16-30.
+    assert state(True, mode, t).temperature == kept
+    assert state(True, "heat", t).temperature == t
+    rng = device().capabilities.temperature
+    assert (rng.min, rng.max) == (16.0, 30.0)
 
 
 @pytest.mark.parametrize("mode", MODES)
@@ -288,16 +308,6 @@ def test_registry_serves_the_port(model):
     assert isinstance(registry.get_device("vestel", model), VestelAcDevice)
 
 
-@pytest.mark.parametrize("model", VESTEL_AC_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.vestel import Vestel
-
-    legacy = LegacyDevice("vestel", model, Vestel)
-    assert device(model).capabilities == legacy.capabilities
-
-
 def _record(**match):
     return next(
         r
@@ -318,7 +328,7 @@ def _record(**match):
 def test_undeclared_deviation_is_reported(defect, match):
     dev = device()
     record = _record(**match)
-    defects = [d for d in defects_for(record) if d != defect]
+    defects = [d for d in DEFECTS if d != defect]
     with pytest.raises(AssertionError, match=defect.field):
         assert_matches_oracle(dev, record, dev.LAYOUTS, defects)
 
@@ -332,13 +342,6 @@ def test_undeclared_heat_17_deviation_is_reported():
     defects = [d for d in DEFECTS if d != HEAT_17]
     with pytest.raises(AssertionError, match="temperature"):
         assert_matches_oracle(dev, rec, dev.LAYOUTS, defects)
-
-
-def test_fanless_record_needs_its_declaration():
-    dev = device()
-    record = _record(purifier="on")
-    with pytest.raises(AssertionError, match="fan"):
-        assert_matches_oracle(dev, record, dev.LAYOUTS, DEFECTS)
 
 
 def test_layouts_must_cover_every_frame():

@@ -28,12 +28,13 @@
 ##
 
 import struct
+from dataclasses import replace
 
 from .hvaclib import HVAC, PulseBased, GenPluginObject, bit_reverse
 from ..device import Device
 from ..fields import Checksum, Field, HighNibbleSum, Layout, NibbleSum, Sum8
 from ..ir.model import Frame, Protocol, PulseDistance, Section
-from ..choices import FAN_3, FAN_5, ON_OFF, SWING, SWING_V_ANGLES
+from ..choices import FAN_5, ON_OFF, SWING, SWING_V_AUTO_ANGLES
 from ..state import Capabilities, Choice, TemperatureRange
 
 DAIKIN_NATIVE = Protocol(
@@ -469,9 +470,32 @@ DAIKIN_MODE = {  # kDaikinAuto/Dry/Cool/Heat/Fan
     "heat": 4,
     "fan": 6,
 }
-# kDaikinFanAuto, and IRac's kLow/kMedium/kHigh (kDaikinFanMin, Med, Max - 1)
-# as sent: the C fan value plus 2.
-DAIKIN_FAN = {"auto": 0xA, "1": 3, "2": 5, "3": 6}
+# The fan field (setFan): kDaikinFanAuto, kDaikinFanQuiet, and speeds
+# kDaikinFanMin (1) .. kDaikinFanMax (5), sent as the speed plus 2. Quiet is
+# the slowest step ("1"), as convertFan maps kMin to it; the old
+# vocabulary's low/medium/high are what IRac sent for kLow/kMedium/kHigh
+# (kDaikinFanMin, kDaikinFanMed, kDaikinFanMax - 1).
+DAIKIN_FAN = {
+    "auto": 0xA,  # kDaikinFanAuto
+    "1": 0xB,  # kDaikinFanQuiet
+    "2": 3,  # speed 1, kDaikinFanMin
+    "3": 4,  # speed 2
+    "4": 5,  # speed 3, kDaikinFanMed
+    "5": 6,  # speed 4
+    "6": 7,  # speed 5, kDaikinFanMax
+}
+DAIKIN_FAN_CHOICE = Choice(
+    tuple(DAIKIN_FAN),
+    {
+        "auto": "auto",
+        "1": "quiet",
+        "2": "low",
+        "3": "medium-low",
+        "4": "medium",
+        "5": "high",
+        "6": "highest",
+    },
+)
 DAIKIN_SWING = {"off": 0x0, "swing": 0xF}  # kDaikinSwingOff / kDaikinSwingOn
 DAIKIN_SWING_BIT = {"off": 0, "swing": 1}  # Daikin64/Daikin128 SwingV bit
 
@@ -517,6 +541,7 @@ DAIKIN2_SWING_V = {  # kDaikin2SwingV*
 }
 DAIKIN2_SWING_H = {  # kDaikin2SwingH*
     "off": 0xBF,
+    "auto": 0xBE,  # kDaikin2SwingHAuto, a.k.a. swing
     "1": 0xA8,  # far left
     "2": 0xA9,  # left
     "3": 0xAA,  # middle
@@ -529,6 +554,8 @@ DAIKIN2_FIRST = Layout(
     bytes.fromhex("11da2700010040f0200c8004b01624000000d000"),
     {
         "power2": Field.at(6, 7, 1),  # inverse of power
+        # kDaikinLightBright when on, kDaikinLightOff when off (as IRac)
+        "light": Field.at(7, 4, 2, values={True: 1, False: 3}),
         "mold": Field.at(8, 3, 1),
         "swing_h": Field.at(17, 0, 8, values=DAIKIN2_SWING_H),
         "swing_v": Field.at(18, 0, 4, values=DAIKIN2_SWING_V),
@@ -552,6 +579,17 @@ DAIKIN2_SECOND = Layout(
 DAIKIN2_MIN_COOL = 18.0  # kDaikin2MinCoolTemp
 
 
+def _raise_setpoint(state, mode, floor):
+    """``state`` with its setpoint raised to ``floor`` when it runs in ``mode``.
+
+    An off message carries mode auto on these protocols (see ``frames``), so
+    the floor only applies while the unit is on.
+    """
+    if state.power and state.mode == mode and state.temperature < floor:
+        return replace(state, temperature=floor)
+    return state
+
+
 class Daikin2Device(Device):
     """Daikin2 (ARC477A1): a full-state protocol, ``previous`` is ignored."""
 
@@ -560,7 +598,7 @@ class Daikin2Device(Device):
     capabilities = Capabilities(
         modes=DAIKIN_MODES,
         temperature=TemperatureRange(10.0, 32.0),
-        fan=FAN_3,
+        fan=DAIKIN_FAN_CHOICE,
         swing_v=Choice(
             ("off", "auto", "1", "2", "3", "4", "5", "6"),
             {
@@ -575,9 +613,10 @@ class Daikin2Device(Device):
             },
         ),
         swing_h=Choice(
-            ("off", "1", "2", "3", "4", "5", "6"),
+            ("off", "auto", "1", "2", "3", "4", "5", "6"),
             {
                 "off": "off",
+                "auto": "auto",
                 "1": "far left",
                 "2": "close left",
                 "3": "middle",
@@ -587,9 +626,14 @@ class Daikin2Device(Device):
             },
         ),
         features=dict.fromkeys(
-            ("economy", "powerful", "quiet", "cleaning", "purifier"), ON_OFF
+            ("economy", "powerful", "quiet", "cleaning", "purifier", "light"), ON_OFF
         ),
     )
+
+    def normalise(self, state):
+        # setTemp: kDaikin2MinCoolTemp in cool, kDaikinMinTemp otherwise.
+        state = super().normalise(state)
+        return _raise_setpoint(state, "cool", DAIKIN2_MIN_COOL)
 
     def frames(self, previous, target, actions):
         feat = target.features
@@ -602,6 +646,7 @@ class Daikin2Device(Device):
             temperature = max(temperature, DAIKIN2_MIN_COOL)
         first = DAIKIN2_FIRST.build(
             power2=not target.power,
+            light=feat["light"],
             mold=feat["cleaning"],
             swing_h=target.swing_h,
             swing_v=target.swing_v,
@@ -692,7 +737,7 @@ class DaikinArcDevice(Device):
     capabilities = Capabilities(
         modes=DAIKIN_MODES,
         temperature=TemperatureRange(10.0, 32.0, (0, 5)),
-        fan=FAN_3,
+        fan=DAIKIN_FAN_CHOICE,
         swing_v=SWING,
         swing_h=SWING,
         features=dict.fromkeys(("economy", "powerful", "quiet", "cleaning"), ON_OFF),
@@ -783,6 +828,7 @@ DAIKIN64_LAYOUT = Layout(
         "fan": Field.at(1, 4, 4, values=DAIKIN64_FAN),
         "temperature": Field.at(6, 0, 8, values=DAIKIN64_TEMPERATURE),
         "swing_v": Field.at(7, 0, 1, values=DAIKIN_SWING_BIT),
+        "sleep": Field.at(7, 1, 1),
         "power": Field.at(7, 3, 1),  # a toggle
     },
     checksum=HighNibbleSum(0, 7, 7, with_low=True),  # kDaikin64Checksum*
@@ -808,6 +854,7 @@ class Daikin64Device(Device):
         temperature=TemperatureRange(16.0, 30.0),
         fan=FAN_5,
         swing_v=SWING,
+        features={"sleep": ON_OFF},  # Sleep bit (setSleep)
     )
 
     def frames(self, previous, target, actions):
@@ -822,6 +869,7 @@ class Daikin64Device(Device):
             fan=target.fan,
             temperature=int(target.temperature),
             swing_v=target.swing_v,
+            sleep=target.features["sleep"],
             power=toggle,
         )
         return [
@@ -915,12 +963,15 @@ DAIKIN128_SECOND = Layout(
 
 
 class Daikin128Device(Device):
-    """Daikin128 (BRC52B63): full state, but power is a toggle bit.
+    """Daikin128 (BRC52B63): full state, but power and light are toggle bits.
 
     The power bit asks the unit to flip its power, so it is set only when
     the power changes: ``previous.power != target.power``. With no previous
     state it is set for "on" and clear for "off", as IRac sends from a fresh
-    object (no previous state to toggle against).
+    object (no previous state to toggle against). The light is the same kind
+    of toggle (IRac::handleToggles treats DAIKIN128's light as it treats its
+    power), sent on the wall-unit bit as IRac::daikin128 does
+    (setLightToggle(kDaikin128BitWall)).
     """
 
     PROTOCOL = DAIKIN128
@@ -930,14 +981,17 @@ class Daikin128Device(Device):
         temperature=TemperatureRange(16.0, 30.0),
         fan=FAN_5,
         swing_v=SWING,
-        features={"economy": ON_OFF},
+        # Econo and Sleep bits; the light is a toggle (Wall bit)
+        features={"economy": ON_OFF, "sleep": ON_OFF, "light": ON_OFF},
     )
 
     def frames(self, previous, target, actions):
+        light = target.features["light"]
         if previous is None:
             toggle = target.power
         else:
             toggle = previous.power != target.power
+            light = light != previous.features["light"]
         # As the C path: an off message carries mode auto (IRac passes mode
         # "off", which convertMode maps to auto).
         mode = target.mode if target.power else "auto"
@@ -949,12 +1003,13 @@ class Daikin128Device(Device):
             fan=fan,
             temperature=target.temperature,
             swing_v=target.swing_v,
+            sleep=target.features["sleep"],
             power=toggle,
         )
         second = DAIKIN128_SECOND.build(
+            wall=light,
             # setEcono: only in cool and heat
-            economy=target.features["economy"]
-            and mode in ("cool", "heat"),
+            economy=target.features["economy"] and mode in ("cool", "heat"),
         )
         return [
             Frame("preamble", b""),
@@ -1024,10 +1079,18 @@ class Daikin152Device(Device):
     capabilities = Capabilities(
         modes=DAIKIN_MODES,
         temperature=TemperatureRange(10.0, 32.0),
-        fan=FAN_3,
+        fan=DAIKIN_FAN_CHOICE,
         swing_v=SWING,
         features=dict.fromkeys(("economy", "powerful", "quiet"), ON_OFF),
     )
+
+    def normalise(self, state):
+        # setTemp: kDaikinMinTemp in heat, kDaikin2MinCoolTemp in every other
+        # mode (the union's 10 °C is heat only).
+        state = super().normalise(state)
+        if state.mode == "heat":
+            return state
+        return _raise_setpoint(state, state.mode, DAIKIN152_MIN_OTHER)
 
     def frames(self, previous, target, actions):
         feat = target.features
@@ -1082,13 +1145,17 @@ DAIKIN160 = Protocol(
 
 DAIKIN160_SWING_V = {  # kDaikin160SwingV*; the header has no "off" value
     "auto": 0xF,
-    "off": 0xF,  # as the C path: setSwingVertical falls back to auto
     "1": 0x5,  # highest
     "2": 0x4,  # high
     "3": 0x3,  # middle
     "4": 0x2,  # low
     "5": 0x1,  # lowest
 }
+
+# setFan: kDaikinFanAuto, speeds kDaikinFanMin (1) .. kDaikinFanMax (5) sent
+# as the speed plus 2. convertFan maps kMin..kMax to speeds 1..5, so the old
+# vocabulary's low/medium/high are speeds 2/3/4 (FAN_5's labels).
+DAIKIN160_FAN = {"auto": 0xA, "1": 3, "2": 4, "3": 5, "4": 6, "5": 7}
 
 DAIKIN160_FIRST = Layout(
     bytes.fromhex("11da27f00d0000"),
@@ -1102,7 +1169,7 @@ DAIKIN160_SECOND = Layout(
         "mode": Field.at(5, 4, 3, values=DAIKIN_MODE),
         "swing_v": Field.at(6, 4, 4, values=DAIKIN160_SWING_V),
         "temperature": Field.at(9, 1, 6),  # whole °C - 10
-        "fan": Field.at(10, 0, 4, values={"auto": 0xA, "1": 4, "2": 5, "3": 6}),
+        "fan": Field.at(10, 0, 4, values=DAIKIN160_FAN),
     },
     checksum=Sum8(0, 12, 12),
 )
@@ -1116,8 +1183,10 @@ class Daikin160Device(Device):
     capabilities = Capabilities(
         modes=DAIKIN_MODES,
         temperature=TemperatureRange(10.0, 32.0),
-        fan=FAN_3,
-        swing_v=SWING_V_ANGLES,
+        fan=FAN_5,
+        # No "off": the header documents kDaikin160SwingVAuto and five
+        # positions only (setSwingVertical sends anything else as auto).
+        swing_v=SWING_V_AUTO_ANGLES,
     )
 
     def frames(self, previous, target, actions):
@@ -1254,6 +1323,29 @@ DAIKIN216 = Protocol(
 
 DAIKIN216_SWING = {"off": 0b0000, "swing": 0b1111}  # kDaikin216Swing{Off,On}
 
+# setFan as DAIKIN_FAN, but quiet (kDaikinFanQuiet) is the quiet feature
+# (setQuiet), not a fan step: speeds 1..5 are "1".."5".
+DAIKIN216_FAN = {
+    "auto": 0xA,  # kDaikinFanAuto
+    "1": 3,  # speed 1, kDaikinFanMin
+    "2": 4,
+    "3": 5,  # kDaikinFanMed
+    "4": 6,
+    "5": 7,  # kDaikinFanMax
+    "quiet": 0xB,  # kDaikinFanQuiet, written by the quiet feature
+}
+DAIKIN216_FAN_CHOICE = Choice(
+    ("auto", "1", "2", "3", "4", "5"),
+    {
+        "auto": "auto",
+        "1": "low",
+        "2": "medium-low",
+        "3": "medium",
+        "4": "high",
+        "5": "highest",
+    },
+)
+
 DAIKIN216_FIRST = Layout(
     bytes.fromhex("11da27f000000000"),
     {},
@@ -1267,7 +1359,7 @@ DAIKIN216_SECOND = Layout(
         "temperature": Field.at(6, 1, 6, encode=int),  # whole °C
         "swing_v": Field.at(8, 0, 4, values=DAIKIN216_SWING),
         # kDaikinFan*, plus quiet as a fan value (kDaikinFanQuiet).
-        "fan": Field.at(8, 4, 4, values={**DAIKIN_FAN, "quiet": 0xB}),
+        "fan": Field.at(8, 4, 4, values=DAIKIN216_FAN),
         "swing_h": Field.at(9, 0, 4, values=DAIKIN216_SWING),
         "powerful": Field.at(13, 0, 1),
     },
@@ -1283,7 +1375,7 @@ class Daikin216Device(Device):
     capabilities = Capabilities(
         modes=DAIKIN_MODES,
         temperature=TemperatureRange(10.0, 32.0),
-        fan=FAN_3,
+        fan=DAIKIN216_FAN_CHOICE,
         swing_v=SWING,
         swing_h=SWING,
         features=dict.fromkeys(("powerful", "quiet"), ON_OFF),
@@ -1339,6 +1431,17 @@ DAIKIN312 = Protocol(
     mark_excess=0,
 )
 
+DAIKIN312_SWING_V = {  # kDaikin312SwingV*
+    "off": 0x0,  # kDaikin312SwingVOff
+    "swing": 0xF,  # kDaikin312SwingVAuto, a.k.a. swing
+    "1": 0x1,  # highest
+    "2": 0x2,  # high
+    "3": 0x3,  # upper middle
+    "4": 0x4,  # lower middle
+    "5": 0x5,  # low
+    "6": 0x6,  # lowest
+}
+
 # Skeleton bits the port never changes, as IRac::daikin312 sends them: beep
 # off (Beep = 3, byte 7) and auto clean hardwired on (Clean, byte 14 bit 4).
 DAIKIN312_FIRST = Layout(
@@ -1356,7 +1459,7 @@ DAIKIN312_SECOND = Layout(
         "power": Field.at(5, 0, 1),
         "mode": Field.at(5, 4, 3, values=DAIKIN_MODE),
         "temperature": Field.at(6, 0, 7),  # in half degrees
-        "swing_v": Field.at(8, 0, 4, values=DAIKIN_SWING),
+        "swing_v": Field.at(8, 0, 4, values=DAIKIN312_SWING_V),
         "fan": Field.at(8, 4, 4, values=DAIKIN_FAN),
         "swing_h": Field.at(9, 0, 4, values=DAIKIN_SWING),
         "powerful": Field.at(13, 0, 1),
@@ -1377,8 +1480,24 @@ class Daikin312Device(Device):
     capabilities = Capabilities(
         modes=DAIKIN_MODES,
         temperature=TemperatureRange(10.0, 32.0, (0, 5)),
-        fan=FAN_3,
-        swing_v=SWING,
+        fan=DAIKIN_FAN_CHOICE,
+        # The positions carry Daikin2's labels: the same kDaikin*SwingV*
+        # values.
+        swing_v=Choice(
+            ("off", "swing", "1", "2", "3", "4", "5", "6"),
+            {
+                "off": "off",
+                "swing": "on",
+                "1": "ceiling",
+                "2": "90°",
+                "3": "60°",
+                "4": "45°",
+                "5": "30°",
+                "6": "0°",
+            },
+        ),
+        # Only off/swing: kDaikin312SwingH{Wide,LeftMax,...} are 8-bit
+        # values that do not fit the header's 4-bit SwingH field.
         swing_h=SWING,
         features=dict.fromkeys(
             (
@@ -1392,6 +1511,11 @@ class Daikin312Device(Device):
             ON_OFF,
         ),
     )
+
+    def normalise(self, state):
+        # setTemp: kDaikin312MinCoolTemp in cool, kDaikinMinTemp otherwise.
+        state = super().normalise(state)
+        return _raise_setpoint(state, "cool", DAIKIN312_MIN_COOL)
 
     def frames(self, previous, target, actions):
         feat = target.features

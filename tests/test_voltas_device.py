@@ -380,13 +380,19 @@ def test_registry_serves_the_port(model):
 
 
 @pytest.mark.parametrize("model", VOLTAS_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.voltas import PluginObject
-
-    legacy = LegacyDevice("voltas", model, PluginObject.MODELS[model])
-    assert device(model).capabilities == legacy.capabilities
+def test_capabilities_are_what_the_protocol_documents(model):
+    # The audit found nothing to add or remove: kVoltas{Cool,Dry,Fan,Heat}
+    # (no auto), kVoltasMinTemp..kVoltasMaxTemp, kVoltasFan{Auto,Low,Med,
+    # High}, SwingV on/off (0b111/0b000), SwingH (Unknown only; 122LZF
+    # ignores setSwingH), Econo, Turbo, Light and Sleep bits.
+    caps = device(model).capabilities
+    assert caps.modes == ("cool", "dry", "fan", "heat")
+    assert (caps.temperature.min, caps.temperature.max) == (16.0, 30.0)
+    assert caps.fan.values == ("auto", "1", "2", "3")
+    assert caps.swing_v.values == ("off", "swing")
+    has_swing_h = VOLTAS_MODELS[model] == "Unknown"
+    assert (caps.swing_h is not None) == has_swing_h
+    assert set(caps.features) == {"economy", "powerful", "light", "sleep"}
 
 
 def _record(model, **match):

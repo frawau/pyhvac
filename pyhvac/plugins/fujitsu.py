@@ -282,31 +282,41 @@ FUJITSU_AC_SHORT6_LAYOUT = Layout(
 )
 
 
-def _fujitsu_ac_capabilities(swing_h=None, **features):
-    """The legacy FujitsuvN entities: they differ in swing_h and features."""
+def _fujitsu_ac_capabilities(swing_v=SWING, swing_h=None, temperature=(0,), **features):
+    """The remotes differ in swing, setpoint steps and features."""
     return Capabilities(
         modes=("auto", "cool", "dry", "fan", "heat"),
-        temperature=TemperatureRange(16.0, 30.0),
+        # kFujitsuAcMinTemp / kFujitsuAcMaxTemp.
+        temperature=TemperatureRange(
+            float(FUJITSU_AC_MIN_TEMP), float(FUJITSU_AC_MAX_TEMP), temperature
+        ),
         fan=FAN_4,
-        swing_v=SWING,
+        swing_v=swing_v,
         swing_h=swing_h,
         features=features,
     )
 
 
-# variant (fujitsu_ac_remote_model_t) -> the legacy entity (FujitsuvN)
+# variant (fujitsu_ac_remote_model_t) -> what its messages carry.
+# - ARDB1 and ARJW2 have no swing: IRFujitsuAC::checkSum forces Swing off in
+#   their long code, and the swing commands (kFujitsuAcCmdToggleSwingVert /
+#   Horiz) are short codes the port does not send (deferred);
+# - ARREW4E's Temp counts half degrees ((C - kFujitsuAcTempOffsetC / 2) * 2,
+#   getTemp returns 25.5 for the arrew4e_25_5c capture);
+# - OutsideQuiet (ARREB1E, ARREW4E) and 10C Heat (ARRAH2E, ARREW4E) have no
+#   feature name; the sleep timer is a timer.
 FUJITSU_AC_CAPABILITIES = {
-    "ARRAH2E": _fujitsu_ac_capabilities(SWING, quiet=ON_OFF),  # Fujitsuv1
-    "ARDB1": _fujitsu_ac_capabilities(quiet=ON_OFF),  # Fujitsuv2
-    "ARREB1E": _fujitsu_ac_capabilities(  # Fujitsuv3
-        powerful=ON_OFF, quiet=ON_OFF, economy=ON_OFF
-    ),
-    "ARJW2": _fujitsu_ac_capabilities(SWING, quiet=ON_OFF),  # Fujitsuv4
-    "ARRY4": _fujitsu_ac_capabilities(  # Fujitsuv5
-        purifier=ON_OFF, quiet=ON_OFF, cleaning=ON_OFF
-    ),
-    "ARREW4E": _fujitsu_ac_capabilities(  # Fujitsuv6
-        SWING, powerful=ON_OFF, quiet=ON_OFF, economy=ON_OFF
+    "ARRAH2E": _fujitsu_ac_capabilities(swing_h=SWING, quiet=ON_OFF),
+    "ARDB1": _fujitsu_ac_capabilities(swing_v=None, quiet=ON_OFF),
+    "ARREB1E": _fujitsu_ac_capabilities(powerful=ON_OFF, quiet=ON_OFF, economy=ON_OFF),
+    "ARJW2": _fujitsu_ac_capabilities(swing_v=None, quiet=ON_OFF),
+    "ARRY4": _fujitsu_ac_capabilities(purifier=ON_OFF, quiet=ON_OFF, cleaning=ON_OFF),
+    "ARREW4E": _fujitsu_ac_capabilities(
+        swing_h=SWING,
+        temperature=(0, 5),
+        powerful=ON_OFF,
+        quiet=ON_OFF,
+        economy=ON_OFF,
     ),
 }
 
@@ -315,8 +325,8 @@ class FujitsuAcDevice(Device):
     """Fujitsu A/C (IRFujitsuAC, protocol FUJITSU_AC), for the six remote
     variants (fujitsu_ac_remote_model_t: ARRAH2E, ARDB1, ARREB1E, ARJW2,
     ARRY4, ARREW4E). The variant comes from the model (FUJITSU_AC_VARIANT)
-    unless given, and picks the capabilities (the legacy FujitsuvN
-    entities); unknown models get ARRAH2E, IRFujitsuAC's default.
+    unless given, and picks the capabilities; unknown models get ARRAH2E,
+    IRFujitsuAC's default.
 
     As IRac::fujitsu sends it from a fresh IRFujitsuAC object:
     - power off sends only the short kFujitsuAcCmdTurnOff code, whatever the
@@ -326,8 +336,8 @@ class FujitsuAcDevice(Device):
       kFujitsuAcFanQuiet), Swing, and for ARRY4 Filter (purifier) and Clean
       (cleaning); timers, Id, OutsideQuiet and Fahrenheit stay 0;
     - IRFujitsuAC::checkSum sets the "unknown" bit for ARRAH2E, ARREB1E and
-      ARRY4, and forces Swing off for ARDB1 and ARJW2: their swing controls
-      send nothing, as C (the toggle-swing commands are never sent);
+      ARRY4, and forces Swing off for ARDB1 and ARJW2, which therefore
+      offer no swing (the toggle-swing commands are never sent);
       IRFujitsuAC::setSwing keeps ARREB1E and ARRY4 to vertical swing;
     - powerful and economy are separate short commands (kFujitsuAcCmdPowerful,
       then kFujitsuAcCmdEcono) sent before the long code, for ARREB1E and
@@ -392,7 +402,7 @@ class FujitsuAcDevice(Device):
     def swing(self, target):
         if self.short15:
             return "off"  # IRFujitsuAC::checkSum
-        vert = target.swing_v != "off"
+        vert = target.swing_v not in (None, "off")
         # setSwing: ARREB1E and ARRY4 clamp to Vert (and have no swing_h).
         horiz = target.swing_h not in (None, "off")
         return {
@@ -404,11 +414,11 @@ class FujitsuAcDevice(Device):
 
     def long_code(self, target):
         features = target.features
-        t = int(target.temperature)
         if self.variant == "ARREW4E":
-            temp = (t - FUJITSU_AC_MIN_TEMP // 2) * 2
+            # Half degrees: the setpoint is a whole or .5 value (normalise).
+            temp = round((target.temperature - FUJITSU_AC_MIN_TEMP / 2) * 2)
         else:
-            temp = (t - FUJITSU_AC_MIN_TEMP) * 4
+            temp = (int(target.temperature) - FUJITSU_AC_MIN_TEMP) * 4
         values = dict(
             power=1,
             temp=temp,

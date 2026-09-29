@@ -77,6 +77,33 @@ VANE3_UPPER_MIDDLE = 0x88133B2  # AKB73757604: vane 3, Upper Middle
 VANE2_UPPER_MIDDLE = 0x881333A  # DetectAKB73757604
 
 
+# The oracle records use the legacy vocabulary. Values the port no longer
+# offers, or names differently, are read as what C sent for them:
+# - AKB75215403 fan "highest" (kMax): kLgAcFanMax, as "high" (kHigh).
+# - the swing angles: the port has the six documented positions, labelled
+#   with the header's names. 45°, 30° and 0° are C's Middle, Low and Lowest;
+#   90° and 60° are read as the documented Highest and High (the Defects).
+# - AKB73757604 swing "off"/"auto": convertVaneSwingV's default, Highest.
+ANGLES = {
+    "90°": "highest",
+    "60°": "high",
+    "45°": "middle",
+    "30°": "low",
+    "0°": "lowest",
+}
+AS_SENT = {
+    V1: {"fan": {"highest": "high"}},
+    V2: {"swing": ANGLES},
+    V3: {"swing": {**ANGLES, "off": "highest", "auto": "highest"}},
+}
+
+
+def as_sent(record):
+    table = AS_SENT[variant_of(record)]
+    state = {k: table.get(k, {}).get(v, v) for k, v in record["state"].items()}
+    return {**record, "state": state}
+
+
 def device(variant=V1):
     return Lg2Device("lg", MODEL[variant])
 
@@ -137,6 +164,7 @@ class AsC:
 
 
 def check(record, defects=DEFECTS, drops=C_DROPS, previous=None):
+    record = as_sent(record)
     dev = AsC(device(variant_of(record)), drops)
     state = state_from_record(dev, record["state"])
     assert_matches_oracle(
@@ -160,7 +188,7 @@ def test_sequence_matches_a_persistent_c_object(record, states):
     dev = device(variant)
     previous = None
     for rec in c_sequence(record, states):
-        state = state_from_record(dev, rec["state"])
+        state = state_from_record(dev, as_sent(rec)["state"])
         if variant == V3 and previous is not None:
             # previous only decides the swing_h word (the last one): C sends
             # it every time (stale _swingh_prev), the port only on a change
@@ -191,7 +219,7 @@ def test_every_oracle_record_is_served_by_its_variant():
 def test_layouts_round_trip_every_oracle_state():
     for record in load_oracle("LG2"):
         dev = device(variant_of(record))
-        state = state_from_record(dev, record["state"])
+        state = state_from_record(dev, as_sent(record)["state"])
         frames = dev.frames(None, state, ())
         for layout, frame in zip(layouts(frames), frames):
             values = layout.read(frame.data)
@@ -287,15 +315,46 @@ def test_state_word_carries_mode_and_setpoint(variant, mode, temperature):
     )
 
 
-def test_setpoint_is_clamped_to_16_25():
+def test_setpoint_is_clamped_to_16_30():
+    # kLgAcMinTemp / kLgAcMaxTemp (the legacy entity stopped at 25).
     assert (
         words(HvacState(True, "cool", 10.0))[0]
         == words(HvacState(True, "cool", 16.0))[0]
     )
     assert (
-        words(HvacState(True, "cool", 30.0))[0]
-        == words(HvacState(True, "cool", 25.0))[0]
+        words(HvacState(True, "cool", 35.0))[0]
+        == words(HvacState(True, "cool", 30.0))[0]
     )
+    first = as_frame(words(HvacState(True, "cool", 30.0))[0])
+    assert LG2_LAYOUT.read(first)["temperature"] == 30
+
+
+@pytest.mark.parametrize("variant", [V1, V2, V3])
+def test_capabilities_are_the_documented_values(variant):
+    caps = device(variant).capabilities
+    assert (caps.temperature.min, caps.temperature.max) == (16.0, 30.0)
+    assert caps.temperature.decimals == (0,)
+    assert caps.modes == MODES
+    positions = ("1", "2", "3", "4", "5", "6")
+    expected = {
+        # IRLgAc::send sends only the state word: no swing, no light.
+        V1: (("auto", "1", "2", "3", "4"), None, None, set()),
+        # kLgAcFanHigh and kLgAcFanMax both kept; kLgAcSwingV* words
+        # (off, swing, six positions); the light toggle; no SwingH word.
+        V2: (
+            ("auto", "1", "2", "3", "4", "5"),
+            ("off", "auto") + positions,
+            None,
+            {"light"},
+        ),
+        # kLgAcVaneSwingV* positions (no off/auto); SwingH words; no light.
+        V3: (("auto", "1", "2", "3", "4"), positions, ("off", "swing"), set()),
+    }[variant]
+    swing_v = caps.swing_v and caps.swing_v.values
+    swing_h = caps.swing_h and caps.swing_h.values
+    assert (caps.fan.values, swing_v, swing_h, set(caps.features)) == expected
+    if caps.swing_v:
+        assert caps.swing_v.label("3") == "upper middle"
 
 
 @pytest.mark.parametrize(
@@ -303,8 +362,9 @@ def test_setpoint_is_clamped_to_16_25():
     [
         # setFan: kLgAcFanHigh becomes kLgAcFanMax except on AKB74955603,
         # which also turns low into kLgAcFanLowAlt.
-        (V1, {"auto": 5, "1": 0, "2": 1, "3": 2, "4": 4, "5": 4}),
-        (V2, {"auto": 5, "1": 0, "2": 9, "3": 2, "4": 10}),
+        # AKB74955603 also keeps kLgAcFanMax ("5", kMax) apart from High.
+        (V1, {"auto": 5, "1": 0, "2": 1, "3": 2, "4": 4}),
+        (V2, {"auto": 5, "1": 0, "2": 9, "3": 2, "4": 10, "5": 4}),
         (V3, {"auto": 5, "1": 0, "2": 1, "3": 2, "4": 4}),
     ],
 )
@@ -315,11 +375,11 @@ def test_every_fan_level(variant, fans):
 
 
 def test_real_captures_are_reproduced():
-    assert words(HvacState(True, "cool", 24.0, fan="5"), V1) == [ISSUE_548]
-    assert words(HvacState(True, "cool", 18.0, fan="5"), V1) == [ISSUE_1008]
+    assert words(HvacState(True, "cool", 24.0, fan="4"), V1) == [ISSUE_548]
+    assert words(HvacState(True, "cool", 18.0, fan="4"), V1) == [ISSUE_1008]
     # TestIRLgAcClass.SwingV / Light (AKB74955603): the state word, then
     # kLgAcSwingVMiddle, then (light off) kLgAcLightToggle, last.
-    state = HvacState(True, "fan", 18.0, fan="2", swing_v="3")
+    state = HvacState(True, "fan", 18.0, fan="2", swing_v="4")
     assert words(state, V2)[1:] == [SWINGV_MIDDLE, 0x88C00A6]
 
 
@@ -339,18 +399,18 @@ def test_akb74955603_captures_match_but_for_the_unnamed_bit(capture, fan):
 
 
 def test_swing_off_after_auto_capture():
-    # TestIRLgAcClass.SwingVOffAfterAuto (AKB74955603): heat, 26 C (25 here,
-    # the legacy maximum), fan lowest, light on; swing auto, then off: the
-    # state word and kLgAcSwingVOff, nothing else.
+    # TestIRLgAcClass.SwingVOffAfterAuto (AKB74955603): heat, 26 C (beyond
+    # the legacy maximum of 25), fan lowest, light on; swing auto, then off:
+    # the state word and kLgAcSwingVOff, nothing else.
     lit = {"light": True}
-    before = HvacState(True, "heat", 25.0, fan="1", swing_v="auto", features=lit)
-    after = HvacState(True, "heat", 25.0, fan="1", swing_v="off", features=lit)
+    before = HvacState(True, "heat", 26.0, fan="1", swing_v="auto", features=lit)
+    after = HvacState(True, "heat", 26.0, fan="1", swing_v="off", features=lit)
     sent = words(after, V2, previous=before)
     assert len(sent) == 2 and sent[1] == 0x881315A
     assert LG2_LAYOUT.read(as_frame(sent[0])) == {
         "power": True,
         "mode": "heat",
-        "temperature": 25,
+        "temperature": 26,
         "fan": "lowest",
         "unnamed": 0,
     }
@@ -358,9 +418,19 @@ def test_swing_off_after_auto_capture():
 
 @pytest.mark.parametrize("swing", ["off", "auto", "1", "2", "3", "4", "5"])
 def test_akb75215403_sends_the_state_word_only(swing):
-    state = HvacState(True, "cool", 22.0, swing_v=swing, swing_h="swing")
+    # Hence no swing or light is offered (removed no-ops).
+    state = HvacState(
+        True,
+        "cool",
+        22.0,
+        swing_v=swing,
+        swing_h="swing",
+        features={"light": False},
+    )
     assert len(words(state, V1)) == 1
     assert words(state, V1) == words(HvacState(True, "cool", 22.0), V1)
+    caps = device(V1).capabilities
+    assert (caps.swing_v, caps.swing_h, dict(caps.features)) == (None, None, {})
 
 
 @pytest.mark.parametrize(
@@ -370,9 +440,10 @@ def test_akb75215403_sends_the_state_word_only(swing):
         ("auto", "swing_v_swing"),
         ("1", "swing_v_highest"),
         ("2", "swing_v_high"),
-        ("3", "swing_v_middle"),
-        ("4", "swing_v_low"),
-        ("5", "swing_v_lowest"),
+        ("3", "swing_v_upper_middle"),  # kLgAcSwingVUpperMiddle: new
+        ("4", "swing_v_middle"),
+        ("5", "swing_v_low"),
+        ("6", "swing_v_lowest"),
     ],
 )
 def test_akb74955603_swing_word_without_previous(swing, sent):
@@ -407,18 +478,18 @@ def test_akb74955603_light_toggle_whenever_light_is_off(light):
 def test_akb74955603_sends_no_swing_h():
     state = HvacState(True, "cool", 22.0, swing_h="swing", features={"light": True})
     assert len(words(state, V2)) == 1
+    assert device(V2).capabilities.swing_h is None  # removed no-op
 
 
 @pytest.mark.parametrize(
     "swing, position",
     [
-        ("off", "highest"),
-        ("auto", "highest"),
         ("1", "highest"),
         ("2", "high"),
-        ("3", "middle"),
-        ("4", "low"),
-        ("5", "lowest"),
+        ("3", "upper_middle"),  # kLgAcVaneSwingVUpperMiddle: new
+        ("4", "middle"),
+        ("5", "low"),
+        ("6", "lowest"),
     ],
 )
 def test_akb73757604_sends_every_vane_then_swing_h(swing, position):
@@ -450,6 +521,23 @@ def test_akb73757604_swing_h_and_no_light():
     sent = words(HvacState(True, "cool", 22.0, swing_h="swing"), V3)
     assert command(sent[-1]) == "swing_h_auto"
     assert len(words(HvacState(True, "cool", 22.0, features={"light": True}), V3)) == 6
+    assert "light" not in device(V3).capabilities.features  # removed no-op
+
+
+@pytest.mark.parametrize("swing", ["off", "auto"])
+def test_akb73757604_offers_no_swing_off_or_auto(swing):
+    # convertVaneSwingV has neither: both sent Highest, as "1" does.
+    dev = device(V3)
+    assert swing not in dev.capabilities.swing_v.values
+    state = dev.normalise(HvacState(True, "cool", 22.0, swing_v=swing))
+    assert state.swing_v == "1"
+
+
+def test_vane_upper_middle_capture():
+    # DetectAKB73757604 / VANE3_UPPER_MIDDLE: kLgAcVaneSwingVUpperMiddle,
+    # which "3" now sends on every vane.
+    sent = words(HvacState(True, "cool", 22.0, swing_v="3"), V3)
+    assert VANE2_UPPER_MIDDLE in sent and VANE3_UPPER_MIDDLE in sent
 
 
 def test_encode_is_one_burst_per_word():
@@ -472,18 +560,6 @@ def test_registry_serves_the_port(model):
     dev = registry.get_device("lg", model)
     assert isinstance(dev, Lg2Device)
     assert dev.variant == LG2_MODELS[model]
-
-
-@pytest.mark.parametrize("model", LG2_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins import lg
-
-    old = lg.PluginObject.MODELS[model]
-    assert old.__name__ == LEGACY_CLASS[LG2_MODELS[model]]
-    legacy = LegacyDevice("lg", model, old)
-    assert Lg2Device("lg", model).capabilities == legacy.capabilities
 
 
 def _record(variant, **state):

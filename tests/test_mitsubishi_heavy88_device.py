@@ -16,12 +16,13 @@ from pyhvac.state import HvacState
 #   and setEcono(econo). With powerful/economy off, they reset the
 #   kMitsubishiHeavy88FanTurbo (kMax, "highest") and kMitsubishiHeavy88FanEcono
 #   (kMin, "lowest") that convertFan returned to kMitsubishiHeavy88FanAuto.
-#   The same auto comes out when the state has no fan at all (IRac's default).
+#   A state with no fan at all is IRac's default, auto, which the port now
+#   offers and sends as auto too.
 # - the legacy glue maps "90°" to kHigh (convertSwingV: High) and "60°" to
 #   kUpperMiddle, which convertSwingV has no case for (Off). The port counts
 #   the positions down from the topmost documented one (Highest).
 FAN_LOWEST = Defect("fan", "1", "auto", "IRac setEcono(false) resets Econo: auto")
-FAN_HIGHEST = Defect("fan", "4", "auto", "IRac setTurbo(false) resets Turbo: auto")
+FAN_HIGHEST = Defect("fan", "5", "auto", "IRac setTurbo(false) resets Turbo: auto")
 SWING_1 = Defect("swing_v", "1", "2", "C sends High (kHigh) for '90°'")
 SWING_2 = Defect("swing_v", "2", "off", "C has no upper-middle case: sends off")
 DEFECTS = (FAN_LOWEST, FAN_HIGHEST, SWING_1, SWING_2)
@@ -69,7 +70,7 @@ def test_the_synthetic_capture_reads_as_documented():
     values = layout.read(SYNTHETIC_EXAMPLE)
     assert values == {
         "swing_v": "off",
-        "swing_h": 0b0110,  # kMitsubishiHeavy88SwingHLeftRight: not in the entity
+        "swing_h": "7",  # kMitsubishiHeavy88SwingHLeftRight
         "clean": 0,
         "fan": "auto",
         "mode": "dry",
@@ -78,19 +79,26 @@ def test_the_synthetic_capture_reads_as_documented():
     }
 
 
-def test_the_synthetic_capture_differs_only_in_its_unreachable_values():
-    # Fan auto and swing H LeftRight are not in the entity; with fan low and
-    # swing H off instead, nothing else differs.
-    capture = bytearray(SYNTHETIC_EXAMPLE)
-    layout = MITSUBISHI_HEAVY88_LAYOUT
-    layout.write_raw(capture, "fan", 2)
-    layout.write_raw(capture, "swing_h", 0)
-    layout.checksum.apply(capture)
+def test_the_synthetic_capture_is_reproduced():
+    # Fan auto and swing H LeftRight, which the legacy entity lacked.
+    state = HvacState(True, "dry", 25.0, fan="auto", swing_v="off", swing_h="7")
     dev = device()
-    (frame,) = dev.frames(
-        None, dev.normalise(HvacState(True, "dry", 25.0, fan="2")), ()
-    )
-    assert frame.data == bytes(capture)
+    (frame,) = dev.frames(None, dev.normalise(state), ())
+    assert frame.data == SYNTHETIC_EXAMPLE
+
+
+def test_capabilities_are_the_documented_values():
+    caps = device().capabilities
+    # kMitsubishiHeavyMinTemp / kMitsubishiHeavyMaxTemp, whole degrees.
+    assert (caps.temperature.min, caps.temperature.max) == (17.0, 31.0)
+    # setMode accepts kMitsubishiHeavyFan.
+    assert caps.modes == ("auto", "cool", "dry", "fan", "heat")
+    # kMitsubishiHeavy88Fan{Auto,Econo,Low,Med,High,Turbo}.
+    assert caps.fan.values == ("auto", "1", "2", "3", "4", "5")
+    assert caps.swing_v.values == ("off", "auto", "1", "2", "3", "4", "5")
+    assert caps.swing_h.values == (("off", "auto") + tuple(str(n) for n in range(1, 9)))
+    assert caps.swing_h.label("8") == "3D"
+    assert set(caps.features) == {"cleaning", "powerful", "economy"}
 
 
 def test_split_swing_fields_use_the_struct_bits():
@@ -111,7 +119,7 @@ def test_no_field_overlaps_the_inverted_bytes():
         assert not parity & set(field.bits), name
 
 
-@pytest.mark.parametrize("mode", ["auto", "cool", "dry", "heat"])
+@pytest.mark.parametrize("mode", ["auto", "cool", "dry", "fan", "heat"])
 def test_off_carries_mode_auto(mode):
     # IRac passes mode "off"; convertMode maps it to kMitsubishiHeavyAuto.
     for t in (17.0, 24.0, 31.0):
@@ -124,11 +132,18 @@ def test_off_carries_mode_auto(mode):
 
 
 def test_mode_codes():
-    for mode, code in (("auto", 0), ("cool", 1), ("dry", 2), ("heat", 4)):
+    # kMitsubishiHeavy{Auto,Cool,Dry,Fan,Heat}; fan is new (setMode takes it).
+    for mode, code in (
+        ("auto", 0),
+        ("cool", 1),
+        ("dry", 2),
+        ("fan", 3),
+        ("heat", 4),
+    ):
         assert raw(HvacState(True, mode, 22.0), "mode") == code
 
 
-@pytest.mark.parametrize("mode", ["auto", "cool", "dry", "heat"])
+@pytest.mark.parametrize("mode", ["auto", "cool", "dry", "fan", "heat"])
 def test_setpoint_is_whole_degrees_offset_from_17(mode):
     assert read(HvacState(True, mode, 10.0))["temperature"] == 0
     assert read(HvacState(True, mode, 21.0))["temperature"] == 4
@@ -136,13 +151,17 @@ def test_setpoint_is_whole_degrees_offset_from_17(mode):
     assert read(HvacState(True, mode, 40.0))["temperature"] == 14
 
 
-@pytest.mark.parametrize("fan, code", [("1", 7), ("2", 2), ("3", 3), ("4", 6)])
+@pytest.mark.parametrize(
+    "fan, code",
+    [("auto", 0), ("1", 7), ("2", 2), ("3", 3), ("4", 4), ("5", 6)],
+)
 def test_every_fan_level_uses_its_documented_code(fan, code):
-    # convertFan: kMin -> Econo, kLow, kMedium, kMax -> Turbo.
+    # convertFan: kAuto -> Auto, kMin -> Econo, kLow, kMedium, kHigh -> High,
+    # kMax -> Turbo. Auto and High are new.
     assert raw(HvacState(True, "cool", 22.0, fan=fan), "fan") == code
 
 
-@pytest.mark.parametrize("fan", ["1", "2", "3", "4"])
+@pytest.mark.parametrize("fan", ["auto", "1", "2", "3", "4", "5"])
 def test_powerful_and_economy_are_fan_codes(fan):
     # setTurbo(true) stores Turbo, then setEcono(true) stores Econo: economy
     # wins over powerful, and both win over the requested speed.
@@ -173,7 +192,18 @@ def test_vertical_swing_counts_down_from_highest(position, code):
 
 @pytest.mark.parametrize(
     "position, code",
-    [("off", 0), ("auto", 8), ("1", 1), ("2", 5), ("3", 9), ("4", 13), ("5", 2)],
+    [
+        ("off", 0),
+        ("auto", 8),
+        ("1", 1),
+        ("2", 5),
+        ("3", 9),
+        ("4", 13),
+        ("5", 2),
+        ("6", 0b1010),  # kMitsubishiHeavy88SwingHRightLeft
+        ("7", 0b0110),  # kMitsubishiHeavy88SwingHLeftRight
+        ("8", 0b1110),  # kMitsubishiHeavy88SwingH3D
+    ],
 )
 def test_horizontal_swing_runs_left_to_right(position, code):
     assert raw(HvacState(True, "cool", 22.0, swing_h=position), "swing_h") == code
@@ -204,16 +234,6 @@ def test_registry_serves_the_port(model):
         registry.get_device("mitsubishi_heavy_industries", model),
         MitsubishiHeavy88Device,
     )
-
-
-@pytest.mark.parametrize("model", MITSUBISHI_HEAVY88_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.mitsubishi_heavy_industries import Mitsubishi88
-
-    legacy = LegacyDevice("mitsubishi_heavy_industries", model, Mitsubishi88)
-    assert device(model).capabilities == legacy.capabilities
 
 
 def _record(**state):

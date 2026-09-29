@@ -170,16 +170,6 @@ def test_registry_serves_the_port(model):
     assert isinstance(registry.get_device("rhoss", model), RhossDevice)
 
 
-@pytest.mark.parametrize("model", RHOSS_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.rhoss import Rhoss
-
-    legacy = LegacyDevice("rhoss", model, Rhoss)
-    assert RhossDevice("rhoss", model).capabilities == legacy.capabilities
-
-
 def test_undeclared_swing_deviation_is_reported():
     dev = device()
     record = next(
@@ -203,3 +193,14 @@ def test_layouts_must_cover_every_frame():
     record = load_oracle("RHOSS")[0]
     with pytest.raises(AssertionError, match="layout"):
         assert_matches_oracle(dev, record, (), DEFECTS)
+
+
+def test_capabilities_are_the_headers():
+    # ir_Rhoss.h: kRhossTempMin/Max 16-30; kRhossFan{Auto,Min,Med,Max};
+    # kRhossMode{Heat,Cool,Dry,Fan,Auto}; kRhossSwingOn. No feature bits.
+    caps = device().capabilities
+    assert set(caps.modes) == {"auto", "cool", "dry", "heat", "fan"}
+    assert (caps.temperature.min, caps.temperature.max) == (16.0, 30.0)
+    assert caps.fan.values == ("auto", "1", "2", "3")
+    assert caps.swing_v.values == ("off", "swing")
+    assert dict(caps.features) == {}

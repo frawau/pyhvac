@@ -28,7 +28,7 @@ from .hvaclib import PulseBased, GenPluginObject
 from ..device import Device
 from ..fields import Copy, Field, Layout, Sum8
 from ..ir.model import Frame, Protocol, PulseDistance, Section
-from ..choices import FAN_5, ON_OFF, SWING_H_6, SWING_V_ANGLES
+from ..choices import FAN_5, ON_OFF, SWING_H_6, SWING_V_ANGLES, SWING_V_AUTO_ANGLES
 from ..state import Capabilities, Choice, TemperatureRange
 
 
@@ -214,6 +214,12 @@ class MitsubishiAcDevice(Device):
     does with kMitsubishiACMinRepeat. Vertical positions are the documented
     kMitsubishiAcVane* ones, "1" the highest; IRac sets the left vane
     (VaneLeft) to the same position as the right one (Vane).
+
+    Economy is the Ecocool bit (Mitsubishi144Protocol byte 14 bit 5,
+    IRMitsubishiAC::setEcocool; toString reports it as "Econo"). IRac never
+    sets it, so the oracle fixtures only hold it clear. Quiet is not offered:
+    it has no bit of its own (IRac's quiet sends kMitsubishiAcFanSilent,
+    which fan "1" already sends).
     """
 
     PROTOCOL = MITSUBISHI_AC
@@ -224,6 +230,7 @@ class MitsubishiAcDevice(Device):
         fan=FAN_5,
         swing_v=SWING_V_ANGLES,
         swing_h=SWING_H_6,
+        features={"economy": ON_OFF},
     )
 
     def frames(self, previous, target, actions):
@@ -247,6 +254,7 @@ class MitsubishiAcDevice(Device):
             vane_bit=1,  # setVane always sets it
             swing_v_left=target.swing_v,
             isave_10c=0,  # IRac calls setISave10C(false)
+            ecocool=target.features.get("economy", False),
         )
         frame = Frame("main", bytes(data))
         return [frame, frame]
@@ -301,16 +309,19 @@ MITSUBISHI136_MODE = {  # kMitsubishi136*, as IRMitsubishi136::convertMode
     "dry": 0b101,  # kMitsubishi136Dry
 }
 MITSUBISHI136_FAN = {  # canonical fan -> kMitsubishi136Fan*
-    "auto": 0b10,  # convertFan's default: kMitsubishi136FanMed (no auto code)
+    # Not offered (no code of their own): auto is convertFan's default,
+    # kMitsubishi136FanMed; "5" (kMax) is kMitsubishi136FanMax, as "4".
+    "auto": 0b10,
     "1": 0b00,  # lowest: kMitsubishi136FanMin (see Mitsubishi136Device)
     "2": 0b01,  # kMitsubishi136FanLow
     "3": 0b10,  # kMitsubishi136FanMed
-    "4": 0b11,  # high: kMitsubishi136FanMax, as convertFan
-    "5": 0b11,  # highest: kMitsubishi136FanMax
+    "4": 0b11,  # highest: kMitsubishi136FanMax
+    "5": 0b11,
 }
 MITSUBISHI136_FAN_QUIET = 0b00  # kMitsubishi136FanQuiet (= FanMin)
 MITSUBISHI136_SWING_V = {  # canonical swing -> kMitsubishi136SwingV*
-    "off": 0b1100,  # convertSwingV(kOff): kMitsubishi136SwingVAuto (no off)
+    # Not offered: convertSwingV(kOff) is kMitsubishi136SwingVAuto (no off).
+    "off": 0b1100,
     "auto": 0b1100,  # kMitsubishi136SwingVAuto
     "1": 0b0011,  # 90°: kMitsubishi136SwingVHighest (topmost, counting down)
     "2": 0b0010,  # 60°: kMitsubishi136SwingVHigh
@@ -343,8 +354,9 @@ class Mitsubishi136Device(Device):
 
     As the C path (IRac::mitsubishi136): an off message carries mode auto
     (IRac passes mode "off", convertMode's default), the setpoint is whole
-    degrees clamped to 17-30, auto fan sends Med, swing off sends Auto
-    (there is no off code), and quiet forces kMitsubishi136FanQuiet.
+    degrees clamped to 17-30 (kMitsubishi136MinTemp/MaxTemp), and quiet
+    forces kMitsubishi136FanQuiet. The protocol has no auto fan and no swing
+    off, so neither is offered (C sends Med and SwingVAuto for them).
 
     Two documented values differ from the C output (declared Defects):
     - fan lowest sends kMitsubishi136FanMin: convertFan maps kMin there,
@@ -359,18 +371,14 @@ class Mitsubishi136Device(Device):
     LAYOUTS = (MITSUBISHI136_LAYOUT,)
     capabilities = Capabilities(
         modes=("auto", "cool", "fan", "dry", "heat"),
-        temperature=TemperatureRange(16.0, 25.0),
-        fan=FAN_5,
+        temperature=TemperatureRange(MITSUBISHI136_MIN_TEMP, MITSUBISHI136_MAX_TEMP),
+        fan=Choice(
+            ("1", "2", "3", "4"),
+            {"1": "lowest", "2": "low", "3": "medium", "4": "highest"},
+        ),
         swing_v=Choice(
-            ("off", "auto", "1", "2", "3", "4"),
-            {
-                "off": "off",
-                "auto": "auto",
-                "1": "90°",
-                "2": "60°",
-                "3": "30°",
-                "4": "0°",
-            },
+            ("auto", "1", "2", "3", "4"),
+            {"auto": "auto", "1": "90°", "2": "60°", "3": "30°", "4": "0°"},
         ),
         features={"quiet": ON_OFF},
     )
@@ -443,7 +451,8 @@ MITSUBISHI112_FAN = {  # canonical fan -> kMitsubishi112Fan*, as convertFan
 }
 MITSUBISHI112_SWING_V = {  # kMitsubishi112SwingV*; the header has no "off"
     "auto": 0b111,
-    "off": 0b111,  # as the C path: convertSwingV maps kOff to auto
+    # Not offered: the C path's convertSwingV maps kOff to auto.
+    "off": 0b111,
     "1": 0b001,  # highest
     "2": 0b010,  # high
     "3": 0b011,  # middle
@@ -460,6 +469,7 @@ MITSUBISHI112_SWING_H = {  # kMitsubishi112SwingH*, as convertSwingH
     "6": 0b1000,  # wide
 }
 MITSUBISHI112_MAX_TEMP = 31  # kMitsubishiAcMaxTemp: Temp holds 31 - setpoint
+MITSUBISHI112_RANGE = (16, 31)  # kMitsubishi112MinTemp, kMitsubishi112MaxTemp
 
 # Skeleton: IRMitsubishi112::stateReset (kReset, byte 13 zero-initialised),
 # which writes every byte, so no padding bit comes from stale memory.
@@ -483,18 +493,19 @@ class Mitsubishi112Device(Device):
 
     Quiet has no bit of its own: as IRMitsubishi112::setQuiet, it sends
     kMitsubishi112FanQuiet (= kMitsubishi112FanMin) whatever the fan.
+    The vertical swing has no off code, so none is offered (C sends auto).
     """
 
     PROTOCOL = MITSUBISHI112
     LAYOUTS = (MITSUBISHI112_LAYOUT,)
     capabilities = Capabilities(
         modes=("auto", "cool", "dry", "heat"),
-        temperature=TemperatureRange(16.0, 25.0),
+        temperature=TemperatureRange(*MITSUBISHI112_RANGE),
         fan=Choice(
             ("1", "2", "3", "4"),
             {"1": "lowest", "2": "low", "3": "medium", "4": "highest"},
         ),
-        swing_v=SWING_V_ANGLES,
+        swing_v=SWING_V_AUTO_ANGLES,
         swing_h=SWING_H_6,
         features={"quiet": ON_OFF},
     )

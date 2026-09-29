@@ -61,6 +61,21 @@ KKG9AC1_REAL = bytes.fromhex("567500002001000000000000161426")
 KKG29AC1_HEAT = bytes.fromhex("56740000120040000000000000001d")
 KKG29AC1_COOL = bytes.fromhex("567200002300000000000000000019")
 
+# KKG29AC1's SwingV is one bit (IRMirageAc::setSwingV: SwingV = position !=
+# kMirageAcSwingVOff), so its capabilities offer swing_v off and auto only.
+# The legacy Miragev2 entity offered the five angles too; C sends each of
+# them as the auto bit, so a Miragev2 record's angle is read as "auto".
+KKG29AC1_ANGLES = ("90°", "60°", "45°", "30°", "0°")
+
+
+def adapt(record):
+    """The record as the port's capabilities read it (see KKG29AC1_ANGLES)."""
+    old = record["state"]
+    if record["class"] == "Miragev2" and old.get("swing") in KKG29AC1_ANGLES:
+        return {**record, "state": {**old, "swing": "auto"}}
+    return record
+
+
 MODES = ("cool", "fan", "dry", "heat")
 VARIANTS = ("KKG9AC1", "KKG29AC1")
 LAYOUT = {"KKG9AC1": MIRAGE_KKG9AC1_LAYOUT, "KKG29AC1": MIRAGE_KKG29AC1_LAYOUT}
@@ -91,7 +106,7 @@ def device_for(record):
 @pytest.mark.parametrize("record", oracle_params("MIRAGE"))
 def test_matches_c_library(record):
     dev = device_for(record)
-    assert_matches_oracle(dev, record, dev.LAYOUTS, DEFECTS)
+    assert_matches_oracle(dev, adapt(record), dev.LAYOUTS, DEFECTS)
 
 
 @pytest.mark.parametrize("record, states", sequence_params("MIRAGE"))
@@ -99,7 +114,7 @@ def test_sequence_matches_a_persistent_c_object(record, states):
     # KKG29AC1's light and clean toggles depend on the message before, which
     # C's IRac keeps (IRac::handleToggles).
     dev = device_for(record)
-    assert_sequence_matches_c(dev, record, states, dev.LAYOUTS, DEFECTS)
+    assert_sequence_matches_c(dev, record, states, dev.LAYOUTS, DEFECTS, adapt=adapt)
 
 
 def test_every_oracle_record_names_its_variant():
@@ -109,7 +124,7 @@ def test_every_oracle_record_names_its_variant():
 
 
 def test_layout_round_trips_every_oracle_state():
-    for record in load_oracle("MIRAGE"):
+    for record in map(adapt, load_oracle("MIRAGE")):
         dev = device_for(record)
         (main,) = dev.frames(None, state_from_record(dev, record["state"]), ())
         layout = dev.LAYOUTS[0]
@@ -156,7 +171,7 @@ def test_states_beyond_the_oracle_grid_match_the_c_path(variant):
     for old in _extra_states(variant):
         # One fresh C object per state: no toggle carries over.
         (rec,) = c_sequence(record, [old])
-        assert_matches_oracle(dev, rec, dev.LAYOUTS, DEFECTS)
+        assert_matches_oracle(dev, adapt(rec), dev.LAYOUTS, DEFECTS)
 
 
 @pytest.mark.parametrize("variant", VARIANTS)
@@ -322,11 +337,41 @@ def test_kkg9ac1_swing_and_power_share_a_field(swing, position, raw):
     assert layout.read_raw(off, "swing_power") == raw + 0x5F
 
 
-@pytest.mark.parametrize("swing", ["off", "auto", "1", "2", "3", "4", "5"])
-def test_kkg29ac1_swing_v_is_one_bit(swing):
-    assert read("KKG29AC1", state("KKG29AC1", swing_v=swing))["swing_v"] == (
-        swing != "off"
+@pytest.mark.parametrize("swing, bit", [("off", 0), ("auto", 1)])
+def test_kkg29ac1_swing_v_is_one_bit(swing, bit):
+    assert read("KKG29AC1", state("KKG29AC1", swing_v=swing))["swing_v"] == bit
+
+
+def test_kkg29ac1_offers_no_swing_v_position():
+    # Removed no-op: the fixed positions set the same SwingV bit as auto.
+    assert device("KKG29AC1").capabilities.swing_v.values == ("off", "auto")
+    # KKG9AC1's SwingAndPower holds every documented position.
+    assert device("KKG9AC1").capabilities.swing_v.values == (
+        "off",
+        "auto",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
     )
+
+
+@pytest.mark.parametrize("angle", KKG29AC1_ANGLES)
+def test_a_legacy_kkg29ac1_angle_is_sent_as_c_sends_it(angle):
+    # C (setSwingV on a KKG29AC1) sends every angle as the auto bit: the
+    # adapted record ("auto") is byte for byte the C record.
+    record = next(
+        r
+        for r in load_oracle("MIRAGE")
+        if r["class"] == "Miragev2"
+        and r["state"].get("swing") == angle
+        and r["state"].get("sleep") != "on"
+        and r["state"].get("hswing") != "on"
+    )
+    dev = device_for(record)
+    assert adapt(record)["state"]["swing"] == "auto"
+    assert_matches_oracle(dev, adapt(record), dev.LAYOUTS)
 
 
 def test_kkg29ac1_power_bits():
@@ -516,15 +561,6 @@ def test_every_legacy_model_is_ported():
     )
 
 
-def test_capabilities_match_the_legacy_entity():
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-
-    for brand, model, cls in _legacy_classes():
-        legacy = LegacyDevice(brand, model, cls)
-        assert MirageDevice(brand, model).capabilities == legacy.capabilities, model
-
-
 def _record(cls, **match):
     return next(
         r
@@ -546,7 +582,7 @@ def _record(cls, **match):
     ],
 )
 def test_undeclared_deviation_is_reported(defect, cls, match):
-    record = _record(cls, **match)
+    record = adapt(_record(cls, **match))
     dev = device_for(record)
     defects = [d for d in DEFECTS if d != defect]
     with pytest.raises(AssertionError, match=defect.field):

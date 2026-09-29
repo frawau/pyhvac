@@ -132,6 +132,16 @@ def test_swing_sets_the_swing_bit():
     assert (read(swing)["swing_v"], read(still)["swing_v"]) == ("swing", "off")
 
 
+@pytest.mark.parametrize("sleep", [False, True])
+def test_sleep_sets_the_documented_bit(sleep):
+    # Daikin64Protocol byte 7 bit 1 (Sleep, setSleep).
+    dev = device()
+    state = dev.normalise(HvacState(True, "cool", 22.0, features={"sleep": sleep}))
+    _, main, _ = dev.frames(None, state, ())
+    assert main.data[7] >> 1 & 1 == sleep
+    assert DAIKIN64_LAYOUT.checksum.check(main.data)
+
+
 def test_message_shape():
     dev = device()
     pulses = dev.encode(None, HvacState(True, "cool", 22.0)).signal.pulses
@@ -143,16 +153,6 @@ def test_message_shape():
 @pytest.mark.parametrize("model", DAIKIN64_MODELS)
 def test_registry_serves_the_port(model):
     assert isinstance(registry.get_device("daikin", model), Daikin64Device)
-
-
-@pytest.mark.parametrize("model", DAIKIN64_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.daikin import Daikin64
-
-    legacy = LegacyDevice("daikin", model, Daikin64)
-    assert Daikin64Device("daikin", model).capabilities == legacy.capabilities
 
 
 def test_undeclared_deviation_is_reported():

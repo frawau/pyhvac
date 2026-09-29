@@ -290,16 +290,6 @@ def test_registry_serves_the_port(model):
     assert isinstance(registry.get_device("corona", model), CoronaAcDevice)
 
 
-@pytest.mark.parametrize("model", CORONA_AC_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.corona import Corona
-
-    legacy = LegacyDevice("corona", model, Corona)
-    assert CoronaAcDevice("corona", model).capabilities == legacy.capabilities
-
-
 @pytest.mark.parametrize("mode", ["heat", "dry", "cool", "fan"])
 @pytest.mark.parametrize("economy", [False, True])
 def test_off_with_economy_matches_the_c_path(mode, economy):
@@ -366,3 +356,15 @@ def test_swing_toggle_matches_c_with_the_glue_fixed(monkeypatch):
 # kMarkExcess.
 def test_decode_tolerance_is_the_c_decoders():
     assert (CORONA_AC.tolerance, CORONA_AC.mark_excess) == (0.30, 50)
+
+
+def test_capabilities_are_the_headers():
+    # ir_Corona.h: kCoronaAcMinTemp/MaxTemp 17-30; kCoronaAcFan{Auto,Low,
+    # Medium,High}; kCoronaAcMode{Heat,Dry,Cool,Fan}; SwingVToggle; Econo.
+    caps = device().capabilities
+    assert set(caps.modes) == {"heat", "dry", "cool", "fan"}
+    assert (caps.temperature.min, caps.temperature.max) == (17.0, 30.0)
+    assert caps.fan.values == ("auto", "1", "2", "3")
+    assert caps.swing_v.values == ("off", "swing")
+    assert caps.swing_h is None
+    assert set(caps.features) == {"economy"}

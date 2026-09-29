@@ -298,18 +298,18 @@ def test_registry_serves_the_port(plugin, model):
     assert isinstance(registry.get_device(plugin, model), ToshibaAcDevice)
 
 
-@pytest.mark.parametrize(
-    "plugin, model",
-    [("toshiba", m) for m in TOSHIBA_AC_MODELS]
-    + [("carrier", m) for m in TOSHIBA_AC_CARRIER_MODELS],
-)
-def test_capabilities_match_the_legacy_entity(plugin, model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.toshiba import Toshiba
-
-    legacy = LegacyDevice(plugin, model, Toshiba)
-    assert ToshibaAcDevice(plugin, model).capabilities == legacy.capabilities
+def test_capabilities_are_the_documented_ones():
+    # Unchanged by the capability audit: every value ir_Toshiba.h documents
+    # that the port sends (kToshibaAcSwingStep / Toggle are button presses).
+    caps = ToshibaAcDevice.capabilities
+    assert caps.modes == MODES
+    # kToshibaAcMinTemp / kToshibaAcMaxTemp, whole degrees (Temp is 4 bits).
+    assert (caps.temperature.min, caps.temperature.max) == (17.0, 30.0)
+    assert caps.temperature.decimals == (0,)
+    assert caps.fan.values == FANS  # kToshibaAcFanAuto, 1 .. kToshibaAcFanMax
+    assert caps.swing_v.values == ("off", "swing")  # SwingOff / SwingOn
+    assert caps.swing_h is None
+    assert set(caps.features) == {"powerful", "economy", "purifier"}
 
 
 def test_undeclared_swing_deviation_is_reported():

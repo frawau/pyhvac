@@ -33,7 +33,7 @@ from .hvaclib import HVAC, PulseBased, GenPluginObject
 from ..device import Device
 from ..fields import Field, HighNibbleSum, Layout
 from ..ir.model import Frame, Protocol, PulseDistance, Section
-from ..choices import FAN_4, FAN_5, ON_OFF, SWING, SWING_V_ANGLES
+from ..choices import FAN_4, FAN_5, ON_OFF, SWING
 from ..state import Capabilities, Choice, TemperatureRange
 
 try:
@@ -703,16 +703,17 @@ def _lg_layout(sign=None, *, power, unnamed, mode, temp, fan):
     )
 
 
-def _lg_capabilities(fan, swing_v):
-    """The legacy LG entities' capabilities: they differ in fan levels and
-    vertical swing only."""
+def _lg_capabilities(fan, swing_v=None, swing_h=None, light=False):
+    """A remote variant's capabilities: the state word's modes, setpoint
+    (kLgAcMinTemp-kLgAcMaxTemp, whole degrees) and fan levels, plus swing
+    and light only where IRLgAc::send sends a word for them."""
     return Capabilities(
         modes=("auto", "cool", "fan", "dry", "heat"),
-        temperature=TemperatureRange(16.0, 25.0),
+        temperature=TemperatureRange(LG_AC_MIN_TEMP, LG_AC_MAX_TEMP),
         fan=fan,
         swing_v=swing_v,
-        swing_h=SWING,
-        features={"light": ON_OFF},
+        swing_h=swing_h,
+        features={"light": ON_OFF} if light else {},
     )
 
 
@@ -762,11 +763,13 @@ LG_AC_LAYOUT = _lg_layout(
 )
 
 
-LG_AC_CAPABILITIES = {  # variant -> the legacy entity (LGv2 / LGv1)
+LG_AC_CAPABILITIES = {  # variant -> capabilities
+    # IRLgAc::send sends no light or SwingH word for either variant, so
+    # neither is offered (the legacy LGv2 / LGv1 entities offered both).
     "LG6711A20083V": _lg_capabilities(FAN_4, SWING),
-    # The legacy LGv1 entity offers swing positions, but IRLgAc::send sends
-    # no swing word for GE6711AR2853M (its default case): they send nothing.
-    "GE6711AR2853M": _lg_capabilities(FAN_4, SWING_V_ANGLES),
+    # The legacy LGv1 entity offered swing positions, but IRLgAc::send sends
+    # no swing word for GE6711AR2853M (its default case): none is offered.
+    "GE6711AR2853M": _lg_capabilities(FAN_4),
 }
 
 LG_AC_MODEL_VARIANT = {  # model -> remote variant (lg_ac_remote_model_t)
@@ -789,11 +792,12 @@ class LgAcDevice(_LgWordDevice):
     legacy LGv2 / LGv1 entities). The variants share the state word.
 
     Power off sends only kLgAcOffCommand, whatever the other settings
-    (IRLgAc::send). Light and horizontal swing send nothing for either
-    variant: IRLgAc::send sends the light toggle for AKB74955603 and the
-    SwingH words for AKB73757604 only.
+    (IRLgAc::send). Light and horizontal swing are not offered: IRLgAc::send
+    sends the light toggle for AKB74955603 and the SwingH words for
+    AKB73757604 only.
 
-    Swing: GE6711AR2853M sends no swing word at all. LG6711A20083V has one
+    Swing: GE6711AR2853M sends no swing word at all, so it offers no swing.
+    LG6711A20083V has one
     vertical swing button: IRac::lg sends kLgAcSwingVToggle when the swing
     changes between off and not-off, comparing with the previous state
     IRac::sendAc passes (prev->swingv, kOff without one);
@@ -901,36 +905,68 @@ LG2_COMMAND_LAYOUT = Layout(
 
 LG2_FAN_BY_VARIANT = {  # canonical fan -> kLgAcFan*, as IRLgAc::setFan stores it
     # AKB75215403: convertFan(kHigh) = kLgAcFanHigh, which setFan turns into
-    # kLgAcFanMax on any model but AKB74955603; kMax is kLgAcFanMax too.
+    # kLgAcFanMax on any model but AKB74955603, so "4" is kLgAcFanMax. "5"
+    # (kMax, kLgAcFanMax too) is not offered: it would repeat "4".
     "AKB75215403": {**LG_AC_FAN_BY_LEVEL, "5": "max"},
-    # AKB74955603: setFan keeps kLgAcFanHigh and turns low into kLgAcFanLowAlt.
-    "AKB74955603": {**LG_AC_FAN_BY_LEVEL, "2": "low_alt", "4": "high"},
+    # AKB74955603: setFan keeps kLgAcFanHigh and kLgAcFanMax apart and turns
+    # low into kLgAcFanLowAlt: five speeds.
+    "AKB74955603": {**LG_AC_FAN_BY_LEVEL, "2": "low_alt", "4": "high", "5": "max"},
     "AKB73757604": LG_AC_FAN_BY_LEVEL,
 }
 LG2_SWING_V = {  # canonical swing -> kLgAcSwingV* (AKB74955603), top to bottom
     "off": "swing_v_off",
     "auto": "swing_v_swing",  # convertSwingV(kAuto): kLgAcSwingVSwing
-    "1": "swing_v_highest",  # 90°: the topmost documented position
-    "2": "swing_v_high",  # 60°
-    "3": "swing_v_middle",  # 45°
-    "4": "swing_v_low",  # 30°
-    "5": "swing_v_lowest",  # 0°
+    "1": "swing_v_highest",
+    "2": "swing_v_high",
+    "3": "swing_v_upper_middle",
+    "4": "swing_v_middle",
+    "5": "swing_v_low",
+    "6": "swing_v_lowest",
 }
-LG2_VANE = {  # canonical swing -> kLgAcVaneSwingV* (AKB73757604)
-    # convertVaneSwingV has no off or auto: both fall to its default, Highest.
+LG2_VANE = {  # canonical swing -> kLgAcVaneSwingV* (AKB73757604), top to bottom
+    # Not offered: convertVaneSwingV has no off or auto (its default is
+    # Highest, as "1").
     "off": "highest",
     "auto": "highest",
-    "1": "highest",  # 90°: the topmost documented position
-    "2": "high",  # 60°
-    "3": "middle",  # 45°
-    "4": "low",  # 30°
-    "5": "lowest",  # 0°
+    "1": "highest",
+    "2": "high",
+    "3": "upper_middle",
+    "4": "middle",
+    "5": "low",
+    "6": "lowest",
 }
+# The six documented positions (kLgAcSwingV* / kLgAcVaneSwingV*), highest
+# first. The angle labels of the five-position choices do not fit six
+# positions, so the labels are the header's names.
+LG2_POSITIONS = Choice(
+    ("1", "2", "3", "4", "5", "6"),
+    {
+        "1": "highest",
+        "2": "high",
+        "3": "upper middle",
+        "4": "middle",
+        "5": "low",
+        "6": "lowest",
+    },
+)
 
 LG2_CAPABILITIES = {
-    "AKB75215403": _lg_capabilities(FAN_5, SWING_V_ANGLES),
-    "AKB74955603": _lg_capabilities(FAN_4, SWING_V_ANGLES),
-    "AKB73757604": _lg_capabilities(FAN_4, SWING_V_ANGLES),
+    # IRLgAc::send sends nothing but the state word for AKB75215403: no
+    # swing or light (the legacy LG2v1 entity offered them).
+    "AKB75215403": _lg_capabilities(FAN_4),
+    # kLgAcSwingV* words (off, swing, six positions) and the light toggle;
+    # no SwingH word.
+    "AKB74955603": _lg_capabilities(
+        FAN_5,
+        Choice(
+            ("off", "auto") + LG2_POSITIONS.values,
+            {"off": "off", "auto": "auto", **LG2_POSITIONS.labels},
+        ),
+        light=True,
+    ),
+    # The kLgAcVaneSwingV* positions (no off or auto) and the SwingH words;
+    # no light toggle.
+    "AKB73757604": _lg_capabilities(FAN_4, LG2_POSITIONS, SWING),
 }
 
 LG2_MODELS = {  # model -> remote (lg_ac_remote_model_t), as the old LG2v1-3
@@ -961,12 +997,12 @@ class Lg2Device(_LgWordDevice):
     setpoint or variant. Power on sends the state word (Power on, Mode,
     Temp, Fan), then:
     - AKB75215403: nothing else. IRLgAc::send has no swing or light for it,
-      so swing_v, swing_h and light (in the legacy entity) have no effect.
+      so it offers none (the legacy entity's had no effect).
     - AKB74955603: the swing_v word when the swing differs from the previous
       one, then kLgAcLightToggle when light is off (every state word turns
-      the light on, ir_LG.cpp). swing_h is not sent (as C).
+      the light on, ir_LG.cpp). swing_h is not sent (as C), so not offered.
     - AKB73757604: one kLgAcVaneSwingV word per vane (4) for swing_v, then
-      kLgAcSwingHAuto/Off. light is not sent (as C).
+      kLgAcSwingHAuto/Off. light is not sent (as C), so not offered.
 
     ``previous``, as the C path:
     - The swing_v word (AKB74955603) goes only when its code differs from
@@ -993,11 +1029,12 @@ class Lg2Device(_LgWordDevice):
 
     Where the C path contradicts the header, the port sends the documented
     value (see the Defects in tests/test_lg2_device.py):
-    - swing_v "1"/"2" (90°/60°): the glue maps them to kHigh/kUpperMiddle;
-      convertSwingV sends kLgAcSwingVHigh for kHigh and has no kUpperMiddle
-      case (kLgAcSwingVOff, so no swing word at all), and convertVaneSwingV
-      sends High for kHigh and Highest for kUpperMiddle. The port sends
-      Highest/High (canonical "1" is the topmost documented position).
+    - swing_v "1"/"2" (the legacy 90°/60°): the glue maps them to
+      kHigh/kUpperMiddle; convertSwingV sends kLgAcSwingVHigh for kHigh and
+      has no kUpperMiddle case (kLgAcSwingVOff, so no swing word at all),
+      and convertVaneSwingV sends High for kHigh and Highest for
+      kUpperMiddle. The port sends Highest/High (canonical "1" is the
+      topmost documented position).
     - swing_h "swing" (the legacy "on"): IRGHVAC.trans_hswing has no "on",
       so C sends kLgAcSwingHOff; the port sends kLgAcSwingHAuto.
     """

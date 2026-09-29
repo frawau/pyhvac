@@ -213,17 +213,33 @@ def test_off_command_is_the_struct_with_power_off():
     assert LG_AC_LAYOUT.checksum.check(OFF)
 
 
-@pytest.mark.parametrize("temp", range(16, 26))
+@pytest.mark.parametrize("temp", range(16, 31))
 def test_every_setpoint(temp):
-    # setTemp: Temp = celsius - kLgAcTempAdjust.
+    # setTemp: Temp = celsius - kLgAcTempAdjust, kLgAcMinTemp-kLgAcMaxTemp.
     values = read(HvacState(True, "cool", float(temp)))
     assert (values["temp"], values["power"], values["sign"]) == (temp - 15, "on", 0x88)
 
 
-def test_setpoint_is_clamped_to_the_entity_range():
-    # The legacy entity offers 16-25 °C (C itself would clamp to 16-30).
+def test_setpoint_is_clamped_to_16_30():
+    # kLgAcMinTemp / kLgAcMaxTemp (the legacy entity stopped at 25).
     assert read(HvacState(True, "cool", 10.0))["temp"] == 1
-    assert read(HvacState(True, "heat", 35.0))["temp"] == 10
+    assert read(HvacState(True, "heat", 35.0))["temp"] == 15
+
+
+@pytest.mark.parametrize("model", [MODEL, GE_MODEL])
+def test_capabilities_are_the_documented_values(model):
+    caps = device(model).capabilities
+    assert (caps.temperature.min, caps.temperature.max) == (16.0, 30.0)
+    assert caps.temperature.decimals == (0,)
+    assert caps.modes == ("auto", "cool", "fan", "dry", "heat")
+    # kLgAcFan{Auto,Lowest,Low,Medium,Max}: setFan stores kLgAcFanHigh as Max.
+    assert caps.fan.values == ("auto", "1", "2", "3", "4")
+    # Only LG6711A20083V has a swing word (kLgAcSwingVToggle).
+    swing = caps.swing_v and caps.swing_v.values
+    assert swing == (("off", "swing") if model == MODEL else None)
+    # Removed no-ops: IRLgAc::send sends no light or SwingH word here.
+    assert caps.swing_h is None
+    assert dict(caps.features) == {}
 
 
 @pytest.mark.parametrize(
@@ -247,7 +263,7 @@ def test_every_fan_level(mode, fan, raw):
 
 def test_light_and_swing_h_send_nothing():
     # IRLgAc::send sends the light toggle for AKB74955603 and SwingH words
-    # for AKB73757604 only.
+    # for AKB73757604 only (so neither is offered here).
     base = HvacState(True, "cool", 22.0)
     for swing_h in ("off", "swing"):
         for light in (False, True):
@@ -319,6 +335,7 @@ def test_known_examples(raw, mode, temp, fan):
     "raw, mode, temp, fan",
     [
         (0x880C152, "heat", 16, "auto"),
+        (0x880CF50, "heat", 30, "auto"),  # kLgAcMaxTemp: new since 16-30
         (0x8808855, "cool", 23, "auto"),
         (0x880870F, "cool", 22, "1"),
         (0x8808721, "cool", 22, "3"),
@@ -401,25 +418,10 @@ def test_registry_serves_the_port(brand, model):
     assert dev.variant == LG_AC_MODEL_VARIANT[model]
 
 
-@pytest.mark.parametrize("model", ALL_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins import lg
-
-    brand, cls = LEGACY[LG_AC_MODEL_VARIANT[model]]
-    legacy = LegacyDevice(brand, model, getattr(lg, cls))
-    assert LgAcDevice(brand, model).capabilities == legacy.capabilities
-
-
-def test_ge_capabilities_offer_the_legacy_swing_positions():
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.lg import LGv1
-
-    swing = LegacyDevice("ge", GE_MODEL, LGv1).capabilities.swing_v
-    assert swing.values == ("off", "auto", "1", "2", "3", "4", "5")
-    assert device(GE_MODEL).capabilities.swing_v == swing
+def test_ge_offers_no_swing():
+    # Removed no-op: the legacy LGv1 entity's swing positions sent nothing
+    # (IRLgAc::send has no GE6711AR2853M swing word).
+    assert device(GE_MODEL).capabilities.swing_v is None
 
 
 def test_undeclared_deviation_is_reported():

@@ -87,16 +87,6 @@ def test_registry_serves_the_port(model):
     assert isinstance(registry.get_device("daikin", model), Daikin176Device)
 
 
-def test_capabilities_match_the_legacy_entity():
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.daikin import Daikin176
-
-    for model in DAIKIN176_MODELS:
-        legacy = LegacyDevice("daikin", model, Daikin176)
-        assert device().capabilities == legacy.capabilities
-
-
 def test_undeclared_deviation_is_reported():
     dev = device()
     record = next(

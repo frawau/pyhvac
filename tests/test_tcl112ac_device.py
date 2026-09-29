@@ -91,6 +91,17 @@ REAL_744 += bytes([0x08, 0x00, 0x00, 0x00, 0x00, 0x80, 0xC4])
 # 16 C, fan auto, swing on, light on, TimerIndicator clear.
 REAL_TEKNOPOINT = bytes([0x23, 0xCB, 0x26, 0x01, 0x00, 0x24, 0x03])
 REAL_TEKNOPOINT += bytes([0x0F, 0x38, 0x00, 0x00, 0x00, 0x00, 0x83])
+# TestTcl112AcClass.Temperature's states (library test states, not
+# captures: TAC09CHSD, on, cool, fan auto, swing off, light on,
+# TimerIndicator clear): 16.5 C and 19.5 C (HalfDegree set), and its
+# "automode" state (mode kTcl112AcAuto, 24 C), whose Sum byte (0x48) is not
+# the sum of its bytes (0xC8): setRaw and toString do not check it.
+TEMP_16_5 = bytes([0x23, 0xCB, 0x26, 0x01, 0x00, 0x24, 0x03])
+TEMP_16_5 += bytes([0x0F, 0x00, 0x00, 0x00, 0x00, 0xA0, 0xEB])
+TEMP_19_5 = bytes([0x23, 0xCB, 0x26, 0x01, 0x00, 0x24, 0x03])
+TEMP_19_5 += bytes([0x0C, 0x00, 0x00, 0x00, 0x00, 0xA0, 0xE8])
+AUTO_MODE = bytes([0x23, 0xCB, 0x26, 0x01, 0x00, 0x24, 0x08])
+AUTO_MODE += bytes([0x07, 0x00, 0x00, 0x00, 0x00, 0x80, 0x48])
 
 
 def device(model=V1, plugin="tcl"):
@@ -308,11 +319,14 @@ def test_port_reproduces_the_real_quiet_capture():
     [
         (dict(temperature=23.0), V1, REAL_744),
         (dict(temperature=16.0, swing_v="auto"), V2, REAL_TEKNOPOINT),
+        (dict(temperature=16.5), V1, TEMP_16_5),
+        (dict(temperature=19.5), V1, TEMP_19_5),
     ],
 )
 def test_port_reproduces_real_captures_but_timer_indicator(target, model, capture):
-    # Both captures have TimerIndicator clear; IRac never calls the timer
-    # setters, so it keeps stateReset's 1 (as the oracle records carry).
+    # These states have TimerIndicator clear; IRac never calls the timer
+    # setters, so it keeps stateReset's 1 (as the oracle records carry). The
+    # half-degree states (new setpoints) are the library's own test states.
     target = state(model=model, features={"light": True}, **target)
     ours = bytearray(frames(target, model=model)[-1].data)
     assert TCL112AC_LAYOUT.read(ours)["timer_indicator"] == 1
@@ -340,9 +354,11 @@ def test_bad_variant_raises():
 
 
 @pytest.mark.parametrize(
-    "mode, raw", [("cool", 3), ("dry", 2), ("fan", 7), ("heat", 1)]
+    "mode, raw", [("auto", 8), ("cool", 3), ("dry", 2), ("fan", 7), ("heat", 1)]
 )
 def test_mode_uses_its_documented_value(mode, raw):
+    # kTcl112Ac{Auto,Cool,Dry,Fan,Heat}; auto is new (the legacy entity had
+    # none).
     assert TCL112AC_LAYOUT.read_raw(frames(state(True, mode))[-1].data, "mode") == raw
 
 
@@ -366,6 +382,44 @@ def test_every_setpoint(t):
 def test_setpoint_is_clamped_to_16_31():
     assert read(state(temperature=10.0))["temperature"] == 16
     assert read(state(temperature=40.0))["temperature"] == 31
+    assert read(state(temperature=40.0))["half_degree"] == 0  # no 31.5
+
+
+def test_capabilities_offer_auto_and_half_degrees():
+    caps = device().capabilities
+    assert caps.modes == ("auto", "cool", "dry", "fan", "heat")  # kTcl112AcAuto
+    # kTcl112AcTempMin..kTcl112AcTempMax, HalfDegree: 0.5 steps.
+    assert (caps.temperature.min, caps.temperature.max) == (16.0, 31.0)
+    assert caps.temperature.decimals == (0, 5)
+    assert caps.temperature.snap(20.3) == 20.5
+    assert caps.temperature.snap(31.5) == 31.0
+
+
+@pytest.mark.parametrize("model", [V1, V2])
+@pytest.mark.parametrize("t", [16 + n / 2 for n in range(31)])
+def test_every_half_degree_setpoint(model, t):
+    # setTemp: Temp = kTcl112AcTempMax - whole degrees, HalfDegree the half.
+    data = frames(state(temperature=t, model=model), model=model)[-1].data
+    assert data[7] == 31 - int(t)
+    assert TCL112AC_LAYOUT.read(data)["half_degree"] == (t % 1 == 0.5)
+
+
+def test_port_reproduces_the_auto_mode_state_but_its_sum():
+    target = state(True, "auto", 24.0, features={"light": True})
+    ours = bytearray(frames(target)[-1].data)
+    TCL112AC_LAYOUT.write_raw(ours, "timer_indicator", 0)
+    TCL112AC_LAYOUT.checksum.apply(ours)
+    assert bytes(ours[:13]) == AUTO_MODE[:13]
+    assert ours[13] == sum(AUTO_MODE[:13]) & 0xFF == 0xC8
+
+
+@pytest.mark.parametrize("model", [V1, V2])
+@pytest.mark.parametrize("power", [True, False])
+def test_auto_mode_is_sent(model, power):
+    # kTcl112AcAuto: an off message is auto anyway (convertMode's default).
+    values = read(state(power, "auto", 22.0, model=model, fan="2"), model=model)
+    assert (values["mode"], values["power"]) == ("auto", int(power))
+    assert (values["temperature"], values["fan"]) == (22, "2")
 
 
 @pytest.mark.parametrize(
@@ -480,17 +534,6 @@ def test_registry_serves_the_port(plugin, model):
     dev = registry.get_device(plugin, model)
     assert isinstance(dev, Tcl112AcDevice)
     assert dev.variant == PLUGIN_MODELS[plugin][model]
-
-
-@pytest.mark.parametrize("plugin, model", SERVED)
-def test_capabilities_match_the_legacy_entity(plugin, model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins import tcl
-
-    cls = getattr(tcl, LEGACY_CLASS[PLUGIN_MODELS[plugin][model]])
-    legacy = LegacyDevice(plugin, model, cls)
-    assert Tcl112AcDevice(plugin, model).capabilities == legacy.capabilities
 
 
 def _record(cls, **match):

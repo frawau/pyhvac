@@ -23,12 +23,14 @@
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
 #
 
+from dataclasses import replace
+
 from .hvaclib import PulseBased, GenPluginObject
 from .electra import ELECTRA_AC_DELONGHI_MODELS, Electra, ElectraAcDevice
 from ..device import Device
 from ..fields import Field, Layout, Sum8
 from ..ir.model import Frame, Protocol, PulseDistance, Section
-from ..choices import ON_OFF
+from ..choices import FAN_3, ON_OFF
 from ..state import Capabilities, TemperatureRange
 
 
@@ -102,23 +104,39 @@ DELONGHI_AC_LAYOUT = Layout(
 # The fan speed IRDelonghiAc::setFan leaves when asked for auto: fan mode
 # can't have auto (it becomes high), every other mode keeps auto.
 DELONGHI_AC_FAN = {"fan": "3"}
+# setFan: "Auto & Dry modes only allows auto fan speed".
+DELONGHI_AC_AUTO_FAN_MODES = ("auto", "dry")
+
+
+def delonghi_ac_fan(mode, fan):
+    """The fan IRDelonghiAc::setFan leaves in ``mode`` when asked for ``fan``."""
+    if mode in DELONGHI_AC_AUTO_FAN_MODES:
+        return "auto"
+    if fan == "auto":
+        return DELONGHI_AC_FAN.get(mode, "auto")
+    return fan
 
 
 class DelonghiAcDevice(Device):
-    """DeLonghi PAC A95: power, mode, setpoint and boost are sent in full.
+    """DeLonghi PAC A95: power, mode, setpoint, fan, boost and sleep are
+    sent in full.
 
     As IRac::delonghiac sends it:
     - an off message carries mode auto (convertMode's default for IRac's
       "off"), with the setpoint and boost;
     - the setpoint is sent in every mode: IRac calls setTemp after setMode,
       which overwrites the special temperatures setMode writes for auto, dry
-      (kDelonghiAcTempAutoDryMode) and fan (kDelonghiAcTempFanMode). It is
-      clamped to kDelonghiAcTempMinC..MaxC, so 16 and 17 C send 18 C;
-    - the entity has no fan, so IRac asks for auto: fan mode sends high
-      (setFan: "Fan mode can't have auto fan speed"), the others auto;
-    - "powerful" is the Boost (Turbo) bit; "quiet" has no bit in the header
-      and IRac::delonghiac takes none, so it changes nothing;
-    - Celsius, no sleep (the entity has none) and no timers.
+      (kDelonghiAcTempAutoDryMode) and fan (kDelonghiAcTempFanMode). The
+      range is kDelonghiAcTempMinC..MaxC (18-32 C);
+    - the fan follows setFan's mode rules, which ``normalise`` applies to
+      the target: auto and dry allow auto only; fan mode can't have auto
+      and sends high for it (the stateReset fan is auto); an off message
+      (mode auto) sends auto;
+    - "powerful" is the Boost (Turbo) bit, "sleep" the Sleep bit;
+    - Celsius and no timers.
+
+    Quiet is not offered: the header has no quiet bit and IRac::delonghiac
+    takes none.
 
     ``previous`` is ignored: the protocol has no toggle bits.
     """
@@ -127,18 +145,26 @@ class DelonghiAcDevice(Device):
     LAYOUTS = (DELONGHI_AC_LAYOUT,)
     capabilities = Capabilities(
         modes=("auto", "cool", "fan", "dry"),
-        temperature=TemperatureRange(16.0, 25.0),
-        features={"powerful": ON_OFF, "quiet": ON_OFF},
+        # kDelonghiAcTempMinC..kDelonghiAcTempMaxC
+        temperature=TemperatureRange(18.0, 32.0),
+        fan=FAN_3,  # kDelonghiAcFan{Auto,Low,Medium,High}
+        features={"powerful": ON_OFF, "sleep": ON_OFF},  # Boost, Sleep
     )
+
+    def normalise(self, state):
+        state = super().normalise(state)
+        fan = delonghi_ac_fan(state.mode, state.fan)
+        return state if fan == state.fan else replace(state, fan=fan)
 
     def frames(self, previous, target, actions):
         mode = target.mode if target.power else "auto"
         data = DELONGHI_AC_LAYOUT.build(
             temperature=min(max(int(target.temperature), 18), 32) - 17,
-            fan=DELONGHI_AC_FAN.get(mode, "auto"),
+            fan=delonghi_ac_fan(mode, target.fan),
             power=target.power,
             mode=mode,
             boost=target.features["powerful"],
+            sleep=target.features.get("sleep", False),
         )
         return [Frame("main", bytes(data))]
 

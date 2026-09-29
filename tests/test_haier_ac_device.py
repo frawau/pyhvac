@@ -138,9 +138,10 @@ def test_every_fan_level_uses_set_fan_raw_values(fan, raw):
     )
 
 
-@pytest.mark.parametrize("swing, raw", [("off", 0), ("1", 1), ("2", 2)])
+@pytest.mark.parametrize("swing, raw", [("off", 0), ("auto", 3), ("1", 1), ("2", 2)])
 def test_every_swing_position(swing, raw):
-    # "auto high" -> kHigh -> kHaierAcSwingVUp; "auto low" -> kLow -> Down.
+    # "auto high" -> kHigh -> kHaierAcSwingVUp; "auto low" -> kLow -> Down;
+    # "auto" -> kAuto -> kHaierAcSwingVChg (0b11).
     raw_read = HAIER_AC_LAYOUT.read_raw(
         data(HvacState(True, "cool", 22.0, swing_v=swing)), "swing_v"
     )
@@ -207,13 +208,28 @@ def test_registry_serves_the_port(model):
 
 
 @pytest.mark.parametrize("model", HAIER_AC_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.haier import Haier
+def test_swing_v_offers_every_documented_value(model):
+    # kHaierAcSwingV{Off,Chg,Up,Down}: Chg ("auto", 0b11) is new, the legacy
+    # entity had off, "auto high" (Up) and "auto low" (Down).
+    swing_v = device(model).capabilities.swing_v
+    assert swing_v.values == ("off", "auto", "1", "2")
+    assert swing_v.label("1") == "auto high" and swing_v.label("2") == "auto low"
 
-    legacy = LegacyDevice("haier", model, Haier)
-    assert device(model).capabilities == legacy.capabilities
+
+def test_swing_change_matches_the_libraries_message_construction():
+    # ir_Haier_test.cpp TestHaierACClass.MessageConstuction: setSwingV(
+    # kHaierAcSwingVChg) gives byte 2 = 0xEA there (SwingV 0b11 over the
+    # constant bit 5 and the clock); with the clock at 0, byte 2 is 0xE0.
+    assert data(HvacState(True, "cool", 21.0, swing_v="auto"))[2] == 0xE0
+
+
+def test_capabilities():
+    caps = device().capabilities
+    assert caps.modes == ("auto", "cool", "dry", "heat", "fan")
+    assert (caps.temperature.min, caps.temperature.max) == (16.0, 30.0)
+    assert caps.fan.values == ("auto", "1", "2", "3")
+    assert caps.swing_h is None
+    assert set(caps.features) == {"purifier", "sleep"}
 
 
 def test_undeclared_deviation_is_reported():

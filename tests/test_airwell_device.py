@@ -66,8 +66,26 @@ def c_frames(raw):
 
 
 def c_record(record, raw):
-    """``record`` with the pulses IRsend::sendAirwell sends for ``raw``."""
-    return {**record, "pulses": list(encode(AIRWELL, c_frames(raw)).pulses)}
+    """``record`` with the pulses IRsend::sendAirwell sends for ``raw``, and
+    its state in today's fan vocabulary (see ``modern``)."""
+    return {
+        **record,
+        "state": modern(record["state"]),
+        "pulses": list(encode(AIRWELL, c_frames(raw)).pulses),
+    }
+
+
+def modern(old):
+    """An old-vocabulary state with the 0.1.x fan "lowest" read as "low".
+
+    The legacy entity offered four speeds; the header has three
+    (kAirwellFanLow/Medium/High). IRAirwellAc::convertFan sends kMin
+    ("lowest") and kLow ("low") both as kAirwellFanLow, so a record's
+    "lowest" is the port's "1" (low) and C's word is unchanged.
+    """
+    if old.get("fan") == "lowest":
+        return {**old, "fan": "low"}
+    return old
 
 
 def fixture():
@@ -184,7 +202,7 @@ def test_sequence_matches_the_recorded_c_states():
     for old, raw in zip(states, raws):
         rec = c_record({**record, "state": old}, raw)
         assert_matches_oracle(dev, rec, dev.LAYOUTS, previous=previous)
-        previous = state_from_record(dev, old)
+        previous = state_from_record(dev, modern(old))
 
 
 @pytest.mark.parametrize("record, states", sequence_params("AIRWELL"))
@@ -210,7 +228,7 @@ def test_fixture_matches_the_c_library():
         assert [f"{r:#x}" for r in raws] == data["sequences"][record["class"]]
 
 
-LABEL = {"auto": "auto", "1": "lowest", "2": "low", "3": "medium", "4": "high"}
+LABEL = {"auto": "auto", "1": "low", "2": "medium", "3": "high"}
 
 
 def _old(state):
@@ -242,7 +260,7 @@ def test_every_setpoint_fan_and_off_message_matches_the_c_library():
 def test_layout_round_trips_every_oracle_state():
     dev = device()
     for record in load_oracle("AIRWELL"):
-        state = state_from_record(dev, record["state"])
+        state = state_from_record(dev, modern(record["state"]))
         main = dev.frames(None, state, ())[0]
         values = AIRWELL_LAYOUT.read(main.data)
         assert AIRWELL_LAYOUT.build(**values) == bytearray(main.data)
@@ -267,7 +285,7 @@ def test_off_carries_mode_auto_in_every_mode():
     dev = device()
     for mode in dev.capabilities.modes:
         for t in (16.0, 30.0):
-            values = read(HvacState(False, mode, t, fan="3"))
+            values = read(HvacState(False, mode, t, fan="2"))
             assert (values["mode"], values["temperature"], values["fan"]) == (
                 "auto",
                 int(t),
@@ -280,11 +298,10 @@ def test_dry_locks_the_fan_low():
         assert read(HvacState(True, "dry", 22.0, fan=fan))["fan"] == "low"
 
 
-@pytest.mark.parametrize(
-    "fan, code", [("auto", 3), ("1", 0), ("2", 0), ("3", 1), ("4", 2)]
-)
+@pytest.mark.parametrize("fan, code", [("auto", 3), ("1", 0), ("2", 1), ("3", 2)])
 def test_every_fan_level_uses_its_documented_code(fan, code):
-    # kAirwellFan*: convertFan maps kMin and kLow to kAirwellFanLow.
+    # kAirwellFanAuto = 3, kAirwellFanLow = 0, kAirwellFanMedium = 1,
+    # kAirwellFanHigh = 2.
     data = main_word(HvacState(True, "cool", 22.0, fan=fan))
     assert AIRWELL_LAYOUT.read_raw(data, "fan") == code
 
@@ -395,7 +412,7 @@ REAL_COOL_16_HIGH = [
 
 def test_port_reproduces_the_real_cool_capture():
     dev = device()
-    on = dev.normalise(HvacState(True, "cool", 16.0, fan="4"))
+    on = dev.normalise(HvacState(True, "cool", 16.0, fan="3"))
     ours = dev.frames(on, on, ())  # no power change: no toggle
     theirs = decode(AIRWELL, REAL_COOL_16_HIGH, expected=[f.section for f in ours])
     assert ours == theirs
@@ -404,7 +421,7 @@ def test_port_reproduces_the_real_cool_capture():
 
 def test_port_reproduces_the_reconstructed_known_state():
     # ReconstructKnownState: toggle on, cool, 22C, fan low -> 0x240380002.
-    assert main_word(HvacState(True, "cool", 22.0, fan="2")) == airwell_word(
+    assert main_word(HvacState(True, "cool", 22.0, fan="1")) == airwell_word(
         0x240380002
     )
 
@@ -450,14 +467,21 @@ def test_registry_serves_the_port(model):
     assert isinstance(registry.get_device("airwell", model), AirwellDevice)
 
 
-@pytest.mark.parametrize("model", AIRWELL_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.airwell import Airwell
+def test_fan_offers_the_headers_three_speeds_and_auto():
+    # kAirwellFanLow/Medium/High/Auto: the legacy entity's fourth speed
+    # (lowest, the same kAirwellFanLow as low) is gone.
+    fan = device().capabilities.fan
+    assert fan.values == ("auto", "1", "2", "3")
+    assert [fan.label(v) for v in fan.values] == ["auto", "low", "medium", "high"]
+    assert device().normalise(HvacState(True, "cool", 22.0, fan="4")).fan == "auto"
 
-    legacy = LegacyDevice("airwell", model, Airwell)
-    assert AirwellDevice("airwell", model).capabilities == legacy.capabilities
+
+def test_a_lowest_record_sends_what_a_low_record_sends():
+    # convertFan: kMin and kLow are both kAirwellFanLow.
+    for record in load_oracle("AIRWELL"):
+        if record["state"]["fan"] == "lowest":
+            low = {**record["state"], "fan": "low"}
+            assert fixture_raw(record["state"]) == fixture_raw(low)
 
 
 def test_layouts_must_cover_every_frame():

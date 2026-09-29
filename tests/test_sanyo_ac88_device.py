@@ -41,6 +41,18 @@ def wire(record):
     return {**record, "pulses": pulses[:-2] + [3675 + 100000]}
 
 
+# The legacy fan "lowest" (kMin) and "highest" (kMax) are no longer offered:
+# convertFan sent them as FanLow and FanHigh, "low" and "high" here.
+FAN_AS_SENT = {"lowest": "low", "highest": "high"}
+
+
+def as_sent(record):
+    fan = record["state"].get("fan")
+    if fan not in FAN_AS_SENT:
+        return record
+    return {**record, "state": {**record["state"], "fan": FAN_AS_SENT[fan]}}
+
+
 def device(model="generic 88"):
     return SanyoAc88Device("sanyo", model)
 
@@ -61,13 +73,13 @@ def raw(state, field):
 @pytest.mark.parametrize("record", oracle_params("SANYO_AC88"))
 def test_matches_c_library(record):
     dev = device()
-    assert_matches_oracle(dev, wire(record), dev.LAYOUTS, DEFECTS)
+    assert_matches_oracle(dev, as_sent(wire(record)), dev.LAYOUTS, DEFECTS)
 
 
 def test_layout_round_trips_every_oracle_state():
     dev = device()
     for record in load_oracle("SANYO_AC88"):
-        state = state_from_record(dev, record["state"])
+        state = state_from_record(dev, as_sent(record)["state"])
         *mains, end = dev.frames(None, state, ())
         assert (end.section, end.data, end.nbits) == ("end", b"", 0)
         assert len(mains) == 3 and len({f.data for f in mains}) == 1
@@ -129,12 +141,37 @@ def test_setpoint_is_whole_degrees_clamped_to_10_30(mode):
     assert read(HvacState(True, mode, 40.0))["temperature"] == 30
 
 
-@pytest.mark.parametrize(
-    "fan, code", [("auto", 0), ("1", 1), ("2", 2), ("3", 3), ("4", 3)]
-)
-def test_fan_codes_as_convert_fan(fan, code):
-    # convertFan: kMin and kLow -> FanLow, kHigh and kMax -> FanHigh.
+@pytest.mark.parametrize("fan, code", [("auto", 0), ("1", 1), ("2", 2), ("3", 3)])
+def test_fan_codes(fan, code):
+    # kSanyoAc88FanAuto, FanLow, FanMedium, FanHigh.
     assert raw(HvacState(True, "cool", 22.0, fan=fan), "fan") == code
+
+
+def test_capabilities_are_the_documented_values():
+    caps = device().capabilities
+    # kSanyoAc88TempMin / kSanyoAc88TempMax, whole degrees.
+    assert (caps.temperature.min, caps.temperature.max) == (10.0, 30.0)
+    # kSanyoAc88{Auto,Cool,Heat,Fan}; FeelCool/FeelHeat have no HvacState mode.
+    assert caps.modes == ("auto", "cool", "heat", "fan")
+    assert caps.fan.values == ("auto", "1", "2", "3")
+    assert caps.fan.labels == {
+        "auto": "auto",
+        "1": "low",
+        "2": "medium",
+        "3": "high",
+    }
+    assert caps.swing_v.values == ("off", "swing")
+    assert set(caps.features) == {"powerful", "purifier", "sleep"}
+
+
+@pytest.mark.parametrize("old", ["lowest", "highest"])
+def test_legacy_extra_fans_are_read_as_what_c_sent(old):
+    # Removed: "lowest" and "highest" duplicated FanLow and FanHigh.
+    dev = device()
+    record = wire(_record(mode="cool", fan=old))
+    with pytest.raises(ValueError, match=old):
+        state_from_record(dev, record["state"])
+    assert_matches_oracle(dev, as_sent(record), dev.LAYOUTS, DEFECTS)
 
 
 @pytest.mark.parametrize(
@@ -202,16 +239,6 @@ def test_registry_serves_the_port():
         assert isinstance(registry.get_device("sanyo", model), SanyoAc88Device)
 
 
-def test_capabilities_match_the_legacy_entity():
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.sanyo import Sanyo88
-
-    for model in SANYO_AC88_MODELS:
-        legacy = LegacyDevice("sanyo", model, Sanyo88)
-        assert device(model).capabilities == legacy.capabilities
-
-
 def _record(**state):
     return next(
         r
@@ -229,7 +256,7 @@ def _record(**state):
 )
 def test_undeclared_deviation_is_reported(state, defect):
     dev = device()
-    record = wire(_record(**state))
+    record = as_sent(wire(_record(**state)))
     assert_matches_oracle(dev, record, dev.LAYOUTS, (defect,))
     others = tuple(d for d in DEFECTS if d is not defect)
     with pytest.raises(AssertionError, match=f"'{defect.field}'"):

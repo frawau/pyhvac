@@ -45,16 +45,12 @@ from pyhvac.state import HvacState
 DEFECTS = (
     Defect("fan", "1", "2", "kLow: convertFan gives kGreeFanMax - 1"),
     Defect("swing_v", "1", "2", "90° is kHigh: kGreeSwingMiddleUp"),
-    Defect("swing_v", "2", "last", "60° is kUpperMiddle: convertSwingV's default"),
+    Defect("swing_v", "2", "off", "60° is kUpperMiddle: convertSwingV's default"),
 )
 # Records without a "swing" key leave IRac's swingv at kOff: C sends
-# kGreeSwingLastPos with SwingAuto clear, a value the legacy entity cannot
-# ask for (it has no "off" swing). The port reads the record as its first
-# swing value, auto. Only those records may differ so.
-NO_SWING = (
-    Defect("swing_v", "auto", "last", "no swing key: IRac's kOff"),
-    Defect("swing_auto", 1, 0, "no swing key: IRac's kOff"),
-)
+# kGreeSwingLastPos with SwingAuto clear, which is the port's swing "off"
+# (state_from_record reads a missing swing as "off"), so they need no
+# Defect.
 
 # (plugin, model, legacy class, variant) for every served model.
 LEGACY = {"YAW1F": "Greev1", "YBOFB": "Greev2", "YX1FSF": "Greev3"}
@@ -77,6 +73,7 @@ FEATURE_FIELDS = {
     "light": "light",
     "cleaning": "xfan",
     "economy": "econo",
+    "sleep": "sleep",
 }
 NAMES = ["block1", "block2"]
 
@@ -90,7 +87,7 @@ def record_device(record):
 
 
 def defects_for(record):
-    return DEFECTS + (() if "swing" in record["state"] else NO_SWING)
+    return DEFECTS
 
 
 def state(power=True, mode="cool", temperature=22.0, variant="YAW1F", **kw):
@@ -302,6 +299,28 @@ def test_energy_saver_capture_is_mode_econo():
     assert (ours["mode"], ours["econo"], ours["temp"]) == ("econo", 1, 25)
 
 
+def test_port_reproduces_the_energy_saver_capture_swing_off():
+    # The same capture's swing byte is kGreeSwingLastPos with SwingAuto clear
+    # and kGreeSwingHOff: the port's swing_v "off". Only what the port
+    # cannot or does not send differs: ModelA (a YAW1F-only bit in IRac),
+    # the Fahrenheit display and setEcono's Econo bit.
+    target = state(
+        True,
+        "cool",
+        25.0,
+        "YX1FSF",
+        fan="1",
+        swing_v="off",
+        features={"light": True, "economy": True},
+    )
+    raw = bytearray(data(target, "YX1FSF"))
+    assert raw[4] == REAL_1821[4] == 0x00
+    for name, value in (("model_a", 1), ("use_fahrenheit", 1), ("econo", 0)):
+        GREE_LAYOUT.write_raw(raw, name, value)
+    GREE_LAYOUT.checksum.apply(raw)
+    assert bytes(raw) == REAL_1821
+
+
 @pytest.mark.parametrize("model, variant", sorted(GREE_MODEL_VARIANT.items()))
 def test_variant_comes_from_the_model(model, variant):
     assert GreeDevice("any", model).variant == variant
@@ -368,6 +387,7 @@ def test_every_fan_level(mode, fan, code):
 @pytest.mark.parametrize(
     "swing, code, auto",
     [
+        ("off", 0b0000, 0),  # kGreeSwingLastPos (convertSwingV's kOff)
         ("auto", 0b0001, 1),  # kGreeSwingAuto, SwingAuto
         ("1", 0b0010, 0),  # Up (90°)
         ("2", 0b0011, 0),  # MiddleUp (60°)
@@ -443,6 +463,7 @@ def test_fields_irac_never_sets_stay_clear():
     for variant in VARIANTS:
         for power in (True, False):
             for mode in MODES:
+                # Sleep is a feature now (test_each_feature_sets_its_bit_only).
                 target = state(
                     power,
                     mode,
@@ -452,9 +473,9 @@ def test_fields_irac_never_sets_stay_clear():
                     swing_h="5",
                     features={f: True for f in GREE_CAPABILITIES[variant].features},
                 )
+                assert read(target, variant)["sleep"] == 1
                 values = read(target, variant)
                 for field in (
-                    "sleep",
                     "timer_half_hr",
                     "timer_tens_hr",
                     "timer_enabled",
@@ -495,21 +516,41 @@ def test_registry_serves_the_port(brand, model):
     assert isinstance(registry.get_device(brand, model), GreeDevice)
 
 
-@pytest.mark.parametrize("brand, model", ALL_MODELS)
-def test_capabilities_match_the_legacy_entity(brand, model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins import gree
+@pytest.mark.parametrize("variant", VARIANTS)
+def test_capabilities_are_the_documented_ones(variant):
+    caps = GREE_CAPABILITIES[variant]
+    assert caps.modes == MODES
+    # kGreeMinTempC / kGreeMaxTempC, whole degrees (TempExtraDegreeF is a
+    # Fahrenheit bit).
+    assert (caps.temperature.min, caps.temperature.max) == (16.0, 30.0)
+    assert caps.temperature.decimals == (0,)
+    assert caps.fan.values == ("auto", "1", "2", "3")  # kGreeFan{Auto,Min,Med,Max}
+    assert caps.swing_v.values == ("off", "auto", "1", "2", "3", "4", "5")
+    assert caps.swing_h.values == ("off", "auto", "1", "2", "3", "4", "5")
+    expected = {"powerful", "light", "cleaning", "sleep"}
+    if variant != "YAW1F":
+        expected.add("economy")
+    assert set(caps.features) == expected
 
-    variant = GREE_MODEL_VARIANT[model]
-    legacy = LegacyDevice(brand, model, getattr(gree, LEGACY[variant]))
-    assert GreeDevice(brand, model).capabilities == legacy.capabilities
+
+@pytest.mark.parametrize("variant", VARIANTS)
+@pytest.mark.parametrize("mode", MODES)
+@pytest.mark.parametrize("power", [True, False])
+def test_sleep_sets_the_sleep_bit(variant, mode, power):
+    # GreeProtocol's Sleep (byte 0 bit 7), IRac::gree's setSleep(sleep >= 0).
+    # TestGreeClass.HumanReadable: setSleep(true) shows "Sleep: On".
+    base = read(state(power, mode, variant=variant), variant)
+    on = read(state(power, mode, variant=variant, features={"sleep": True}), variant)
+    assert (base["sleep"], on["sleep"]) == (0, 1)
+    assert {k for k in on if on[k] != base[k]} == {"sleep"}
 
 
 # States the oracle grid lacks: off in every mode with every feature, every
 # setpoint in every mode, every fan level in every mode, every swing_v with
 # every swing_h, the features alone and together in every mode.
 def _extra_states(features):
+    # The old glue has no sleep to pass to C.
+    features = [f for f in features if f != "sleep"]
     all_on = {f: "on" for f in features}
     return (
         [
@@ -534,7 +575,7 @@ def _extra_states(features):
         + [
             {"mode": m, "temperature": 22, "fan": "high", "swing": s, "hswing": h}
             for m in ("cool", "off")
-            for s in ("auto", "90°", "60°", "45°", "30°", "0°")
+            for s in ("off", "auto", "90°", "60°", "45°", "30°", "0°")
             for h in (
                 "off",
                 "auto",
@@ -596,12 +637,15 @@ def test_undeclared_deviation_is_reported(match, defect):
         assert_matches_oracle(dev, record, dev.LAYOUTS, others)
 
 
-@pytest.mark.parametrize("defect", NO_SWING, ids=["swing_v", "swing_auto"])
-def test_missing_swing_is_not_silently_accepted(defect):
+def test_records_without_swing_are_swing_off():
+    # 29 records leave IRac's swingv at kOff; the port reads them as swing
+    # "off" and sends kGreeSwingLastPos with SwingAuto clear, as C.
     records = [r for r in load_oracle("GREE") if "swing" not in r["state"]]
     assert len(records) == 29
-    others = DEFECTS + tuple(d for d in NO_SWING if d != defect)
     for record in records:
         dev = record_device(record)
-        with pytest.raises(AssertionError, match=defect.field):
-            assert_matches_oracle(dev, record, dev.LAYOUTS, others)
+        target = state_from_record(dev, record["state"])
+        assert target.swing_v == "off"
+        values = GREE_LAYOUT.read(message(record["pulses"]))
+        assert (values["swing_v"], values["swing_auto"]) == ("off", 0)
+        assert_matches_oracle(dev, record, dev.LAYOUTS, DEFECTS)

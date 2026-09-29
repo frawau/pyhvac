@@ -153,19 +153,39 @@ def test_economy_is_cleared_when_off():
     assert DAIKIN128_SECOND.read(second.data)["economy"] == 0
 
 
+@pytest.mark.parametrize("sleep", [False, True])
+def test_sleep_sets_the_documented_bit(sleep):
+    # Daikin128Protocol byte 7 bit 1 (Sleep, setSleep), in every mode.
+    for mode in ("auto", "dry", "cool", "heat", "fan"):
+        _, first, _ = device().frames(None, on(mode, features={"sleep": sleep}), ())
+        assert first.data[7] >> 1 & 1 == sleep
+        assert DAIKIN128_FIRST.read(first.data)["sleep"] == sleep
+
+
+def test_light_without_previous_follows_the_c_path():
+    # IRac::daikin128 from a fresh object: setLightToggle(light ?
+    # kDaikin128BitWall : 0), Wall = byte 9 bit 3, Ceiling (bit 0) never set.
+    for light in (False, True):
+        _, _, second = device().frames(None, on(features={"light": light}), ())
+        assert second.data[1] & 0b1001 == (0b1000 if light else 0)
+
+
+@pytest.mark.parametrize(
+    "was, now, toggle",
+    [(False, True, 1), (True, False, 1), (True, True, 0), (False, False, 0)],
+)
+def test_light_toggles_only_when_it_changes(was, now, toggle):
+    # IRac::handleToggles: result.light = desired.light ^ prev->light.
+    previous = on(features={"light": was})
+    target = on(temperature=20.0, features={"light": now})
+    _, _, second = device().frames(previous, target, ())
+    assert DAIKIN128_SECOND.read(second.data)["wall"] == toggle
+    assert DAIKIN128_SECOND.read(second.data)["ceiling"] == 0
+
+
 def test_registry_serves_the_port():
     for model in DAIKIN128_MODELS:
         assert isinstance(registry.get_device("daikin", model), Daikin128Device)
-
-
-def test_capabilities_match_the_legacy_entity():
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.daikin import Daikin128
-
-    for model in DAIKIN128_MODELS:
-        legacy = LegacyDevice("daikin", model, Daikin128)
-        assert device().capabilities == legacy.capabilities
 
 
 def _without(defect):

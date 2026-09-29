@@ -186,7 +186,7 @@ def test_layout_reads_the_typical_message():
     # power on, cool, 27 C, fan 1, XFan on.
     values = KELVINATOR_LAYOUT.read(TYPICAL)
     assert (values["power"], values["mode"], values["temp"]) == (1, "cool", 27)
-    assert (values["fan"], values["basic_fan"], values["xfan"]) == (1, 1, 1)
+    assert (values["fan"], values["basic_fan"], values["xfan"]) == ("1", 1, 1)
     # Every set bit is a named field or the skeleton's.
     rebuilt = bytearray(KELVINATOR_LAYOUT.skeleton)
     for name in KELVINATOR_LAYOUT.fields:
@@ -210,17 +210,18 @@ def test_message_shape_matches_send_data_only():
 def test_port_reproduces_the_irac_example():
     # TestIRac.Kelvinator: cool, 19 C, fan medium, swing off, light, filter
     # and clean on: "Fan: 3 (Medium) ... XFan: On, Ion: On, Light: On".
+    # kMedium is Fan 3: canonical "3" (FAN_5's "medium").
     target = state(
         True,
         "cool",
         19.0,
-        fan="2",
+        fan="3",
         features={"light": True, "purifier": True, "cleaning": True},
     )
     raw = data(target)
     assert raw == bytes.fromhex("3903e05000000060" "3903e07000003090")
     values = KELVINATOR_LAYOUT.read(raw)
-    assert (values["mode"], values["temp"], values["fan"]) == ("cool", 19, "2")
+    assert (values["mode"], values["temp"], values["fan"]) == ("cool", 19, "3")
     assert (values["xfan"], values["ion_filter"], values["light"]) == (1, 1, 1)
     assert (values["turbo"], values["quiet"], values["swing_h"]) == (0, 0, "off")
     assert values["swing_v"] == "off"
@@ -268,11 +269,19 @@ def test_setpoint_is_clamped():
 
 @pytest.mark.parametrize("mode", MODES)
 @pytest.mark.parametrize(
-    "fan, raw, basic", [("auto", 0, 0), ("1", 2, 2), ("2", 3, 3), ("3", 4, 3)]
+    "fan, raw, basic",
+    [
+        ("auto", 0, 0),  # kKelvinatorFanAuto
+        ("1", 1, 1),  # kKelvinatorFanMin
+        ("2", 2, 2),
+        ("3", 3, 3),
+        ("4", 4, 3),
+        ("5", 5, 3),  # kKelvinatorFanMax
+    ],
 )
 def test_every_fan_level(mode, fan, raw, basic):
-    # IRac passes the stdAc speed (kLow 2, kMedium 3, kHigh 4); setFan caps
-    # BasicFan at kKelvinatorBasicFanMax.
+    # setFan: "0 is auto, 1-5 is the speed" (kKelvinatorFanMin..FanMax);
+    # it caps BasicFan at kKelvinatorBasicFanMax.
     raw_data = data(state(True, mode, fan=fan))
     assert KELVINATOR_LAYOUT.read_raw(raw_data, "fan") == raw
     assert KELVINATOR_LAYOUT.read_raw(raw_data, "basic_fan") == basic
@@ -382,14 +391,78 @@ def test_registry_serves_the_port(brand, model):
     assert isinstance(registry.get_device(brand, model), KelvinatorDevice)
 
 
-@pytest.mark.parametrize("brand, model", ALL_MODELS)
-def test_capabilities_match_the_legacy_entity(brand, model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.kelvinator import Kelvinator
+def test_fan_offers_the_five_documented_speeds():
+    # kKelvinatorFanAuto, then kKelvinatorFanMin (1) .. kKelvinatorFanMax (5).
+    fan = device().capabilities.fan
+    assert fan.values == ("auto", "1", "2", "3", "4", "5")
+    # The legacy entity's low/medium/high (the stdAc kLow/kMedium/kHigh that
+    # IRac passes unconverted, Fan 2/3/4) keep their meaning.
+    assert {fan.label(v): v for v in ("2", "3", "4")} == {
+        "low": "2",
+        "medium": "3",
+        "high": "4",
+    }
 
-    legacy = LegacyDevice(brand, model, Kelvinator)
-    assert KelvinatorDevice(brand, model).capabilities == legacy.capabilities
+
+# TestKelvinatorClass.MessageConstuction: setFan(1), cool, 27 C, SwingV off,
+# SwingH on, IonFilter and XFan on, Quiet, Light and Turbo off, as
+# IRsendTest records it.
+MESSAGE_CONSTRUCTION_WIRE = wire(
+    "f38000d50"
+    "m9010s4505"
+    "m680s1530m680s510m680s510m680s1530m680s1530m680s510m680s1530m680s510"
+    "m680s1530m680s1530m680s510m680s1530m680s510m680s510m680s510m680s510"
+    "m680s510m680s510m680s510m680s510m680s510m680s510m680s1530m680s1530"
+    "m680s510m680s510m680s510m680s510m680s1530m680s510m680s1530m680s510"
+    "m680s510m680s1530m680s510"
+    "m680s19975"
+    "m680s510m680s510m680s510m680s510m680s1530m680s510m680s510m680s510"
+    "m680s510m680s510m680s510m680s510m680s510m680s510m680s510m680s510"
+    "m680s510m680s510m680s510m680s510m680s510m680s510m680s510m680s510"
+    "m680s510m680s510m680s510m680s510m680s1530m680s1530m680s1530m680s1530"
+    "m680s39950"
+    "m9010s4505"
+    "m680s1530m680s510m680s510m680s1530m680s1530m680s510m680s1530m680s510"
+    "m680s1530m680s1530m680s510m680s1530m680s510m680s510m680s510m680s510"
+    "m680s510m680s510m680s510m680s510m680s510m680s510m680s1530m680s1530"
+    "m680s510m680s510m680s510m680s510m680s1530m680s1530m680s1530m680s510"
+    "m680s510m680s1530m680s510"
+    "m680s19975"
+    "m680s510m680s510m680s510m680s510m680s510m680s510m680s510m680s510"
+    "m680s510m680s510m680s510m680s510m680s510m680s510m680s510m680s510"
+    "m680s510m680s510m680s510m680s510m680s1530m680s510m680s510m680s510"
+    "m680s510m680s510m680s510m680s510m680s1530m680s1530m680s1530m680s1530"
+    "m680s39950"
+)
+
+
+def test_port_reproduces_the_fan_1_message_construction():
+    # Fan "1" (kKelvinatorFanMin), which the legacy entity could not send.
+    target = state(
+        True,
+        "cool",
+        27.0,
+        fan="1",
+        swing_h="swing",
+        features={"purifier": True, "cleaning": True},
+    )
+    signal = device().encode(None, target).signal
+    assert list(signal.pulses) == MESSAGE_CONSTRUCTION_WIRE
+    values = read(target)
+    assert (values["fan"], values["basic_fan"]) == ("1", 1)
+    # SendDataOnly's typical message is also fan 1: cool, 27 C, XFan on.
+    assert data(state(True, "cool", 27.0, fan="1", features={"cleaning": True})) == (
+        TYPICAL
+    )
+
+
+def test_fan_5_is_kelvinator_fan_max():
+    # TestKelvinatorClass.HumanReadable: setFan(kKelvinatorFanMax) reads
+    # "Fan: 5 (High)"; BasicFan is capped at kKelvinatorBasicFanMax.
+    values = read(state(True, "cool", 25.0, fan="5"))
+    assert (values["fan"], values["basic_fan"]) == ("5", 3)
+    raw = data(state(True, "cool", 25.0, fan="5"))
+    assert KELVINATOR_LAYOUT.read_raw(raw, "fan") == 5  # kKelvinatorFanMax
 
 
 # States the oracle grid lacks: off in every mode with every feature, every

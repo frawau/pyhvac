@@ -267,13 +267,16 @@ def test_registry_serves_the_port(model):
 
 
 @pytest.mark.parametrize("model", HITACHI1_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.hitachi import PluginObject
-
-    legacy = LegacyDevice("hitachi", model, PluginObject.MODELS[model])
-    assert Hitachi1Device("hitachi", model).capabilities == legacy.capabilities
+def test_capabilities_are_the_documented_controls(model):
+    # Unchanged from the legacy entity, and what Hitachi1Protocol carries:
+    # kHitachiAc1{Auto,Heat,Cool,Dry,Fan}, kHitachiAcMin/MaxTemp (setTemp),
+    # kHitachiAc1Fan{Auto,Low,Med,High}, the SwingV and SwingH bits, Sleep.
+    caps = Hitachi1Device("hitachi", model).capabilities
+    assert caps.modes == ("auto", "heat", "cool", "dry", "fan")
+    assert (caps.temperature.min, caps.temperature.max) == (16.0, 32.0)
+    assert caps.fan.values == ("auto", "1", "2", "3")
+    assert caps.swing_v.values == caps.swing_h.values == ("off", "swing")
+    assert set(caps.features) == {"sleep"}
 
 
 def _first(pred):

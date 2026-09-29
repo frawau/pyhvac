@@ -20,8 +20,6 @@ from pyhvac.state import HvacState
 #   (byte 8 bit 7). The port sends the documented bit.
 DEFECTS = (Defect("sleep", 1, 0, "C glue never passes sleep: bit clear"),)
 
-LEGACY_CLASS = {"A": "Haier176A", "B": "Haier176B"}
-
 
 def device(model="V9014557 M47 8D remote"):
     return Haier176Device("haier", model)
@@ -332,14 +330,19 @@ def test_registry_serves_the_port(model):
 
 
 @pytest.mark.parametrize("model", HAIER176_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins import haier
-
-    cls = getattr(haier, LEGACY_CLASS[HAIER176_MODELS[model]])
-    legacy = LegacyDevice("haier", model, cls)
-    assert Haier176Device("haier", model).capabilities == legacy.capabilities
+def test_capabilities_are_the_documented_controls(model):
+    # Unchanged from the legacy entity, and what HaierAc176Protocol carries:
+    # kHaierAcYrw02{Auto,Cool,Dry,Heat,Fan}, kHaierAcYrw02Min/MaxTempC,
+    # kHaierAcYrw02Fan{Auto,Low,Med,High}, every kHaierAcYrw02SwingV* (Middle
+    # and Bottom share "2"/"4" by mode) and kHaierAcYrw02SwingH*, and the
+    # Health, Sleep, Turbo and Quiet bits.
+    caps = Haier176Device("haier", model).capabilities
+    assert caps.modes == ("auto", "cool", "dry", "heat", "fan")
+    assert (caps.temperature.min, caps.temperature.max) == (16.0, 30.0)
+    assert caps.fan.values == ("auto", "1", "2", "3")
+    assert caps.swing_v.values == ("off", "auto", "1", "2", "3", "4")
+    assert caps.swing_h.values == ("auto", "1", "2", "3", "4", "5")
+    assert set(caps.features) == {"purifier", "sleep", "powerful", "quiet"}
 
 
 def test_undeclared_deviation_is_reported():
@@ -372,13 +375,3 @@ def test_mabe_models_are_served_by_the_port(model):
     # mabe.py's models use the Haier176A class: variant A.
     dev = registry.get_device("mabe", model)
     assert isinstance(dev, Haier176Device) and dev.variant == "A"
-
-
-@pytest.mark.parametrize("model", HAIER176_MABE_MODELS)
-def test_mabe_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.haier import Haier176A
-
-    legacy = LegacyDevice("mabe", model, Haier176A)
-    assert Haier176Device("mabe", model).capabilities == legacy.capabilities

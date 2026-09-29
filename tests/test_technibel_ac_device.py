@@ -7,7 +7,6 @@ from pyhvac.ir.codec import decode
 from pyhvac.plugins.technibel import (
     TECHNIBEL_AC,
     TECHNIBEL_AC_ALASKA_MODELS,
-    TECHNIBEL_AC_CAPABILITIES,
     TECHNIBEL_AC_LAYOUT,
     TECHNIBEL_AC_MODELS,
     TECHNIBEL_AC_RESET_STATE,
@@ -79,17 +78,29 @@ def record_device(record):
     return device(record["plugin"], record["model"])
 
 
+def adapt(record):
+    """The record as the Technibel capabilities read it. The legacy Teco
+    entity (teco, alaska) offered fan auto, which the protocol lacks: C sends
+    it as kTechnibelAcFanLow (IRTechnibelAc::convertFan's default), which is
+    what the record's "low" stands for. Its mode auto (convertMode's default,
+    kTechnibelAcCool) and light (no field) need nothing: normalise sends
+    cool and drops light."""
+    if record["state"].get("fan") == "auto":
+        return {**record, "state": {**record["state"], "fan": "low"}}
+    return record
+
+
 # ------------------------------------------------------------------ oracle
 
 
 @pytest.mark.parametrize("record", oracle_params("TECHNIBEL_AC"))
 def test_matches_c_library(record):
     dev = record_device(record)
-    assert_matches_oracle(dev, record, dev.LAYOUTS, DEFECTS)
+    assert_matches_oracle(dev, adapt(record), dev.LAYOUTS, DEFECTS)
 
 
 def test_layout_round_trips_every_oracle_state():
-    for record in load_oracle("TECHNIBEL_AC"):
+    for record in map(adapt, load_oracle("TECHNIBEL_AC")):
         dev = record_device(record)
         (main,) = dev.frames(None, state_from_record(dev, record["state"]), ())
         values = TECHNIBEL_AC_LAYOUT.read(main.data)
@@ -104,10 +115,20 @@ def test_every_oracle_message_is_one_word_with_a_valid_sum():
         assert TECHNIBEL_AC_LAYOUT.checksum.check(main.data)
 
 
-def test_oracle_records_use_the_variant_of_their_legacy_class():
-    classes = {r["class"]: r["plugin"] for r in load_oracle("TECHNIBEL_AC")}
-    assert device(classes["Teco"]).variant == "teco"
-    assert device(classes["Technibel"]).variant == "technibel"
+def test_legacy_teco_fan_auto_is_c_s_fan_low():
+    # C sent the Teco entity's fan auto as kTechnibelAcFanLow: each fan-auto
+    # record's pulses are those of the same state with fan low.
+    records = load_oracle("TECHNIBEL_AC")
+    by_state = {
+        (r["plugin"], r["model"], tuple(sorted(r["state"].items()))): r["pulses"]
+        for r in records
+    }
+    autos = [r for r in records if r["state"].get("fan") == "auto"]
+    assert autos and all(r["class"] == "Teco" for r in autos)
+    for r in autos:
+        low = {**r["state"], "fan": "low"}
+        key = (r["plugin"], r["model"], tuple(sorted(low.items())))
+        assert by_state[key] == r["pulses"], r["state"]
 
 
 # ------------------------------------------------------------ real captures
@@ -196,7 +217,9 @@ def test_every_mode_uses_its_documented_code(mode, raw):
 
 
 def test_auto_is_sent_as_cool():
-    # The teco entity's auto: convertMode's default, kTechnibelAcCool.
+    # No auto mode (removed from the old teco entity): normalise, like
+    # convertMode's default, sends kTechnibelAcCool.
+    assert "auto" not in device("teco").capabilities.modes
     assert data(on("auto"), brand="teco") == data(on("cool"), brand="teco")
 
 
@@ -207,10 +230,13 @@ def test_every_fan_level_uses_its_documented_code(mode, fan, raw):
     assert TECHNIBEL_AC_LAYOUT.read_raw(word, "fan") == raw
 
 
+@pytest.mark.parametrize("brand", ["technibel", "teco", "alaska"])
 @pytest.mark.parametrize("mode", ["auto", "cool", "fan", "heat"])
-def test_fan_auto_is_sent_as_low(mode):
-    # The teco entity's fan auto: convertFan's default, kTechnibelAcFanLow.
-    assert read(on(mode, fan="auto"), brand="teco")["fan"] == "1"
+def test_fan_auto_is_sent_as_low(brand, mode):
+    # No fan auto (removed from the old teco entity): normalise, like
+    # convertFan's default, sends kTechnibelAcFanLow.
+    assert "auto" not in device(brand).capabilities.fan.values
+    assert read(on(mode, fan="auto"), brand=brand)["fan"] == "1"
 
 
 @pytest.mark.parametrize("brand", ["technibel", "teco"])
@@ -228,9 +254,11 @@ def test_every_setpoint_is_sent_in_celsius(mode, t):
     assert TECHNIBEL_AC_LAYOUT.read_raw(data(on(mode, float(t))), "temp") == t
 
 
-def test_teco_setpoints_stop_at_30():
-    # The teco entity's range; the word itself takes 16-31.
-    assert read(on("cool", 31.0), brand="teco")["temp"] == 30
+@pytest.mark.parametrize("brand", ["teco", "alaska"])
+def test_teco_and_alaska_reach_31(brand):
+    # kTechnibelAcTempMaxC: the old teco entity stopped at 30.
+    assert device(brand).capabilities.temperature.max == 31.0
+    assert read(on("cool", 31.0), brand=brand)["temp"] == 31
 
 
 @pytest.mark.parametrize("power", [True, False])
@@ -245,11 +273,13 @@ def test_sleep_sets_the_documented_bit(power):
     assert read(on(sleep=False, power=power))["sleep"] == 0
 
 
-def test_light_sends_nothing():
-    # The teco entity offers light; TECHNIBEL_AC has no light field. (Legacy
-    # parity: the Teco class drove TECHNIBEL_AC, though ir_Teco.h lists
-    # its Alaska models under TECO, which has a light.)
-    assert data(on(light=True), brand="teco") == data(on(light=False), brand="teco")
+@pytest.mark.parametrize("brand", ["technibel", "teco", "alaska"])
+def test_light_is_not_offered(brand):
+    # Removed no-op: the old teco entity offered light, but TECHNIBEL_AC has
+    # no light field. (ir_Teco.h lists the Alaska models under TECO, which
+    # has one; they keep sending TECHNIBEL_AC.)
+    assert "light" not in device(brand).capabilities.features
+    assert data(on(light=True), brand=brand) == data(on(light=False), brand=brand)
 
 
 def test_unused_fields_stay_clear():
@@ -287,22 +317,22 @@ def test_message_shape():
 # ------------------------------------------------------------------ variants
 
 
-def test_variant_comes_from_the_brand():
-    assert device("technibel", "generic").variant == "technibel"
-    assert device("teco", "generic").variant == "teco"
-    assert device("alaska", "SAC9010QC").variant == "teco"
-    assert TechnibelAcDevice("teco", "generic", "technibel").variant == "technibel"
+@pytest.mark.parametrize("brand, model", SERVED)
+def test_every_model_has_the_full_technibel_capabilities(brand, model):
+    # The "teco" variant is gone: teco and alaska are plain Technibel.
+    caps = TechnibelAcDevice(brand, model).capabilities
+    assert caps == TechnibelAcDevice.capabilities
+    assert caps.modes == ("cool", "dry", "fan", "heat")  # kTechnibelAc*
+    assert (caps.temperature.min, caps.temperature.max) == (16.0, 31.0)
+    assert caps.fan.values == ("1", "2", "3")  # kTechnibelAcFan{Low,Med,High}
+    assert caps.swing_v.values == ("off", "swing")
+    assert set(caps.features) == {"sleep"}
+    assert not hasattr(TechnibelAcDevice(brand, model), "variant")
 
 
-@pytest.mark.parametrize("variant", sorted(TECHNIBEL_AC_CAPABILITIES))
-def test_variant_picks_the_capabilities(variant):
-    dev = TechnibelAcDevice("technibel", "generic", variant)
-    assert dev.capabilities == TECHNIBEL_AC_CAPABILITIES[variant]
-
-
-def test_unknown_variant_is_rejected():
-    with pytest.raises(ValueError, match="variant"):
-        TechnibelAcDevice("technibel", "generic", "nope")
+def test_there_is_no_variant_parameter():
+    with pytest.raises(TypeError):
+        TechnibelAcDevice("teco", "generic", "teco")
 
 
 # ------------------------------------------------------------ registration
@@ -320,15 +350,6 @@ def _legacy_class(brand):
     return Technibel if brand == "technibel" else Teco
 
 
-@pytest.mark.parametrize("brand, model", SERVED)
-def test_capabilities_match_the_legacy_entity(brand, model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-
-    legacy = LegacyDevice(brand, model, _legacy_class(brand))
-    assert device(brand, model).capabilities == legacy.capabilities
-
-
 # -------------------------------------------------------------- the C path
 
 
@@ -340,22 +361,21 @@ def _c_word(pulses):
 @pytest.mark.parametrize("brand", ["technibel", "teco"])
 def test_matches_the_c_path_beyond_the_oracle_grid(brand):
     # The oracle has no off message and only 16/23/30-31 C: check off in
-    # every mode, every setpoint, every fan (dry included) and light
-    # against the C path. Swing and sleep stay off (DEFECTS).
+    # every mode, every setpoint, every fan (dry included) against the C
+    # path. Swing and sleep stay off (DEFECTS). The legacy Teco entity
+    # clamps 31 C to 30, so its check stops at 30.
     pytest.importorskip("pyhvac.irhvac")
     from pyhvac.legacy import LegacyDevice
 
     legacy = LegacyDevice(brand, "generic", _legacy_class(brand))
     dev = device(brand)
     caps = dev.capabilities
+    top = 30 if brand == "teco" else 31
     for power in (True, False):
         for mode in caps.modes:
-            for t in range(16, 32):
+            for t in range(16, top + 1):
                 for fan in caps.fan.values:
-                    features = {"light": True} if "light" in caps.features else {}
-                    target = HvacState(
-                        power, mode, float(t), fan=fan, features=features
-                    )
+                    target = HvacState(power, mode, float(t), fan=fan)
                     theirs = _c_word(legacy.encode(None, target).signal.pulses)
                     assert data(target, brand=brand) == theirs, target
 
@@ -386,7 +406,9 @@ def test_swing_and_sleep_match_c_with_the_glue_bypassed():
 
 def test_undeclared_swing_deviation_is_reported():
     record = next(
-        r for r in load_oracle("TECHNIBEL_AC") if r["state"].get("swing") == "on"
+        r
+        for r in map(adapt, load_oracle("TECHNIBEL_AC"))
+        if r["state"].get("swing") == "on"
     )
     dev = record_device(record)
     defects = [d for d in DEFECTS if d.field != "swing_v"]
@@ -398,7 +420,7 @@ def test_undeclared_swing_deviation_is_reported():
 def test_undeclared_sleep_deviation_is_reported(cls):
     record = next(
         r
-        for r in load_oracle("TECHNIBEL_AC")
+        for r in map(adapt, load_oracle("TECHNIBEL_AC"))
         if r["class"] == cls and r["state"].get("sleep") == "on"
     )
     dev = record_device(record)
@@ -408,7 +430,7 @@ def test_undeclared_sleep_deviation_is_reported(cls):
 
 
 def test_records_without_swing_or_sleep_need_no_defect():
-    for record in load_oracle("TECHNIBEL_AC"):
+    for record in map(adapt, load_oracle("TECHNIBEL_AC")):
         state = record["state"]
         if state.get("swing") != "on" and state.get("sleep") != "on":
             dev = record_device(record)
@@ -416,6 +438,6 @@ def test_records_without_swing_or_sleep_need_no_defect():
 
 
 def test_layouts_must_cover_every_frame():
-    record = load_oracle("TECHNIBEL_AC")[0]
+    record = adapt(load_oracle("TECHNIBEL_AC")[0])
     with pytest.raises(AssertionError, match="layout"):
         assert_matches_oracle(record_device(record), record, (), DEFECTS)

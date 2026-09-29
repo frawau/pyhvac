@@ -3,7 +3,13 @@ import re
 import pytest
 
 from oracle import load_oracle
-from port_oracle import Defect, assert_matches_oracle, oracle_params, state_from_record
+from port_oracle import (
+    Defect,
+    assert_matches_oracle,
+    c_sequence,
+    oracle_params,
+    state_from_record,
+)
 from pyhvac import registry
 from pyhvac.fields import Sum8
 from pyhvac.ir.codec import decode, encode
@@ -14,6 +20,7 @@ from pyhvac.plugins.argo import (
     ARGO_WREM2_BITS,
     ARGO_WREM2_LAYOUT,
     ARGO_WREM3_LAYOUT,
+    ARGO_CAPABILITIES,
     ArgoChecksum,
     ArgoDevice,
 )
@@ -25,7 +32,6 @@ from pyhvac.state import HvacState
 # express that C default. Scoped to those records only.
 NO_SWING_DEFECT = Defect("flap", "auto", "full", "record relies on IRac's swingv kOff")
 
-LEGACY_CLASS = {"WREM2": "Argo", "WREM3": "Argo2"}
 WREM2_MODEL, WREM3_MODEL = "Ulisse 13 DCI", "Ulisse Eco Mobile"
 MODES = ("auto", "cool", "fan", "dry", "heat")
 
@@ -172,9 +178,9 @@ def test_wrem3_framing_reproduces_send_data_only():
 
 def test_wrem3_real_capture_except_what_the_entity_cannot_express():
     # TestArgoE2E.RealExampleCommands, first case (a real WREM3 remote): cool,
-    # 22 °C, fan auto, power on. The port's frame for that state differs only
-    # in what the entity cannot set: the remote's room sensor (26 °C), its
-    # swing FLAP_FULL (swing off) and Light.
+    # 22 °C, fan auto, power on, Light on. The port's frame for that state
+    # differs only in what the entity cannot set: the remote's room sensor
+    # (26 °C) and its swing FLAP_FULL ("Breeze").
     raw = (
         "6468 3150 456 2154 428 2152 462 874 422 2158 424 882 424 880 428 876 "
         "430 874 454 850 424 2154 460 2150 430 874 422 2156 458 2152 430 874 "
@@ -187,8 +193,10 @@ def test_wrem3_real_capture_except_what_the_entity_cannot_express():
     capture = bytes([0x0B, 0x36, 0x12, 0x0F, 0xC2, 0x24])
     (main,) = decode(ARGO, [int(x) for x in raw.split()], expected=["wrem3"])
     assert main.data == capture
-    ours = bytearray(frame(HvacState(True, "cool", 22.0), WREM3_MODEL).data)
-    for name, raw_value in (("room_temp", 26 - 4), ("flap", 7), ("light", 1)):
+    target = HvacState(True, "cool", 22.0, features={"light": True})
+    ours = bytearray(frame(target, WREM3_MODEL).data)
+    assert ARGO_WREM3_LAYOUT.read(ours)["light"] == 1
+    for name, raw_value in (("room_temp", 26 - 4), ("flap", 7)):
         ARGO_WREM3_LAYOUT.write_raw(ours, name, raw_value)
     ARGO_WREM3_LAYOUT.checksum.apply(ours)
     assert bytes(ours) == capture
@@ -246,34 +254,62 @@ def test_off_carries_mode_auto_in_every_mode(model, mode, temp):
 
 
 @pytest.mark.parametrize("model", [WREM2_MODEL, WREM3_MODEL])
-@pytest.mark.parametrize("temp", range(16, 26))
+@pytest.mark.parametrize("temp", range(10, 33))
 def test_every_setpoint(model, temp):
-    # Temp: celsius - kArgoTempDelta.
+    # Temp: celsius - kArgoTempDelta, kArgoMinTemp (10) to kArgoMaxTemp (32).
     (layout,) = device(model).LAYOUTS
     data = frame(HvacState(True, "heat", float(temp)), model).data
     assert layout.read_raw(data, "temperature") == temp - 4
 
 
 @pytest.mark.parametrize("model", [WREM2_MODEL, WREM3_MODEL])
-def test_setpoint_is_clamped_to_the_entity_range(model):
-    assert read(HvacState(True, "cool", 10.0), model)["temperature"] == 16
-    assert read(HvacState(True, "cool", 40.0), model)["temperature"] == 25
+def test_setpoint_is_clamped_to_the_header_range(model):
+    # setTemp clamps to kArgoMinTemp / kArgoMaxTemp; so does normalise.
+    caps = device(model).capabilities.temperature
+    assert (caps.min, caps.max, caps.decimals) == (10.0, 32.0, (0,))
+    assert read(HvacState(True, "cool", 5.0), model)["temperature"] == 10
+    assert read(HvacState(True, "cool", 40.0), model)["temperature"] == 32
 
 
 @pytest.mark.parametrize(
-    "fan, wrem2, wrem3",
+    "fan, raw",
+    [("auto", 0), ("1", 1), ("2", 2), ("3", 3)],  # kArgoFanAuto, kArgoFan1..3
+)
+@pytest.mark.parametrize("mode", MODES)
+def test_every_wrem2_fan_level(mode, fan, raw):
+    state = HvacState(True, mode, 22.0, fan=fan)
+    assert ARGO_WREM2_LAYOUT.read_raw(frame(state).data, "fan") == raw
+
+
+@pytest.mark.parametrize(
+    "fan, raw, label",
     [
-        ("auto", 0, 0),  # kArgoFanAuto / FAN_AUTO
-        ("1", 1, 2),  # low: kArgoFan1 / FAN_LOWER
-        ("2", 2, 3),  # medium: kArgoFan2 / FAN_LOW
-        ("3", 3, 5),  # high: kArgoFan3 / FAN_HIGH
+        ("auto", 0, "auto"),  # FAN_AUTO
+        ("1", 1, "lowest"),  # FAN_LOWEST
+        ("2", 2, "low"),  # FAN_LOWER: the legacy "low"
+        ("3", 3, "medium"),  # FAN_LOW: the legacy "medium"
+        ("4", 4, "midhigh"),  # FAN_MEDIUM ("Med-High")
+        ("5", 5, "high"),  # FAN_HIGH: the legacy "high"
+        ("6", 6, "highest"),  # FAN_HIGHEST
     ],
 )
 @pytest.mark.parametrize("mode", MODES)
-def test_every_fan_level(mode, fan, wrem2, wrem3):
+def test_every_wrem3_fan_level(mode, fan, raw, label):
+    # argoFan_t: IRArgoACBase<ArgoProtocolWREM3>::setFan stores every speed.
     state = HvacState(True, mode, 22.0, fan=fan)
-    assert ARGO_WREM2_LAYOUT.read_raw(frame(state).data, "fan") == wrem2
-    assert ARGO_WREM3_LAYOUT.read_raw(frame(state, WREM3_MODEL).data, "fan") == wrem3
+    assert ARGO_WREM3_LAYOUT.read_raw(frame(state, WREM3_MODEL).data, "fan") == raw
+    assert device(WREM3_MODEL).capabilities.fan.label(fan) == label
+
+
+def test_wrem3_med_high_fan_is_the_class_built_message():
+    # TestArgoAC_WREM3Class.MessageConstructon_ACControl_2:
+    # setFan(argoFan_t::FAN_MEDIUM) is byte 2's top bits 0b100, "Fan: 4
+    # (Med-High)", the port's fan "4".
+    built = bytes([0x2B, 0xB8, 0x93, 0xFC, 0xC3, 0x35])
+    assert ARGO_WREM3_LAYOUT.checksum.check(built)
+    assert ARGO_WREM3_LAYOUT.read(built)["fan"] == "4"
+    values = ARGO_WREM3_LAYOUT.read(built)
+    assert (values["temperature"], values["light"], values["max"]) == (23, 1, 1)
 
 
 @pytest.mark.parametrize("model", [WREM2_MODEL, WREM3_MODEL])
@@ -297,22 +333,43 @@ def test_powerful_sets_max_in_every_mode(power, mode):
         assert read(on, model)["max"] == 1
 
 
-def test_wrem2_quiet_sends_nothing():
-    # IRac::argo: "No Quiet setting available"; Night is setNight(sleep >= 0)
-    # and the entity has no sleep.
+def test_wrem2_offers_no_quiet():
+    # IRac::argo: "No Quiet setting available". A quiet the caller still
+    # passes is dropped by normalise and sends nothing.
+    assert "quiet" not in ARGO_CAPABILITIES["WREM2"].features
     plain = frame(HvacState(True, "cool", 22.0))
     quiet = frame(HvacState(True, "cool", 22.0, features={"quiet": True}))
     assert quiet == plain
     assert ARGO_WREM2_LAYOUT.read(quiet.data)["night"] == 0
 
 
+@pytest.mark.parametrize("power", [True, False])
+@pytest.mark.parametrize("mode", MODES)
+def test_wrem2_sleep_sets_night(mode, power):
+    # ArgoProtocol's Night bit (byte 9 bit 2), IRac::argo's
+    # setNight(sleep >= 0). TestArgoACClass.MessageConstructon's frame has it.
+    off = read(HvacState(power, mode, 22.0))
+    on = read(HvacState(power, mode, 22.0, features={"sleep": True}))
+    assert off["night"] == 0 and on["night"] == 1
+    assert {k for k in on if on[k] != off[k]} == {"night"}
+    assert (
+        ARGO_WREM2_LAYOUT.read(bytes.fromhex("acf500240200000000acd601"))["night"] == 1
+    )
+
+
 @pytest.mark.parametrize(
     "feature, field",
-    [("quiet", "night"), ("economy", "eco"), ("purifier", "filter")],
+    [
+        ("quiet", "night"),
+        ("economy", "eco"),
+        ("purifier", "filter"),
+        ("light", "light"),
+    ],
 )
 @pytest.mark.parametrize("power", [True, False])
 def test_wrem3_features(feature, field, power):
-    # IRac::argoWrem3_ACCommand gets quiet as night, econo, and filter.
+    # IRac::argoWrem3_ACCommand gets quiet as night, econo, filter and light
+    # (ArgoProtocolWREM3's Light, byte 4 bit 1).
     off = read(HvacState(power, "heat", 22.0), WREM3_MODEL)
     on = read(HvacState(power, "heat", 22.0, features={feature: True}), WREM3_MODEL)
     assert off[field] == 0 and on[field] == 1
@@ -329,6 +386,9 @@ def test_all_features_together():
         1,
     )
     assert (values["light"], values["ifeel"], values["channel"]) == (0, 0, 0)
+    feats["light"] = True
+    values = read(HvacState(True, "cool", 22.0, features=feats), WREM3_MODEL)
+    assert values["light"] == 1
 
 
 @pytest.mark.parametrize("model", [WREM2_MODEL, WREM3_MODEL])
@@ -396,16 +456,55 @@ def test_registry_serves_the_port(model):
     assert dev.variant == ARGO_MODELS[model]
 
 
-@pytest.mark.parametrize("model", ARGO_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins import argo
+@pytest.mark.parametrize("variant", ["WREM2", "WREM3"])
+def test_capabilities_are_the_documented_ones(variant):
+    caps = ARGO_CAPABILITIES[variant]
+    assert caps.modes == MODES
+    assert (caps.temperature.min, caps.temperature.max) == (10.0, 32.0)
+    assert caps.swing_v.values == ("auto", "1", "2", "3", "4", "5", "6")
+    assert caps.swing_h is None
+    fans = {"WREM2": 3, "WREM3": 6}[variant]
+    assert caps.fan.values == ("auto",) + tuple(str(n) for n in range(1, fans + 1))
+    assert (
+        set(caps.features)
+        == {
+            "WREM2": {"powerful", "sleep"},
+            "WREM3": {"powerful", "quiet", "economy", "purifier", "light"},
+        }[variant]
+    )
 
-    cls = getattr(argo, LEGACY_CLASS[ARGO_MODELS[model]])
-    assert argo.PluginObject.MODELS[model] is cls
-    legacy = LegacyDevice("argo", model, cls)
-    assert ArgoDevice("argo", model).capabilities == legacy.capabilities
+
+# The new WREM3 values against the C path (the old glue passes the stdAc
+# speeds lowest/midhigh/highest, the setpoint and light straight through):
+# the setpoint edges, every fan speed, light, in every mode.
+WREM3_EXTRA_STATES = [
+    {"mode": m, "temperature": t, "fan": fan, "swing": "45°"}
+    for m in MODES + ("off",)
+    for t in (10, 11, 26, 32)
+    for fan in ("auto", "lowest", "low", "medium", "midhigh", "high", "highest")
+] + [
+    {"mode": m, "temperature": 22, "fan": "high", "swing": "auto", "light": "on"}
+    for m in MODES + ("off",)
+]
+WREM2_EXTRA_STATES = [
+    {"mode": m, "temperature": t, "fan": fan, "swing": "45°"}
+    for m in MODES + ("off",)
+    for t in (10, 11, 26, 32)
+    for fan in ("auto", "low", "medium", "high")
+]
+
+
+@pytest.mark.parametrize(
+    "model, states",
+    [(WREM2_MODEL, WREM2_EXTRA_STATES), (WREM3_MODEL, WREM3_EXTRA_STATES)],
+    ids=["WREM2", "WREM3"],
+)
+def test_new_values_match_the_c_path(model, states):
+    pytest.importorskip("pyhvac.irhvac")
+    record = next(r for r in load_oracle("ARGO") if r["model"] == model)
+    dev = device(model)
+    for rec in c_sequence(record, states):
+        assert_matches_oracle(dev, rec, dev.LAYOUTS)
 
 
 def test_undeclared_deviation_is_reported():

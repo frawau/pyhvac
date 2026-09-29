@@ -27,7 +27,7 @@ from .hvaclib import PulseBased, GenPluginObject
 from ..device import Device
 from ..fields import Field, Layout, NibbleSum
 from ..ir.model import Frame, Protocol, PulseDistance, Section
-from ..choices import FAN_3, ON_OFF, SWING, SWING_V_AUTO_ANGLES
+from ..choices import FAN_3, ON_OFF, SWING
 from ..state import Capabilities, Choice, TemperatureRange
 
 
@@ -103,14 +103,29 @@ SANYO_AC_FAN = {  # canonical fan -> kSanyoAcFan*
     "2": 3,  # medium: kSanyoAcFanMedium
     "3": 1,  # high: kSanyoAcFanHigh
 }
-SANYO_AC_SWING_V = {  # canonical swing_v -> kSanyoAcSwingV*
+SANYO_AC_SWING_V = {  # canonical swing_v -> kSanyoAcSwingV*, top to bottom
     "auto": 0,  # kSanyoAcSwingVAuto
-    "1": 7,  # 90°: kSanyoAcSwingVHighest (topmost, counting down)
-    "2": 6,  # 60°: kSanyoAcSwingVHigh
-    "3": 5,  # 45°: kSanyoAcSwingVUpperMiddle, as C
-    "4": 3,  # 30°: kSanyoAcSwingVLow, as C
-    "5": 2,  # 0°: kSanyoAcSwingVLowest, as C
+    "1": 7,  # kSanyoAcSwingVHighest
+    "2": 6,  # kSanyoAcSwingVHigh
+    "3": 5,  # kSanyoAcSwingVUpperMiddle
+    "4": 4,  # kSanyoAcSwingVLowerMiddle
+    "5": 3,  # kSanyoAcSwingVLow
+    "6": 2,  # kSanyoAcSwingVLowest
 }
+# Six positions: the angle labels of the five-position choices do not fit,
+# so the labels are the header's names.
+SANYO_AC_SWING_V_CHOICE = Choice(
+    tuple(SANYO_AC_SWING_V),
+    {
+        "auto": "auto",
+        "1": "highest",
+        "2": "high",
+        "3": "upper middle",
+        "4": "lower middle",
+        "5": "low",
+        "6": "lowest",
+    },
+)
 SANYO_AC_POWER_OFF, SANYO_AC_POWER_ON = 0b01, 0b10  # kSanyoAcPowerOff / On
 SANYO_AC_MIN_TEMP, SANYO_AC_MAX_TEMP = 16, 30  # kSanyoAcTempMin / Max
 SANYO_AC_TEMP_DELTA = 4  # kSanyoAcTempDelta: native = degrees - 4
@@ -149,11 +164,14 @@ class SanyoAcDevice(Device):
     the desired temperature); the sensor is the A/C's own (setSensor(!iFeel),
     iFeel off); beep is off (the glue never sets it); the off timer is off.
 
+    Vertical swing offers auto and the six kSanyoAcSwingV* positions,
+    highest ("1") to lowest ("6"), LowerMiddle ("4") included.
+
     Two documented values differ from the C output (declared Defects):
-    - swing_v "1" (90°) and "2" (60°): the old glue maps them to kHigh and
-      kUpperMiddle, which convertSwingV sends as High and Auto; the port
-      sends the documented Highest and High. 45°, 30° and 0° keep C's
-      UpperMiddle, Low and Lowest (LowerMiddle is not reachable);
+    - swing_v "1" (the legacy 90°) and "2" (60°): the old glue maps them to
+      kHigh and kUpperMiddle, which convertSwingV sends as High and Auto;
+      the port sends the documented Highest and High. The legacy 45°, 30°
+      and 0° are C's UpperMiddle, Low and Lowest ("3", "5", "6");
     - sleep: the old glue never passes sleep, so setSleep(sleep >= 0) never
       sets the Sleep bit; the port sets it.
     """
@@ -164,7 +182,7 @@ class SanyoAcDevice(Device):
         modes=("auto", "cool", "dry", "heat"),
         temperature=TemperatureRange(16.0, 30.0),
         fan=FAN_3,
-        swing_v=SWING_V_AUTO_ANGLES,
+        swing_v=SANYO_AC_SWING_V_CHOICE,
         features={"sleep": ON_OFF},
     )
 
@@ -235,12 +253,14 @@ SANYO_AC88_MODE = {  # kSanyoAc88{Auto,Cool,Heat,Fan}
     "heat": 4,
     "fan": 5,
 }
-SANYO_AC88_FAN = {  # canonical fan -> kSanyoAc88Fan*, as convertFan
+SANYO_AC88_FAN = {  # canonical fan -> kSanyoAc88Fan*
     "auto": 0,  # FanAuto
-    "1": 1,  # lowest (kMin): FanLow
+    "1": 1,  # low: FanLow
     "2": 2,  # medium: FanMedium
     "3": 3,  # high: FanHigh
-    "4": 3,  # highest (kMax): FanHigh, the protocol has no faster speed
+    # Not offered: the legacy "highest" (kMax), which convertFan also sends
+    # as FanHigh; the protocol has no faster speed.
+    "4": 3,
 }
 SANYO_AC88_SWING = {"off": 0, "swing": 1}  # SwingV
 
@@ -273,8 +293,9 @@ class SanyoAc88Device(Device):
     """Sanyo 88-bit: a full-state protocol with an explicit power bit and no
     toggles, so ``previous`` is ignored. The frame is sent three times.
 
-    As the C path: an off message carries mode auto; fan high and highest
-    both send FanHigh; the EnableStartTimer bit of stateReset stays set.
+    As the C path: an off message carries mode auto; the EnableStartTimer
+    bit of stateReset stays set. The fan offers auto and the three
+    kSanyoAc88Fan* speeds (the legacy "highest" sent FanHigh, as "high").
     Swing "on" and sleep send the documented SwingV and Sleep bits; the
     C path of the oracle fixtures never received them (pyhvac's glue).
     """
@@ -284,10 +305,7 @@ class SanyoAc88Device(Device):
     capabilities = Capabilities(
         modes=("auto", "cool", "heat", "fan"),
         temperature=TemperatureRange(10.0, 30.0),
-        fan=Choice(
-            ("auto", "1", "2", "3", "4"),
-            {"auto": "auto", "1": "lowest", "2": "medium", "3": "high", "4": "highest"},
-        ),
+        fan=FAN_3,
         swing_v=SWING,
         features={name: ON_OFF for name in ("powerful", "purifier", "sleep")},
     )

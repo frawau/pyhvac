@@ -42,13 +42,13 @@ def device(model="RLA502A700B remote"):
 
 def with_hswing(record):
     # A record without "hswing" leaves IRac's swingh at kOff, which
-    # convertSwingH sends as kMitsubishiHeavy152SwingHOff (8). The legacy
-    # entity has no "off" swing_h; its "wide" (canonical "6") is the value
-    # the C path sends as 8 (convertSwingH has no kWide case), so the record
-    # is read as "wide" (the oracle records match only so).
-    if "hswing" in record["state"]:
+    # convertSwingH sends as kMitsubishiHeavy152SwingHOff (8): the port's
+    # "off", also HvacState's default. The legacy "wide" is not a documented
+    # position (it is no longer offered): convertSwingH has no kWide case and
+    # sent SwingHOff, so that record is read as "off".
+    if record["state"].get("hswing") != "wide":
         return record
-    return {**record, "state": {**record["state"], "hswing": "wide"}}
+    return {**record, "state": {**record["state"], "hswing": "off"}}
 
 
 def frame(state, previous=None):
@@ -156,12 +156,40 @@ def test_every_swing_v_value(swing_v, raw):
 
 @pytest.mark.parametrize(
     "swing_h, raw",
-    [("auto", 0), ("1", 1), ("2", 2), ("3", 3), ("4", 4), ("5", 5), ("6", 8)],
+    [
+        ("off", 8),  # kMitsubishiHeavy152SwingHOff
+        ("auto", 0),
+        ("1", 1),
+        ("2", 2),
+        ("3", 3),
+        ("4", 4),
+        ("5", 5),
+        ("6", 6),  # kMitsubishiHeavy152SwingHRightLeft
+        ("7", 7),  # kMitsubishiHeavy152SwingHLeftRight
+    ],
 )
 def test_every_swing_h_value(swing_h, raw):
-    # "wide" (canonical "6") is sent as kMitsubishiHeavy152SwingHOff, as C.
     data = frame(HvacState(True, "cool", 22.0, swing_h=swing_h))
     assert MITSUBISHI_HEAVY152_LAYOUT.read_raw(data, "swing_h") == raw
+
+
+def test_capabilities_are_the_documented_values():
+    caps = device().capabilities
+    assert (caps.temperature.min, caps.temperature.max) == (17.0, 31.0)
+    assert caps.modes == ("auto", "cool", "dry", "fan", "heat")
+    assert caps.fan.values == ("auto", "1", "2", "3", "4", "5")
+    assert caps.swing_v.values == ("off", "auto", "1", "2", "3", "4", "5")
+    # Every kMitsubishiHeavy152SwingH* value; the legacy "wide" is gone.
+    assert caps.swing_h.values == (("off", "auto") + tuple(str(n) for n in range(1, 8)))
+    assert "wide" not in caps.swing_h.labels.values()
+    assert set(caps.features) == {
+        "quiet",
+        "sleep",
+        "purifier",
+        "cleaning",
+        "powerful",
+        "economy",
+    }
 
 
 @pytest.mark.parametrize(
@@ -209,16 +237,6 @@ def test_registry_serves_the_port(model):
     assert isinstance(dev, MitsubishiHeavy152Device)
 
 
-@pytest.mark.parametrize("model", MITSUBISHI_HEAVY152_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.mitsubishi_heavy_industries import Mitsubishi152
-
-    legacy = LegacyDevice("mitsubishi_heavy_industries", model, Mitsubishi152)
-    assert device(model).capabilities == legacy.capabilities
-
-
 @pytest.mark.parametrize(
     "select, defect, field",
     [
@@ -236,13 +254,28 @@ def test_undeclared_deviation_is_reported(select, defect, field):
         assert_matches_oracle(dev, with_hswing(record), dev.LAYOUTS, defects=others)
 
 
-def test_missing_hswing_is_not_silently_accepted():
+def test_a_missing_hswing_is_the_off_default():
+    # IRac's kOff swingh is SwingHOff: the port's default "off" matches it
+    # without any record rewriting.
     dev = device()
     record = next(
         r for r in load_oracle("MITSUBISHI_HEAVY_152") if "hswing" not in r["state"]
     )
-    with pytest.raises(AssertionError, match="swing_h"):
-        assert_matches_oracle(dev, record, dev.LAYOUTS, DEFECTS)
+    assert with_hswing(record) is record
+    assert state_from_record(dev, record["state"]).swing_h == "off"
+    assert_matches_oracle(dev, record, dev.LAYOUTS, DEFECTS)
+
+
+def test_the_legacy_wide_is_read_as_off():
+    dev = device()
+    record = next(
+        r
+        for r in load_oracle("MITSUBISHI_HEAVY_152")
+        if r["state"].get("hswing") == "wide"
+    )
+    with pytest.raises(ValueError, match="wide"):
+        state_from_record(dev, record["state"])
+    assert_matches_oracle(dev, with_hswing(record), dev.LAYOUTS, DEFECTS)
 
 
 # No real capture in ir_MitsubishiHeavy_test.cpp needs it, but

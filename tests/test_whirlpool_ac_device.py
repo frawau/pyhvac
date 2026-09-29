@@ -391,9 +391,13 @@ def test_model_sets_j191(model, j191):
 @pytest.mark.parametrize(
     "model, t, raw",
     [
+        (V1, 16, 0),  # clamped to kWhirlpoolAcMinTemp
         (V1, 18, 0),
         (V1, 25, 7),
         (V1, 32, 14),
+        # New: DG11J191 starts at 16C (kWhirlpoolAcMinTemp - 2).
+        (V2, 16, 0),
+        (V2, 17, 1),
         (V2, 18, 2),
         (V2, 25, 9),
         (V2, 30, 14),
@@ -558,14 +562,41 @@ def test_every_legacy_model_is_served_by_the_port():
         assert WHIRLPOOL_AC_MODELS[model] == variant[cls.__name__]
 
 
-@pytest.mark.parametrize("model", sorted(WHIRLPOOL_AC_MODELS))
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.whirlpool import PluginObject
+@pytest.mark.parametrize(
+    "model, low, high",
+    [
+        (V1, 18.0, 32.0),  # kWhirlpoolAcMinTemp..kWhirlpoolAcMaxTemp
+        (V2, 16.0, 30.0),  # the same, DG11J191's -2 offset (getTempOffset)
+    ],
+)
+def test_capabilities_offer_the_variants_setpoint_range(model, low, high):
+    caps = device(model).capabilities
+    assert (caps.temperature.min, caps.temperature.max) == (low, high)
+    assert caps.temperature.decimals == (0,)
+    # The rest is the same for both remotes.
+    assert caps.modes == ("auto", "cool", "dry", "fan", "heat")
+    assert caps.fan.values == ("auto", "1", "2", "3")
+    assert caps.swing_v.values == ("off", "swing")
+    assert caps.swing_h is None
+    assert set(caps.features) == {"light", "sleep", "powerful"}
 
-    legacy = LegacyDevice("whirlpool", model, PluginObject.MODELS[model])
-    assert device(model).capabilities == legacy.capabilities
+
+@pytest.mark.parametrize("model", sorted(WHIRLPOOL_AC_MODELS))
+def test_every_model_gets_its_variants_capabilities(model):
+    low, high = {"DG11J13A": (18.0, 32.0), "DG11J191": (16.0, 30.0)}[
+        WHIRLPOOL_AC_MODELS[model]
+    ]
+    temperature = device(model).capabilities.temperature
+    assert (temperature.min, temperature.max) == (low, high)
+
+
+def test_dg11j191_normalises_31_and_32_to_30_as_c_clamps():
+    # _setTemp clamps to kWhirlpoolAcMaxTemp + offset: the legacy 31-32 C
+    # states (in the oracle) normalise to what C sent.
+    for t in (31.0, 32.0):
+        assert state(True, "cool", t, V2).temperature == 30.0
+    assert state(True, "cool", 16.0, V2).temperature == 16.0
+    assert state(True, "cool", 16.0, V1).temperature == 18.0
 
 
 def _record(**match):

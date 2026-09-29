@@ -146,7 +146,8 @@ COOLIX_TURBO = 0xB5F5A2  # kCoolixTurbo: a turbo toggle
 COOLIX_LED = 0xB5F5A5  # kCoolixLed: a light toggle
 COOLIX_CLEAN = 0xB5F5AA  # kCoolixClean: a clean toggle
 # The toggle words IRac::coolix sends after the state word, in its order
-# (IRac::coolix's sleep word is missing: the entity has no sleep).
+# (IRac::coolix's kCoolixSleep word is not sent: sleep is deferred, it needs
+# its own word).
 COOLIX_TOGGLES = (
     ("powerful", COOLIX_TURBO),
     ("light", COOLIX_LED),
@@ -202,7 +203,8 @@ class CoolixDevice(Device):
     - then a toggle word per feature, in IRac::coolix's order: kCoolixSwing
       (swing_v or swing_h), kCoolixTurbo (powerful), kCoolixLed (light),
       kCoolixClean (cleaning);
-    - quiet is accepted and sends nothing: IRac::coolix has no quiet.
+    - there is no quiet (IRac::coolix: "No Quiet setting available"; the
+      header has no quiet word).
 
     The toggle words: with ``previous=None`` each is sent when its feature
     is on, as from a fresh IRac (its previous state is of protocol UNKNOWN,
@@ -234,7 +236,6 @@ class CoolixDevice(Device):
         swing_h=SWING,
         features={
             "powerful": ON_OFF,
-            "quiet": ON_OFF,
             "cleaning": ON_OFF,
             "light": ON_OFF,
         },

@@ -172,7 +172,8 @@ class NeoclimaDevice(Device):
     - an off message carries mode auto (convertMode's default for IRac's
       "off"), with the requested setpoint, fan and settings;
     - mode dry sends fan low whatever fan is asked (IRNeoclimaAc::setFan:
-      "Dry mode only allows low speed");
+      "Dry mode only allows low speed"); mode fan (kNeoclimaFan) sends the
+      setpoint and fan as asked;
     - the setpoint is sent in Celsius (UseFah clear), 16-32 C as setTemp
       clamps it (the entity's range);
     - hold, eye, fresh, 8C heat and follow me stay clear (IRac never sets
@@ -190,7 +191,7 @@ class NeoclimaDevice(Device):
     PROTOCOL = NEOCLIMA
     LAYOUTS = (NEOCLIMA_LAYOUT,)
     capabilities = Capabilities(
-        modes=("auto", "cool", "dry", "heat"),
+        modes=("auto", "cool", "dry", "fan", "heat"),  # kNeoclima{Auto,..,Heat}
         temperature=TemperatureRange(16.0, 32.0),
         fan=FAN_3,
         swing_v=SWING,

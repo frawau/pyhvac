@@ -23,13 +23,13 @@
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
 #
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from .hvaclib import PulseBased, GenPluginObject
 from ..device import Device
 from ..fields import Field, Layout
 from ..ir.model import Frame, Protocol, PulseDistance, Section
-from ..choices import FAN_3_FIXED, ON_OFF, SWING
+from ..choices import FAN_3, ON_OFF, SWING
 from ..state import Capabilities, TemperatureRange
 
 
@@ -135,7 +135,8 @@ VESTEL_AC_LAYOUT = Layout(
         "temperature": Field.at(  # degrees - kVestelAcMinTempH
             4, 4, 4, values={t: t - 16 for t in range(16, 31)}
         ),
-        # kVestelAcFan*: the entity has no auto, auto cool or auto heat.
+        # kVestelAcFan*: auto cool and auto heat are IRVestelAc::setAuto's
+        # (not a fan speed), and never sent.
         "fan": Field.at(
             5,
             0,
@@ -179,8 +180,11 @@ class VestelAcDevice(Device):
     - power sets Power (0b11 on, 0b00 off) and UseCmd;
     - an off message carries mode auto (convertMode's default, which IRac's
       kOff mode falls to) with the rest of the target state;
-    - below 18 °C, the setpoint is sent as 18 °C (setTemp clamps to
-      kVestelAcMinTempC), except in heat (see below);
+    - the setpoint range is 16-30 °C in heat and 18-30 °C in the other
+      modes (setTemp clamps to kVestelAcMinTempC, except in heat, see
+      below); ``normalise`` clamps the target to its mode's range, and an
+      off message (mode auto) is clamped to 18;
+    - fan auto is kVestelAcFanAuto;
     - sleep wins over powerful (setSleep comes after setTurbo; they share
       the TurboSleep field);
     - purifier sets Ion.
@@ -205,10 +209,16 @@ class VestelAcDevice(Device):
     capabilities = Capabilities(
         modes=("auto", "cool", "dry", "fan", "heat"),
         temperature=TemperatureRange(16.0, 30.0),
-        fan=FAN_3_FIXED,
+        fan=FAN_3,  # kVestelAcFan{Auto,Low,Med,High}
         swing_v=SWING,
         features={"sleep": ON_OFF, "powerful": ON_OFF, "purifier": ON_OFF},
     )
+
+    def normalise(self, state):
+        state = super().normalise(state)
+        if state.mode != "heat" and state.temperature < VESTEL_AC_MIN:
+            state = replace(state, temperature=float(VESTEL_AC_MIN))
+        return state
 
     def frames(self, previous, target, actions):
         mode = target.mode if target.power else "auto"

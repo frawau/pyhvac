@@ -235,11 +235,12 @@ def test_registry_serves_the_port(model):
     assert isinstance(registry.get_device("truma", model), TrumaDevice)
 
 
-@pytest.mark.parametrize("model", TRUMA_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.truma import Truma
-
-    legacy = LegacyDevice("truma", model, Truma)
-    assert TrumaDevice("truma", model).capabilities == legacy.capabilities
+def test_capabilities_are_the_headers():
+    # ir_Truma.h: kTrumaMinTemp/MaxTemp 16-31; kTrumaFan{Low,Med,High} (no
+    # auto) and kTrumaFanQuiet; kTruma{Auto,Cool,Fan}.
+    caps = device().capabilities
+    assert set(caps.modes) == {"auto", "cool", "fan"}
+    assert (caps.temperature.min, caps.temperature.max) == (16.0, 31.0)
+    assert caps.fan.values == ("1", "2", "3")
+    assert (caps.swing_v, caps.swing_h) == (None, None)
+    assert set(caps.features) == {"quiet"}

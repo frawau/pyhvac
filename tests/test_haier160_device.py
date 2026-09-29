@@ -171,10 +171,11 @@ def test_every_fan_level_and_fan2(fan, raw, raw2):
         ("off", 0b0000),
         ("auto", 0b1100),
         ("1", 0b0001),  # ceiling: kHighest -> Top
-        ("2", 0b0100),  # 90°: kHigh -> High
-        ("3", 0b0110),  # 45°: kMiddle -> Middle
-        ("4", 0b1000),  # 30°: kLow -> Low
-        ("5", 0b0011),  # 0°: kLowest -> Lowest
+        ("2", 0b0010),  # kHaierAc160SwingVHighest (not reached by convertSwingV)
+        ("3", 0b0100),  # 90°: kHigh -> High
+        ("4", 0b0110),  # 45°: kMiddle -> Middle
+        ("5", 0b1000),  # 30°: kLow -> Low
+        ("6", 0b0011),  # 0°: kLowest -> Lowest
     ],
 )
 def test_every_swing_value(swing, raw):
@@ -265,14 +266,35 @@ def test_registry_serves_the_port(model):
     assert isinstance(registry.get_device("haier", model), Haier160Device)
 
 
-@pytest.mark.parametrize("model", HAIER160_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.haier import Haier160
+def test_swing_v_offers_every_documented_position():
+    # ir_Haier.h kHaierAc160SwingV{Off,Auto,Top,Highest,High,Middle,Low,
+    # Lowest}: Highest (0b0010) is new, the legacy entity had the other seven.
+    swing_v = device().capabilities.swing_v
+    assert swing_v.values == ("off", "auto", "1", "2", "3", "4", "5", "6")
+    assert swing_v.label("2") == "highest"
 
-    legacy = LegacyDevice("haier", model, Haier160)
-    assert Haier160Device("haier", model).capabilities == legacy.capabilities
+
+def test_legacy_swing_labels_keep_their_positions():
+    # The oracle's old-vocabulary swings still reach the same codes.
+    dev = device()
+    for label, raw in (
+        ("ceiling", 0b0001),
+        ("90°", 0b0100),
+        ("45°", 0b0110),
+        ("30°", 0b1000),
+        ("0°", 0b0011),
+    ):
+        state = state_from_record(dev, {"mode": "cool", "swing": label})
+        assert HAIER160_LAYOUT.read_raw(frame(state), "swing_v") == raw
+
+
+def test_capabilities():
+    caps = device().capabilities
+    assert caps.modes == ("auto", "cool", "dry", "heat", "fan")
+    assert (caps.temperature.min, caps.temperature.max) == (16.0, 30.0)
+    assert caps.fan.values == ("auto", "1", "2", "3")
+    assert caps.swing_h is None  # IRHaierAC160 has no SwingH setter
+    assert set(caps.features) == set(ALL_FEATURES)
 
 
 def test_undeclared_sleep_deviation_is_reported():

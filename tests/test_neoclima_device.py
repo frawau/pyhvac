@@ -205,7 +205,7 @@ def test_layout_reads_the_real_captures(capture, fields):
     assert bytes(rebuilt) == frame
 
 
-@pytest.mark.parametrize("mode", ["auto", "cool", "dry", "heat"])
+@pytest.mark.parametrize("mode", ["auto", "cool", "dry", "fan", "heat"])
 @pytest.mark.parametrize("fan", ["auto", "1", "2", "3"])
 @pytest.mark.parametrize("t", [16.0, 24.0, 32.0])
 def test_off_carries_mode_auto(mode, fan, t):
@@ -217,15 +217,17 @@ def test_off_carries_mode_auto(mode, fan, t):
     assert values["button"] == "power"
 
 
-@pytest.mark.parametrize("mode", ["auto", "cool", "dry", "heat"])
+@pytest.mark.parametrize("mode", ["auto", "cool", "dry", "fan", "heat"])
 def test_every_mode_uses_its_documented_code(mode):
-    codes = {"auto": 0, "cool": 1, "dry": 2, "heat": 4}
+    # kNeoclimaAuto = 0, kNeoclimaCool = 1, kNeoclimaDry = 2, kNeoclimaFan = 3,
+    # kNeoclimaHeat = 4.
+    codes = {"auto": 0, "cool": 1, "dry": 2, "fan": 3, "heat": 4}
     assert NEOCLIMA_LAYOUT.read_raw(data(state(True, mode)), "mode") == codes[mode]
     assert read(state(True, mode))["power"] == 1
 
 
 @pytest.mark.parametrize("t", range(16, 33))
-@pytest.mark.parametrize("mode", ["auto", "cool", "dry", "heat"])
+@pytest.mark.parametrize("mode", ["auto", "cool", "dry", "fan", "heat"])
 def test_every_setpoint_in_every_mode(t, mode):
     # setTemp: Temp = degrees - kNeoclimaMinTempC, in Celsius.
     values = read(state(True, mode, float(t)))
@@ -245,11 +247,17 @@ def test_setpoint_is_clamped():
         assert NEOCLIMA_LAYOUT.read(frame.data)["temp"] == sent
 
 
-@pytest.mark.parametrize("mode", ["auto", "cool", "heat"])
+@pytest.mark.parametrize("mode", ["auto", "cool", "fan", "heat"])
 @pytest.mark.parametrize("fan, raw", [("auto", 0), ("1", 3), ("2", 2), ("3", 1)])
 def test_every_fan_level_uses_its_documented_code(mode, fan, raw):
     # kNeoclimaFanAuto/Low/Med/High.
     assert NEOCLIMA_LAYOUT.read_raw(data(state(True, mode, fan=fan)), "fan") == raw
+
+
+def test_fan_mode_is_offered():
+    # kNeoclimaFan (0b011), which setMode accepts; the legacy entity lacked it.
+    assert "fan" in device().capabilities.modes
+    assert state(True, "fan").mode == "fan"
 
 
 @pytest.mark.parametrize("fan", ["auto", "1", "2", "3"])
@@ -322,16 +330,6 @@ def test_previous_is_ignored():
 @pytest.mark.parametrize("brand, model", ALL_MODELS)
 def test_registry_serves_the_port(brand, model):
     assert isinstance(registry.get_device(brand, model), NeoclimaDevice)
-
-
-@pytest.mark.parametrize("brand, model", ALL_MODELS)
-def test_capabilities_match_the_legacy_entity(brand, model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.neoclima import Neoclima
-
-    legacy = LegacyDevice(brand, model, Neoclima)
-    assert NeoclimaDevice(brand, model).capabilities == legacy.capabilities
 
 
 @pytest.mark.parametrize(

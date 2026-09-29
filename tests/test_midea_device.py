@@ -487,16 +487,24 @@ def test_registry_serves_the_port(plugin, model):
     assert isinstance(registry.get_device(plugin, model), MideaDevice)
 
 
-@pytest.mark.parametrize("plugin, model", SERVED)
-def test_capabilities_match_the_legacy_entity(plugin, model):
-    pytest.importorskip("pyhvac.irhvac")
-    import importlib
-
-    from pyhvac.legacy import LegacyDevice
-
-    cls = importlib.import_module(f"pyhvac.plugins.{plugin}").Midea
-    legacy = LegacyDevice(plugin, model, cls)
-    assert MideaDevice(plugin, model).capabilities == legacy.capabilities
+def test_capabilities_are_the_documented_ones():
+    # Unchanged by the capability audit: every value ir_Midea.h documents
+    # that the port sends. kMideaACToggle8CHeat has no feature name.
+    caps = MideaDevice.capabilities
+    assert caps.modes == ("auto", "cool", "fan", "dry", "heat")
+    # kMideaACMinTempC / kMideaACMaxTempC
+    assert (caps.temperature.min, caps.temperature.max) == (17.0, 30.0)
+    assert caps.fan.values == ("auto", "1", "2", "3")  # kMideaACFan{Low,Med,High}
+    assert caps.swing_v.values == ("off", "swing")  # kMideaACToggleSwingV
+    assert caps.swing_h is None
+    assert set(caps.features) == {
+        "powerful",
+        "quiet",
+        "economy",
+        "light",
+        "cleaning",
+        "sleep",
+    }
 
 
 # No real capture in ir_Midea_test.cpp needs it, but

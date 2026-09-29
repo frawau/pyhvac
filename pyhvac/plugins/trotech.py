@@ -135,13 +135,16 @@ class TrotecDevice(Device):
     """Trotec PAC 3200 (and the Duux Blizzard): a full-state frame with a
     power bit, no toggle bits, so ``previous`` is ignored (IRac::handleToggles
     has no TROTEC case either).
+
+    The setpoint range is kTrotecMinTemp-kTrotecMaxTemp (18-32 °C); the
+    legacy entity's 16-30 sent 16 and 17 as 18 and could not reach 31-32.
     """
 
     PROTOCOL = TROTEC
     LAYOUTS = (TROTEC_LAYOUT, None)
     capabilities = Capabilities(
         modes=("auto", "cool", "dry", "fan"),
-        temperature=TemperatureRange(16.0, 30.0),
+        temperature=TemperatureRange(TROTEC_MIN_TEMP, TROTEC_MAX_TEMP),
         fan=FAN_3_FIXED,
         features={"sleep": ON_OFF},
     )
@@ -149,7 +152,7 @@ class TrotecDevice(Device):
     def frames(self, previous, target, actions):
         # As the C path: an off message carries mode auto (IRac passes mode
         # "off", which convertMode maps to kTrotecAuto), and setTemp clamps to
-        # kTrotecMinTemp..kTrotecMaxTemp, so 16 and 17 °C go out as 18.
+        # kTrotecMinTemp..kTrotecMaxTemp (normalise already did).
         mode = target.mode if target.power else "auto"
         temperature = min(
             max(int(target.temperature), TROTEC_MIN_TEMP), TROTEC_MAX_TEMP

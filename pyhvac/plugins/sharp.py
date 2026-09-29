@@ -748,12 +748,13 @@ SHARP_AC_SPECIAL = {  # kSharpAcSpecial*
 # kSharpAcAuto (A907) and kSharpAcFan (A705) share 0b00; the A903 has neither
 # a fan nor a heat mode, and IRSharpAc::convertMode has no fan case, so its
 # "fan" is 0b00 too. IRSharpAc::setMode turns heat into fan for the A705 and
-# A903, which the legacy entities do not offer.
+# A903, which their capabilities do not offer.
 SHARP_AC_MODE = {"auto": 0b00, "fan": 0b00, "heat": 0b01, "cool": 0b10, "dry": 0b11}
 SHARP_AC_FAN = {  # variant -> canonical fan -> kSharpAcFan*
-    # kSharpAcFanAuto, FanMin (FAN1), FanMed (FAN2), FanHigh (FAN3), as
-    # IRSharpAc::convertFan maps kLow/kMedium/kHigh for the A907.
-    "A907": {"auto": 0b010, "1": 0b100, "2": 0b011, "3": 0b101},
+    # kSharpAcFanAuto, FanMin (FAN1), FanMed (FAN2), FanHigh (FAN3), FanMax
+    # (FAN4), as IRSharpAc::convertFan maps kLow/kMedium/kHigh/kMax for the
+    # A907.
+    "A907": {"auto": 0b010, "1": 0b100, "2": 0b011, "3": 0b101, "4": 0b111},
     # kSharpAcFanA705Low, FanA705Med and FanMax: the three speeds these
     # remotes have (IRSharpAc::toString names 7 "High" for them). C sends
     # kSharpAcFanHigh (= FanA705Med) for "high" (declared as a Defect).
@@ -799,29 +800,44 @@ SHARP_AC_LAYOUT = Layout(
 )
 
 
-def _sharp_ac_capabilities(modes, toggle):
-    """The legacy SharpA907 / A903 / A705 entities: they differ in modes and
-    in one feature (economy for the A907, light for the others)."""
+SHARP_AC_SWING_V_CHOICE = Choice(
+    ("off", "1", "2", "3"), {"off": "off", "1": "90°", "2": "45°", "3": "30°"}
+)
+# The A907's four speeds: FAN1 (kSharpAcFanMin) .. FAN4 (kSharpAcFanMax).
+# The labels keep the legacy low/medium/high on their codes; FanMax is
+# convertFan's kMax.
+SHARP_AC_FAN_A907 = Choice(
+    ("auto", "1", "2", "3", "4"),
+    {"auto": "auto", "1": "low", "2": "medium", "3": "high", "4": "highest"},
+)
+
+
+def _sharp_ac_capabilities(modes, fan):
+    """What IRac::sharp's state message carries for a remote: they differ in
+    modes and fan speeds.
+
+    Economy (A907) and light (A903/A705) are not offered: they are
+    setEconoToggle / setLightToggle special messages (Special
+    kSharpAcSpecialTempEcono), which IRac::sharp never sends (see
+    SharpAcDevice)."""
     return Capabilities(
         modes=modes,
         temperature=TemperatureRange(float(SHARP_AC_MIN), float(SHARP_AC_MAX)),
-        fan=FAN_3,
-        swing_v=Choice(
-            ("off", "1", "2", "3"), {"off": "off", "1": "90°", "2": "45°", "3": "30°"}
-        ),
+        fan=fan,
+        swing_v=SHARP_AC_SWING_V_CHOICE,
         features={
             "cleaning": ON_OFF,
             "powerful": ON_OFF,
-            toggle: ON_OFF,
             "purifier": ON_OFF,
         },
     )
 
 
-SHARP_AC_CAPABILITIES = {  # variant (sharp_ac_remote_model_t) -> legacy entity
-    "A907": _sharp_ac_capabilities(("auto", "cool", "dry", "heat"), "economy"),
-    "A903": _sharp_ac_capabilities(("auto", "cool", "dry", "fan"), "light"),
-    "A705": _sharp_ac_capabilities(("cool", "dry", "fan"), "light"),
+SHARP_AC_CAPABILITIES = {  # variant (sharp_ac_remote_model_t)
+    "A907": _sharp_ac_capabilities(("auto", "cool", "dry", "heat"), SHARP_AC_FAN_A907),
+    # kSharpAcFanA705Low, FanA705Med, FanMax: three speeds.
+    "A903": _sharp_ac_capabilities(("auto", "cool", "dry", "fan"), FAN_3),
+    "A705": _sharp_ac_capabilities(("cool", "dry", "fan"), FAN_3),
 }
 
 SHARP_AC_MODEL_VARIANT = {  # model -> remote variant (sharp_ac_remote_model_t)
@@ -847,8 +863,8 @@ class SharpAcDevice(Device):
     sends them.
 
     The variant (a sharp_ac_remote_model_t name) comes from the model
-    (SHARP_AC_MODEL_VARIANT) unless given, and picks the capabilities (the
-    legacy SharpA907/A903/A705 entities) and the fan codes; unknown models
+    (SHARP_AC_MODEL_VARIANT) unless given, and picks the capabilities and
+    the fan codes; unknown models
     get the A907, as IRSharpAc::setModel does. Model2 is set for the A903 and
     A705; the Model bit only for the A705, and only in a mode that takes a
     setpoint (setTemp rewrites byte 4 after setModel set it).
@@ -878,10 +894,11 @@ class SharpAcDevice(Device):
     - powerful: the state message, then the same with setTurbo(true)
       (PowerSpecial SpecialOn, Special Turbo, fan kSharpAcFanMax), off or on.
 
-    Economy (A907) and light (A903/A705) send nothing, as the C path:
-    IRac::sharp never calls setEconoToggle, and the PowerSpecial/Special
-    values setLightToggle writes are overwritten by the setMode and setPower
-    calls that follow it.
+    Economy (A907) and light (A903/A705) are not offered: IRac::sharp never
+    calls setEconoToggle, and the PowerSpecial/Special values
+    setLightToggle writes are overwritten by the setMode and setPower calls
+    that follow it, so C sent nothing for them. Sending them needs their
+    own special message (deferred).
 
     ``previous`` only sets PowerSpecial (above). IRac::handleToggles turns
     SHARP_AC swing changes into kAuto (swing toggle) or kOff, which with the

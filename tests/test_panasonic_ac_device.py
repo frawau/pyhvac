@@ -241,6 +241,29 @@ def test_nke_swing_h_is_always_middle(swing):
     assert frames(state, variant="NKE")[1].data[9] == 0x06
 
 
+def test_nke_offers_no_swing_h():
+    # Removed no-op: the legacy on/off sent kPanasonicAcSwingHMiddle both ways.
+    assert device("NKE").capabilities.swing_h is None
+
+
+@pytest.mark.parametrize("variant", ["NKE", "DKE", "JKE", "CKP", "RKR"])
+def test_capabilities_are_the_documented_values(variant):
+    caps = device(variant).capabilities
+    # kPanasonicAcMinTemp / kPanasonicAcMaxTemp, whole degrees.
+    assert (caps.temperature.min, caps.temperature.max) == (16.0, 30.0)
+    assert caps.modes == ("auto", "cool", "dry", "heat", "fan")
+    # kPanasonicAcFan{Min,Low,Med,High,Max,Auto}.
+    assert caps.fan.values == ("auto", "1", "2", "3", "4", "5")
+    # kPanasonicAcSwingV{Auto,Highest..Lowest}: no off.
+    assert caps.swing_v.values == ("auto", "1", "2", "3", "4", "5")
+    positions = ("auto", "1", "2", "3", "4", "5")
+    assert (caps.swing_h and caps.swing_h.values) == (
+        positions if variant in ("DKE", "RKR") else None
+    )
+    expected = {"quiet", "powerful"} | ({"purifier"} if variant == "DKE" else set())
+    assert set(caps.features) == expected
+
+
 @pytest.mark.parametrize("variant", ["JKE", "CKP"])
 def test_jke_and_ckp_have_no_swing_h(variant):
     # setSwingHorizontal ignores them: byte 17 stays 0.
@@ -419,16 +442,6 @@ def test_registry_serves_the_port(model):
     dev = registry.get_device("panasonic", model)
     assert isinstance(dev, PanasonicAcDevice)
     assert dev.variant == PANASONIC_AC_MODELS[model]
-
-
-@pytest.mark.parametrize("model", PANASONIC_AC_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-
-    cls = getattr(panasonic, LEGACY_CLASS[PANASONIC_AC_MODELS[model]])
-    legacy = LegacyDevice("panasonic", model, cls)
-    assert PanasonicAcDevice("panasonic", model).capabilities == legacy.capabilities
 
 
 @pytest.mark.parametrize(

@@ -237,9 +237,18 @@ def test_every_setpoint(mode, t):
     assert read(state(True, mode, float(t)))["temp"] == t
 
 
+def test_setpoint_range_is_the_headers():
+    # kTranscoldTempMin = 18, kTranscoldTempMax = 30 (the legacy entity
+    # offered 17, which setTemp sent as 18).
+    rng = device().capabilities.temperature
+    assert (rng.min, rng.max, rng.decimals) == (18.0, 30.0, (0,))
+
+
 @pytest.mark.parametrize("mode", ["auto", "cool", "dry", "heat"])
 def test_setpoint_17_is_clamped_to_kTranscoldTempMin(mode):
-    # The entity offers 17 C; setTemp clamps to kTranscoldTempMin (18 C).
+    # A 17 C request (the oracle's) normalises to kTranscoldTempMin (18 C),
+    # what setTemp sent for it.
+    assert state(True, mode, 17.0).temperature == 18.0
     assert words(state(True, mode, 17.0)) == words(state(True, mode, 18.0))
 
 
@@ -342,16 +351,6 @@ def test_message_shape():
 @pytest.mark.parametrize("model", TRANSCOLD_MODELS)
 def test_registry_serves_the_port(model):
     assert isinstance(registry.get_device("transcold", model), TranscoldDevice)
-
-
-@pytest.mark.parametrize("model", TRANSCOLD_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.transcold import Transcold
-
-    legacy = LegacyDevice("transcold", model, Transcold)
-    assert TranscoldDevice("transcold", model).capabilities == legacy.capabilities
 
 
 # ------------------------------------------------------ the C swing toggle

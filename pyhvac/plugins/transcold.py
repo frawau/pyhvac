@@ -144,8 +144,8 @@ class TranscoldDevice(Device):
 
     As IRac::transcold sends it:
     - power off sends kTranscoldOff alone, whatever the other settings;
-    - the setpoint is clamped to kTranscoldTempMin..Max (18-30 C: the
-      entity's 17 C sends 18 C);
+    - the setpoint is kTranscoldTempMin..Max (18-30 C; the 0.1.x entity's
+      17 C, which setTemp sent as 18 C, normalises to 18);
     - fan auto is kTranscoldFanAuto0 in auto and dry modes and
       kTranscoldFanAuto otherwise (IRTranscoldAc::setFan's mode check).
 
@@ -173,7 +173,7 @@ class TranscoldDevice(Device):
     LAYOUTS = (TRANSCOLD_LAYOUT,)
     capabilities = Capabilities(
         modes=("auto", "cool", "dry", "fan", "heat"),
-        temperature=TemperatureRange(17.0, 30.0),
+        temperature=TemperatureRange(18.0, 30.0),  # kTranscoldTempMin..Max
         fan=FAN_3,
         swing_v=SWING,
     )

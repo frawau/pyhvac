@@ -65,9 +65,9 @@ SWING_SEQUENCE = tuple(
 )
 
 FEATURES = {
-    "A907": ("cleaning", "powerful", "economy", "purifier"),
-    "A903": ("cleaning", "powerful", "light", "purifier"),
-    "A705": ("cleaning", "powerful", "light", "purifier"),
+    "A907": ("cleaning", "powerful", "purifier"),
+    "A903": ("cleaning", "powerful", "purifier"),
+    "A705": ("cleaning", "powerful", "purifier"),
 }
 MODEL = {
     "A907": "Sharp AY-ZP40KR",
@@ -87,6 +87,13 @@ A903_ON = "aa5acf10cc1132000880" "00f461"  # Models / Issue1387Power real_on
 CLEAN_ON = "aa5acf1000112b000880" "00f0a1"  # Clean: clean_on_state (A903)
 CLEAN_OFF = "aa5acf10ca1172000880" "00f001"  # Clean: clean_off_state (A903)
 TURBO_ON = "aa5acf10c66172000880" "01f4e1"  # Turbo: on_state (A903)
+# KnownStates: A907 cool 28, PowerSpecial On, Special Fan (setFan's), with
+# the fan at FAN1 (kSharpAcFanMin), FAN2 (FanMed), FAN3 (FanHigh) and FAN4
+# (kSharpAcFanMax, which toString names "High" for the A907).
+COOL_FAN1_28 = "aa5acf10cd3142000880" "05e021"
+COOL_FAN2_28 = "aa5acf10cd3132000880" "05e051"
+COOL_FAN3_28 = "aa5acf10cd3152000880" "05e031"
+COOL_FAN4_28 = "aa5acf10cd3172000880" "05e011"
 
 
 def device(variant="A907"):
@@ -180,7 +187,7 @@ def test_layout_round_trips_every_oracle_state():
 # edges with every fan and swing, and every feature combination, on and off,
 # in every mode. Each is sent from a fresh C object, as the fixtures were.
 def _old(target):
-    fan = {"auto": "auto", "1": "low", "2": "medium", "3": "high"}
+    fan = {"auto": "auto", "1": "low", "2": "medium", "3": "high", "4": "highest"}
     swing = {"off": "off", "1": "90°", "2": "45°", "3": "30°"}
     old = {
         "mode": target.mode if target.power else "off",
@@ -393,7 +400,7 @@ def test_modes_without_setpoint_send_byte_4_as_zero(variant):
 @pytest.mark.parametrize(
     "variant, codes",
     [
-        ("A907", {"auto": 2, "1": 4, "2": 3, "3": 5}),
+        ("A907", {"auto": 2, "1": 4, "2": 3, "3": 5, "4": 7}),
         ("A903", {"auto": 2, "1": 3, "2": 5, "3": 7}),
         ("A705", {"auto": 2, "1": 3, "2": 5, "3": 7}),
     ],
@@ -471,13 +478,67 @@ def test_purifier_sets_ion():
 
 
 @pytest.mark.parametrize("variant", ["A907", "A903", "A705"])
-def test_economy_and_light_send_nothing(variant):
-    toggle = "economy" if variant == "A907" else "light"
+def test_economy_and_light_are_not_offered(variant):
+    # IRac::sharp never sends setEconoToggle, and setLightToggle's Special
+    # is overwritten by setMode/setPower: both did nothing, so they are not
+    # capabilities. A caller passing them anyway sends the plain state.
+    caps = device(variant).capabilities
+    assert "economy" not in caps.features and "light" not in caps.features
     for power in (True, False):
         plain = state(power, variant=variant)
-        on = state(power, variant=variant, features=features(variant, **{toggle: True}))
+        on = state(power, variant=variant, features={"economy": True, "light": True})
+        assert on == plain
         assert messages(on, variant) == messages(plain, variant)
-        assert messages(on, variant, plain) == messages(plain, variant, plain)
+
+
+@pytest.mark.parametrize(
+    "fan, capture",
+    [
+        ("1", COOL_FAN1_28),
+        ("2", COOL_FAN2_28),
+        ("3", COOL_FAN3_28),
+        ("4", COOL_FAN4_28),
+    ],
+)
+def test_a907_fan_levels_are_the_real_captures(fan, capture):
+    # The A907 remote's four speeds (FAN1..FAN4: kSharpAcFanMin, FanMed,
+    # FanHigh, FanMax). The captures are single-button presses (Special
+    # kSharpAcSpecialFan); IRac's message carries Special Power.
+    (ours,) = messages(state(True, "cool", 28.0, fan=fan), previous=state(True))
+    expected = bytearray.fromhex(capture)
+    SHARP_AC_LAYOUT.write_raw(expected, "special", 0x00)  # kSharpAcSpecialPower
+    SHARP_AC_LAYOUT.checksum.apply(expected)
+    assert ours == bytes(expected)
+    assert SHARP_AC_LAYOUT.read(bytes.fromhex(capture))["special"] == "fan"
+
+
+def test_a907_fan_4_is_the_legacy_highest():
+    caps = device("A907").capabilities
+    assert caps.fan.values == ("auto", "1", "2", "3", "4")
+    assert [caps.fan.label(v) for v in caps.fan.values] == [
+        "auto",
+        "low",
+        "medium",
+        "high",
+        "highest",
+    ]
+    for variant in ("A903", "A705"):
+        assert device(variant).capabilities.fan.values == ("auto", "1", "2", "3")
+
+
+def test_capabilities_are_the_documented_ones():
+    for variant, modes in (
+        ("A907", ("auto", "cool", "dry", "heat")),
+        ("A903", ("auto", "cool", "dry", "fan")),
+        ("A705", ("cool", "dry", "fan")),
+    ):
+        caps = device(variant).capabilities
+        assert caps.modes == modes
+        # kSharpAcMinTemp / kSharpAcMaxTemp
+        assert (caps.temperature.min, caps.temperature.max) == (15.0, 30.0)
+        assert caps.swing_v.values == ("off", "1", "2", "3")
+        assert caps.swing_h is None
+        assert set(caps.features) == {"cleaning", "powerful", "purifier"}
 
 
 @pytest.mark.parametrize("power", [True, False])
@@ -539,16 +600,6 @@ def test_unknown_model_gets_the_a907_and_bad_variants_are_refused():
     assert SharpAcDevice("sharp", "nope").variant == "A907"
     with pytest.raises(ValueError, match="variant"):
         SharpAcDevice("sharp", "nope", variant="A999")
-
-
-@pytest.mark.parametrize("model", SHARP_AC_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.sharp import PluginObject
-
-    legacy = LegacyDevice("sharp", model, PluginObject.MODELS[model])
-    assert SharpAcDevice("sharp", model).capabilities == legacy.capabilities
 
 
 def _record(model, **match):

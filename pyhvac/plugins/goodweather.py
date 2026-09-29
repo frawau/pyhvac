@@ -111,6 +111,9 @@ GOODWEATHER_SWING = {  # kGoodweatherSwing*: swing speeds, not positions
     "slow": 0b01,
     "off": 0b10,
 }
+# canonical swing_v -> kGoodweatherSwing*: the two swing speeds, slowest
+# first. (IRac::goodweather itself sends Slow for any swing but off.)
+GOODWEATHER_SWING_BY_LEVEL = {"off": "off", "1": "slow", "2": "fast"}
 GOODWEATHER_MIN_TEMP = 16  # kGoodweatherTempMin
 GOODWEATHER_MAX_TEMP = 31  # kGoodweatherTempMax
 
@@ -156,6 +159,13 @@ class GoodweatherDevice(Device):
     port. The real remote names the key actually pressed (the issue #697
     captures carry UpTemp, DownTemp and Swing); the port does not invent
     that rule.
+
+    Swing is a speed, not a position: swing_v "1" (the legacy "auto low")
+    sends kGoodweatherSwingSlow and "2" ("auto high") kGoodweatherSwingFast.
+    IRac::goodweather sends Slow for any swing but off, so C never sent
+    Fast (a Defect in tests/test_goodweather_device.py). Sleep is the Sleep
+    bit (IRac: setSleep(sleep >= 0)). Quiet is not offered: the header has
+    no quiet bit ("No Quiet setting available").
     """
 
     PROTOCOL = GOODWEATHER
@@ -167,7 +177,7 @@ class GoodweatherDevice(Device):
         swing_v=Choice(
             ("off", "1", "2"), {"off": "off", "1": "auto low", "2": "auto high"}
         ),
-        features={"powerful": ON_OFF, "light": ON_OFF, "quiet": ON_OFF},
+        features={"powerful": ON_OFF, "light": ON_OFF, "sleep": ON_OFF},
     )
 
     def frames(self, previous, target, actions):
@@ -183,14 +193,11 @@ class GoodweatherDevice(Device):
             # IRac::goodweather calls setPower last.
             command="power",
             power=target.power,
-            # IRac::goodweather sends kGoodweatherSwingSlow for any swing
-            # but off (it does not use convertSwingV).
-            swing_v="off" if target.swing_v == "off" else "slow",
+            swing_v=GOODWEATHER_SWING_BY_LEVEL[target.swing_v],
             fan=target.fan,
             temperature=temperature,
             mode=mode,
-            # Quiet: IRac::goodweather has no quiet setting; nothing is sent.
-            # Sleep: not offered by the entity; IRac gets -1 and clears it.
+            sleep=target.features.get("sleep", False),
         )
         return [Frame("main", bytes(data))]
 

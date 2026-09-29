@@ -226,14 +226,19 @@ def test_registry_serves_the_port(model):
     assert isinstance(registry.get_device("panasonic", model), PanasonicAc32Device)
 
 
-@pytest.mark.parametrize("model", PANASONIC_AC32_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.panasonic import Panasonic32
-
-    legacy = LegacyDevice("panasonic", model, Panasonic32)
-    assert PanasonicAc32Device("panasonic", model).capabilities == legacy.capabilities
+def test_capabilities_are_the_documented_values():
+    # Unchanged by the audit: the legacy entity already offered every
+    # documented PanasonicAc32Protocol value.
+    caps = PanasonicAc32Device("panasonic", "generic 32").capabilities
+    # setTemp: kPanasonicAcMinTemp / kPanasonicAcMaxTemp, whole degrees.
+    assert (caps.temperature.min, caps.temperature.max) == (16.0, 30.0)
+    assert caps.modes == ("auto", "cool", "dry", "heat", "fan")
+    # kPanasonicAc32Fan{Auto,Min,Low,Med,High,Max}.
+    assert caps.fan.values == ("auto", "1", "2", "3", "4", "5")
+    # kPanasonicAc32SwingVAuto and kPanasonicAcSwingVHighest..Lowest.
+    assert caps.swing_v.values == ("auto", "1", "2", "3", "4", "5")
+    assert caps.swing_h.values == ("off", "swing")  # the SwingH bit
+    assert dict(caps.features) == {}
 
 
 def test_every_panasonic32_model_is_ported():

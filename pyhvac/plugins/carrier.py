@@ -31,7 +31,7 @@ from .toshiba import TOSHIBA_AC_CARRIER_MODELS, Toshiba, ToshibaAcDevice
 from ..device import Device
 from ..fields import Checksum, Field, Layout
 from ..ir.model import Frame, Protocol, PulseDistance, Section
-from ..choices import FAN_3
+from ..choices import FAN_3, ON_OFF, SWING
 from ..state import Capabilities, TemperatureRange
 
 
@@ -99,6 +99,8 @@ class CarrierAc64Checksum(Checksum):
 
 
 CARRIER_AC64_MIN_TEMP, CARRIER_AC64_MAX_TEMP = 16, 30  # kCarrierAc64Min/MaxTemp
+# The Off timer hours IRCarrierAc64::setSleep sets: setOffTimer(2 * 60).
+CARRIER_AC64_SLEEP_OFF_TIMER = 2
 
 # Skeleton: IRCarrierAc64::stateReset (0x109000002C2A5584) with the fields
 # IRac::carrier64 always writes and the sum cleared. It sets every bit, so
@@ -143,8 +145,10 @@ class CarrierAc64Device(Device):
       mode falls to convertMode's default), with the target's setpoint and
       fan.
     - The setpoint is sent in every mode, fan included.
-    - SwingV and Sleep stay clear: the entity has neither, so IRac gets
-      swingv kOff and sleep -1. The timers keep their reset values, disabled.
+    - SwingV is set for swing (IRac: setSwingV(swingv != kOff)).
+    - Sleep sets the Sleep bit and, as IRCarrierAc64::setSleep does, an Off
+      timer of 2 hours with both timer enables clear. The timers otherwise
+      keep their reset values, disabled.
 
     Nothing here is a toggle, so ``previous`` is ignored. The C path follows
     the header throughout: no Defect is declared.
@@ -158,16 +162,24 @@ class CarrierAc64Device(Device):
             float(CARRIER_AC64_MIN_TEMP), float(CARRIER_AC64_MAX_TEMP)
         ),
         fan=FAN_3,
+        swing_v=SWING,  # SwingV
+        features={"sleep": ON_OFF},  # Sleep
     )
 
     def frames(self, previous, target, actions):
+        sleep = target.features.get("sleep", False)
+        values = {}
+        if sleep:
+            # setSleep(true): setOffTimer(2 * 60), then both enables cleared.
+            values["off_timer"] = CARRIER_AC64_SLEEP_OFF_TIMER
         data = CARRIER_AC64_LAYOUT.build(
             power=target.power,
             mode=target.mode if target.power else "cool",
             temperature=int(target.temperature),
             fan=target.fan,
-            swing_v=0,
-            sleep=0,
+            swing_v=target.swing_v != "off",
+            sleep=sleep,
+            **values,
         )
         return [Frame("main", bytes(data))]
 

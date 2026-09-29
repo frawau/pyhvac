@@ -209,9 +209,7 @@ ARGO_WREM2_LAYOUT = Layout(
     checksum=ArgoChecksum(),
 )
 
-# WREM3 modes and fan: argoMode_t / argoFan_t raw values. Fan as convertFan
-# maps the legacy speeds: low (kLow) -> FAN_LOWER, medium (kMedium) ->
-# FAN_LOW, high (kHigh) -> FAN_HIGH.
+# WREM3 modes: argoMode_t raw values.
 ARGO_WREM3_MODE = {
     "cool": 0b001,
     "dry": 0b010,
@@ -219,7 +217,30 @@ ARGO_WREM3_MODE = {
     "fan": 0b100,
     "auto": 0b101,
 }
-ARGO_WREM3_FAN = {"auto": 0b000, "1": 0b010, "2": 0b011, "3": 0b101}
+# WREM3 fan: every argoFan_t speed, canonical "1" FAN_LOWEST .. "6"
+# FAN_HIGHEST. The labels are convertFan's stdAc speeds, so the legacy low,
+# medium and high keep their codes (FAN_LOWER, FAN_LOW, FAN_HIGH).
+ARGO_WREM3_FAN = {
+    "auto": 0b000,  # FAN_AUTO
+    "1": 0b001,  # FAN_LOWEST (kMin)
+    "2": 0b010,  # FAN_LOWER (kLow)
+    "3": 0b011,  # FAN_LOW (kMedium)
+    "4": 0b100,  # FAN_MEDIUM (kMediumHigh; toString "Med-High")
+    "5": 0b101,  # FAN_HIGH (kHigh)
+    "6": 0b110,  # FAN_HIGHEST (kMax)
+}
+ARGO_WREM3_FAN_CHOICE = Choice(
+    tuple(ARGO_WREM3_FAN),
+    {
+        "auto": "auto",
+        "1": "lowest",
+        "2": "low",
+        "3": "medium",
+        "4": "midhigh",
+        "5": "high",
+        "6": "highest",
+    },
+)
 
 # Skeleton: IRArgoACBase<ArgoProtocolWREM3>::_stateReset for AC_CONTROL
 # (bytes 1-11 zeroed; Pre1 kArgoWrem3Preamble, IrChannel 0, IrCommandType
@@ -260,19 +281,30 @@ ARGO_SWING_V = Choice(
 )
 
 
-def _argo_capabilities(**features):
+def _argo_capabilities(fan, **features):
     return Capabilities(
         modes=("auto", "cool", "fan", "dry", "heat"),
-        temperature=TemperatureRange(16.0, 25.0),
-        fan=FAN_3,
+        # kArgoMinTemp .. kArgoMaxTemp (setTemp clamps to them), both remotes.
+        temperature=TemperatureRange(float(ARGO_MIN_TEMP), float(ARGO_MAX_TEMP)),
+        fan=fan,
         swing_v=ARGO_SWING_V,
-        features={"powerful": ON_OFF, "quiet": ON_OFF, **features},
+        features={"powerful": ON_OFF, **features},
     )
 
 
-ARGO_CAPABILITIES = {  # variant -> the legacy entity (Argo / Argo2)
-    "WREM2": _argo_capabilities(),
-    "WREM3": _argo_capabilities(economy=ON_OFF, purifier=ON_OFF),
+ARGO_CAPABILITIES = {  # variant -> what the remote's message can carry
+    # WREM2: Fan is 2 bits (kArgoFan1..3); Night is IRac::argo's sleep.
+    # Quiet is not offered: IRac::argo has "No Quiet setting available".
+    "WREM2": _argo_capabilities(FAN_3, sleep=ON_OFF),
+    # WREM3: every argoFan_t speed; Night is IRac's quiet, Eco, Filter and
+    # Light their own bits.
+    "WREM3": _argo_capabilities(
+        ARGO_WREM3_FAN_CHOICE,
+        quiet=ON_OFF,
+        economy=ON_OFF,
+        purifier=ON_OFF,
+        light=ON_OFF,
+    ),
 }
 
 
@@ -291,11 +323,11 @@ class ArgoDevice(Device):
     - RoomTemp is always 25 °C (stateReset; IRac has no sensor reading), and
       iFeel is off;
     - powerful sets Max (setMax(turbo)), in every mode;
-    - WREM2: quiet sends nothing (IRac::argo: "No Quiet setting available")
-      and Night stays clear (IRac::argo's setNight(sleep >= 0): the entity
-      has no sleep); Filter (unnamed in the struct) is never set;
+    - WREM2: sleep sets Night (IRac::argo's setNight(sleep >= 0)); there
+      is no quiet (IRac::argo: "No Quiet setting available"); Filter
+      (unnamed in the struct) is never set;
     - WREM3: quiet sets Night (IRac passes its quiet as argoWrem3_ACCommand's
-      night), economy sets Eco, purifier sets Filter, Light stays clear.
+      night), economy sets Eco, purifier sets Filter, light sets Light.
     """
 
     PROTOCOL = ARGO
@@ -323,12 +355,13 @@ class ArgoDevice(Device):
             max=features["powerful"],
         )
         if self.variant == "WREM2":
-            data = ARGO_WREM2_LAYOUT.build(**values)
+            data = ARGO_WREM2_LAYOUT.build(night=features.get("sleep", False), **values)
             return [Frame("wrem2", bytes(data), ARGO_WREM2_BITS)]
         data = ARGO_WREM3_LAYOUT.build(
             night=features["quiet"],
             eco=features["economy"],
             filter=features["purifier"],
+            light=features.get("light", False),
             **values,
         )
         return [Frame("wrem3", bytes(data))]

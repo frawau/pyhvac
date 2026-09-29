@@ -29,7 +29,7 @@ from .coolix import COOLIX_AIRWELL_MODELS, Coolix, CoolixDevice
 from ..device import Device
 from ..fields import Field, Layout
 from ..ir.model import Frame, Manchester as ManchesterBits, Protocol, Section
-from ..choices import FAN_4
+from ..choices import FAN_3
 from ..state import Capabilities, TemperatureRange
 
 
@@ -82,14 +82,13 @@ AIRWELL_KNOWN_GOOD_STATE = 0x140500002  # kAirwellKnownGoodState (stateReset)
 AIRWELL_MIN_TEMP, AIRWELL_MAX_TEMP = 16, 30  # kAirwellMinTemp, kAirwellMaxTemp
 AIRWELL_MODE = {"cool": 1, "heat": 2, "auto": 3, "dry": 4, "fan": 5}  # kAirwell*
 AIRWELL_FAN_CODE = {"low": 0, "medium": 1, "high": 2, "auto": 3}  # kAirwellFan*
-# canonical fan -> kAirwellFan*, as IRAirwellAc::convertFan maps it: the
-# header has no speed below Low, so lowest (kMin) and low both send Low.
+# canonical fan -> kAirwellFan*: the header has three speeds and auto
+# (IRAirwellAc::convertFan maps both kMin and kLow to kAirwellFanLow).
 AIRWELL_FAN_BY_LEVEL = {
     "auto": "auto",
-    "1": "low",  # kMin
-    "2": "low",  # kLow
-    "3": "medium",  # kMedium
-    "4": "high",  # kHigh
+    "1": "low",  # kAirwellFanLow
+    "2": "medium",  # kAirwellFanMedium
+    "3": "high",  # kAirwellFanHigh
 }
 
 
@@ -160,7 +159,7 @@ class AirwellDevice(Device):
     capabilities = Capabilities(
         modes=("auto", "cool", "fan", "dry", "heat"),
         temperature=TemperatureRange(16.0, 30.0),
-        fan=FAN_4,
+        fan=FAN_3,  # kAirwellFanLow/Medium/High/Auto
     )
 
     def frames(self, previous, target, actions):

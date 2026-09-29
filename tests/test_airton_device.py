@@ -15,7 +15,7 @@ from pyhvac.state import HvacState
 #   never reached IRac (swingv stayed kOff) and SwingV stayed clear.
 DEFECTS = (Defect("swing_v", 1, 0, "legacy trans_swing has no 'on' key"),)
 
-FEATURES = ("purifier", "powerful", "quiet", "economy", "light")
+FEATURES = ("purifier", "powerful", "economy", "light", "sleep")
 MODES = ("auto", "cool", "dry", "fan", "heat")
 
 
@@ -210,15 +210,44 @@ def test_swing_sets_swing_v():
     assert read(state(swing_v="off"))["swing_v"] == 0
 
 
-def test_quiet_sends_nothing():
-    # IRac::airton: "No Quiet setting available".
-    assert raw(state(features={"quiet": True})) == raw(state())
+def test_quiet_is_not_offered():
+    # ir_Airton.h has no quiet bit (IRac::airton: "No Quiet setting
+    # available"): a control that did nothing is removed.
+    assert "quiet" not in device().capabilities.features
+    assert "quiet" not in state(features={"quiet": True}).features
 
 
-def test_sleep_stays_clear():
-    everything = {k: True for k in FEATURES}
-    for mode in MODES:
-        assert read(state(True, mode, features=everything))["sleep"] == 0
+def test_setpoint_range_is_the_headers():
+    # kAirtonMinTemp = 16, kAirtonMaxTemp = 31.
+    rng = device().capabilities.temperature
+    assert (rng.min, rng.max, rng.decimals) == (16.0, 31.0, (0,))
+
+
+@pytest.mark.parametrize("t", [26.0, 28.0, 31.0])
+def test_setpoints_up_to_31_are_sent(t):
+    # IRAirtonAc::setTemp clamps to kAirtonMaxTemp (31).
+    assert read(state(True, "cool", t))["temperature"] == int(t)
+    assert read(state(True, "heat", 32.0))["temperature"] == 31
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_sleep_sets_its_bit_outside_auto_and_fan(mode):
+    # IRAirtonAc::setSleep: "Sleep not available in fan or auto mode".
+    assert read(state(True, mode, features={"sleep": True}))["sleep"] == (
+        mode not in ("auto", "fan")
+    )
+    assert read(state(True, mode))["sleep"] == 0
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_off_clears_sleep(mode):
+    # An off message carries mode auto, where setSleep clears it.
+    assert read(state(False, mode, features={"sleep": True}))["sleep"] == 0
+
+
+def test_port_reproduces_the_real_sleep_capture():
+    # ir_Airton_test.cpp Sleep: cool 16C, fan auto, sleep on.
+    assert raw(state(temperature=16.0, features={"sleep": True})) == 0xA00600000911D3
 
 
 def test_previous_is_ignored():
@@ -237,16 +266,6 @@ def test_message_shape():
 @pytest.mark.parametrize("model", AIRTON_MODELS)
 def test_registry_serves_the_port(model):
     assert isinstance(registry.get_device("airton", model), AirtonDevice)
-
-
-@pytest.mark.parametrize("model", AIRTON_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.airton import Airton
-
-    legacy = LegacyDevice("airton", model, Airton)
-    assert AirtonDevice("airton", model).capabilities == legacy.capabilities
 
 
 def test_undeclared_swing_deviation_is_reported():

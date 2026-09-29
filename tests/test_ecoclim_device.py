@@ -158,7 +158,7 @@ def test_port_reproduces_the_default_state_but_the_setpoint():
 
 @pytest.mark.parametrize("power", [True, False])
 @pytest.mark.parametrize("mode", ["auto", "cool", "dry", "fan", "heat"])
-@pytest.mark.parametrize("t", [float(x) for x in range(5, 32)])
+@pytest.mark.parametrize("t", [float(x) for x in range(5, 37)])
 def test_setpoint_and_sensor_temperature_are_the_target(power, mode, t):
     # IRac::ecoclim sets SensorTemp to the setpoint without a sensor reading
     # (the oracle records show it at 5, 18 and 31C in every mode, on and off).
@@ -179,6 +179,29 @@ def test_mode_uses_its_documented_value(mode, code):
 def test_off_carries_mode_auto_and_power_off(mode):
     values = read(state(False, mode, 25.0))
     assert (values["power"], values["mode"]) == (0, "auto")
+
+
+def test_setpoint_range_is_the_headers():
+    # kEcoclimTempMin = 5, kEcoclimTempMax = kEcoclimTempMin + 31 = 36.
+    rng = device().capabilities.temperature
+    assert (rng.min, rng.max, rng.decimals) == (5.0, 36.0, (0,))
+    assert state(True, "cool", 40.0).temperature == 36.0
+
+
+def test_sleep_is_offered():
+    assert device().capabilities.features["sleep"].values == (False, True)
+
+
+@pytest.mark.parametrize("power", [True, False])
+@pytest.mark.parametrize("mode", ["auto", "cool", "dry", "fan", "heat"])
+def test_sleep_sends_mode_sleep(power, mode):
+    # kEcoclimSleep = 0b111; IRac::ecoclim: "EcoClim has a descrete Sleep
+    # operation mode, not a setting" and overrides the requested mode.
+    target = state(power, mode, 24.0, fan="2", features={"sleep": True})
+    first, _, _ = frames(target)
+    assert ECOCLIM_LAYOUT.read_raw(first.data, "mode") == 0b111
+    values = ECOCLIM_LAYOUT.read(first.data)
+    assert (values["power"], values["temperature"], values["fan"]) == (power, 24, "2")
 
 
 def test_on_sets_the_power_bit():
@@ -223,16 +246,6 @@ def test_message_shape():
 @pytest.mark.parametrize("model", ECOCLIM_MODELS)
 def test_registry_serves_the_port(model):
     assert isinstance(registry.get_device("ecoclim", model), EcoclimDevice)
-
-
-@pytest.mark.parametrize("model", ECOCLIM_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.ecoclim import Ecoclim
-
-    legacy = LegacyDevice("ecoclim", model, Ecoclim)
-    assert EcoclimDevice("ecoclim", model).capabilities == legacy.capabilities
 
 
 @pytest.mark.parametrize("mode", ["off", "auto", "cool", "dry", "fan", "heat"])

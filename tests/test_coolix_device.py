@@ -362,7 +362,7 @@ def test_port_reproduces_the_send_with_repeats_pulses():
 def test_off_is_the_off_command_alone(mode, temperature, fan, swing, on):
     # IRac::coolix: setPower(false), send() and return: kCoolixOff, whatever
     # the mode, setpoint, fan, swing or features (no toggle word).
-    features = {k: on for k in ("powerful", "quiet", "cleaning", "light")}
+    features = {k: on for k in ("powerful", "cleaning", "light")}
     target = state(
         False,
         mode,
@@ -443,12 +443,25 @@ def test_sensor_temperature_is_ignored_and_zone_follow_off(mode):
     assert values["zone_follow1"] == values["zone_follow2"] == 0
 
 
-def test_quiet_sends_nothing():
-    # IRac::coolix has no quiet setting.
+def test_quiet_is_not_offered():
+    # IRac::coolix: "No Quiet setting available", and ir_Coolix.h has no
+    # quiet word: the old quiet did nothing. A quiet passed anyway is
+    # dropped by normalise.
+    assert "quiet" not in CoolixDevice.capabilities.features
     plain = state(True, "cool", 22.0)
     quiet = state(True, "cool", 22.0, features={"quiet": True})
+    assert quiet == plain
     assert words(quiet) == words(plain)
-    assert words(quiet, plain) == words(plain, plain)
+
+
+def test_capabilities_are_the_documented_ones():
+    caps = CoolixDevice.capabilities
+    assert caps.modes == ("cool", "dry", "auto", "heat", "fan")
+    # kCoolixTempMin / kCoolixTempMax
+    assert (caps.temperature.min, caps.temperature.max) == (17.0, 30.0)
+    assert caps.fan.values == ("auto", "1", "2", "3")  # kCoolixFan{Min,Med,Max}
+    assert caps.swing_v.values == caps.swing_h.values == ("off", "swing")
+    assert set(caps.features) == {"powerful", "cleaning", "light"}
 
 
 @pytest.mark.parametrize("swing_v", ["off", "swing"])
@@ -557,16 +570,6 @@ def test_every_served_model_is_a_legacy_coolix_model(plugin, model):
 
     module = importlib.import_module(f"pyhvac.plugins.{plugin}")
     assert module.PluginObject.MODELS[model] is Coolix
-
-
-@pytest.mark.parametrize("plugin, model", MODELS)
-def test_capabilities_match_the_legacy_entity(plugin, model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.coolix import Coolix
-
-    legacy = LegacyDevice(plugin, model, Coolix)
-    assert CoolixDevice(plugin, model).capabilities == legacy.capabilities
 
 
 # ------------------------------------------------------ the C swing toggle

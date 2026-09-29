@@ -299,16 +299,6 @@ def test_registry_serves_the_port(plugin, model):
     assert isinstance(registry.get_device(plugin, model), ElectraAcDevice)
 
 
-@pytest.mark.parametrize("plugin, model", SERVED)
-def test_capabilities_match_the_legacy_entity(plugin, model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.electra import Electra
-
-    legacy = LegacyDevice(plugin, model, Electra)
-    assert ElectraAcDevice(plugin, model).capabilities == legacy.capabilities
-
-
 @pytest.mark.parametrize("field, key", [("swing_v", "swing"), ("swing_h", "hswing")])
 def test_undeclared_swing_deviation_is_reported(field, key):
     dev = device()
@@ -338,3 +328,15 @@ def test_layouts_must_cover_every_frame():
 # decodeElectraAC matches with _tolerance (25 %) and no mark excess.
 def test_decode_tolerance_is_the_c_decoders():
     assert (ELECTRA_AC.tolerance, ELECTRA_AC.mark_excess) == (0.25, 0)
+
+
+def test_capabilities_are_the_headers():
+    # ir_Electra.h: kElectraAcMinTemp/MaxTemp 16-32; kElectraAcFan{Auto,Low,
+    # Med,High}; kElectraAcSwingOn/Off for SwingV and SwingH; LightToggle,
+    # Clean, Turbo and Quiet (IFeel and SensorTemp are sensor readings).
+    caps = device().capabilities
+    assert set(caps.modes) == {"auto", "cool", "fan", "dry", "heat"}
+    assert (caps.temperature.min, caps.temperature.max) == (16.0, 32.0)
+    assert caps.fan.values == ("auto", "1", "2", "3")
+    assert caps.swing_v.values == caps.swing_h.values == ("off", "swing")
+    assert set(caps.features) == {"light", "cleaning", "powerful", "quiet"}

@@ -557,13 +557,19 @@ def test_registry_serves_the_port(model):
 
 
 @pytest.mark.parametrize("model", HAIER_YRW02_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.haier import PluginObject
-
-    legacy = LegacyDevice("haier", model, PluginObject.MODELS[model])
-    assert HaierYrw02Device("haier", model).capabilities == legacy.capabilities
+def test_capabilities_are_the_documented_controls(model):
+    # Unchanged from the legacy entity, and what HaierAc176Protocol carries:
+    # kHaierAcYrw02{Auto,Cool,Dry,Heat,Fan}, kHaierAcYrw02Min/MaxTempC,
+    # kHaierAcYrw02Fan{Auto,Low,Med,High}, every kHaierAcYrw02SwingV* (Middle
+    # and Bottom share "2"/"4" by mode) and kHaierAcYrw02SwingH*, and the
+    # Health, Sleep, Turbo and Quiet bits.
+    caps = HaierYrw02Device("haier", model).capabilities
+    assert caps.modes == ("auto", "cool", "dry", "heat", "fan")
+    assert (caps.temperature.min, caps.temperature.max) == (16.0, 30.0)
+    assert caps.fan.values == ("auto", "1", "2", "3")
+    assert caps.swing_v.values == ("off", "auto", "1", "2", "3", "4")
+    assert caps.swing_h.values == ("auto", "1", "2", "3", "4", "5")
+    assert set(caps.features) == {"purifier", "sleep", "powerful", "quiet"}
 
 
 def _first(pred):

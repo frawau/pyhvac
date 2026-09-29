@@ -110,11 +110,21 @@ def test_on_sends_the_mode(mode):
 
 
 @pytest.mark.parametrize(
-    "t, sent", [(16.0, 18), (17.0, 18), (18.0, 18), (25.0, 25), (30.0, 30)]
+    "t, sent",
+    [
+        (16.0, 18),
+        (17.0, 18),
+        (18.0, 18),
+        (25.0, 25),
+        (30.0, 30),
+        (31.0, 31),
+        (32.0, 32),
+        (35.0, 32),
+    ],
 )
 def test_setpoint_is_clamped_to_18_32(t, sent):
-    # The entity offers 16-30 °C, but IRTrotecESP::setTemp clamps to
-    # kTrotecMinTemp (18)..kTrotecMaxTemp (32), as the C path sends.
+    # kTrotecMinTemp (18)..kTrotecMaxTemp (32), as IRTrotecESP::setTemp
+    # clamps; 31 and 32 are new (the legacy entity stopped at 30).
     assert read(HvacState(True, "cool", t, fan="1"))["temperature"] == sent
     assert (
         TROTEC_LAYOUT.read_raw(data(HvacState(True, "cool", t, fan="1")), "temperature")
@@ -164,14 +174,14 @@ def test_registry_serves_the_port(model):
     assert isinstance(registry.get_device("trotech", model), TrotecDevice)
 
 
-@pytest.mark.parametrize("model", TROTEC_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.trotech import Trotech
-
-    legacy = LegacyDevice("trotech", model, Trotech)
-    assert device(model).capabilities == legacy.capabilities
+def test_capabilities_are_the_documented_values():
+    caps = device().capabilities
+    # kTrotecMinTemp / kTrotecMaxTemp, whole degrees.
+    assert (caps.temperature.min, caps.temperature.max) == (18.0, 32.0)
+    assert caps.modes == ("auto", "cool", "dry", "fan")  # kTrotec{Auto..Fan}
+    assert caps.fan.values == ("1", "2", "3")  # kTrotecFan{Low,Med,High}: no auto
+    assert (caps.swing_v, caps.swing_h) == (None, None)
+    assert set(caps.features) == {"sleep"}
 
 
 def test_undeclared_deviation_is_reported():

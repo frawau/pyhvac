@@ -2,6 +2,7 @@ import pytest
 
 from oracle import load_oracle
 from port_oracle import (
+    Defect,
     assert_matches_oracle,
     assert_sequence_matches_c,
     oracle_params,
@@ -18,10 +19,13 @@ from pyhvac.plugins.goodweather import (
 )
 from pyhvac.state import HvacState
 
-# Every entity value reaches C through the legacy glue (swing "auto low"/
-# "auto high" are in trans_swing; powerful and light are in the key map; the
-# entity has no sleep), so nothing is declared.
-DEFECTS = ()
+# The C path deviates from the documented values here:
+# - IRac::goodweather sends kGoodweatherSwingSlow for any swing but off (it
+#   does not use convertSwingV), so swing "auto high" (the port's "2") never
+#   reached C as kGoodweatherSwingFast.
+DEFECTS = (
+    Defect("swing_v", "fast", "slow", "IRac::goodweather sends Slow for any swing"),
+)
 
 
 def wire(raw):
@@ -120,9 +124,9 @@ def test_the_port_reproduces_the_on_cool_22_capture():
     ],
 )
 def test_real_captures_read_back(capture, expected):
-    # These carry the key actually pressed, swing fast, or an off message in
-    # cool, which the C path (and so the port) never sends; they read back
-    # through the layout.
+    # These carry the key actually pressed or an off message in cool, which
+    # the C path (and so the port) never sends; they read back through the
+    # layout. (The port does send swing fast: see the capture test below.)
     values = GOODWEATHER_LAYOUT.read(capture)
     assert GOODWEATHER_LAYOUT.checksum.check(capture)
     assert {k: values[k] for k in expected} == expected
@@ -180,10 +184,10 @@ def test_every_fan_level_uses_the_documented_codes(fan, raw):
     assert raw_read == raw
 
 
-@pytest.mark.parametrize("swing, raw", [("off", 0b10), ("1", 0b01), ("2", 0b01)])
+@pytest.mark.parametrize("swing, raw", [("off", 0b10), ("1", 0b01), ("2", 0b00)])
 def test_every_swing_value(swing, raw):
-    # IRac::goodweather sends kGoodweatherSwingSlow for any swing but off,
-    # so "auto low" and "auto high" send the same code.
+    # kGoodweatherSwingOff = 0b10, kGoodweatherSwingSlow = 0b01,
+    # kGoodweatherSwingFast = 0b00.
     raw_read = GOODWEATHER_LAYOUT.read_raw(
         data(HvacState(True, "cool", 22.0, swing_v=swing)), "swing_v"
     )
@@ -198,20 +202,52 @@ def test_powerful_is_the_turbo_bit_and_light_the_light_bit():
     assert (plain["turbo"], plain["light"]) == (0, 0)
 
 
-def test_quiet_sends_nothing():
-    # IRac::goodweather has no quiet setting.
+def test_quiet_is_not_offered():
+    # ir_Goodweather.h has no quiet bit (IRac: "No Quiet setting available").
+    assert "quiet" not in device().capabilities.features
     assert data(HvacState(True, "cool", 22.0, features={"quiet": True})) == data(
         HvacState(True, "cool", 22.0)
     )
 
 
-def test_sleep_and_air_flow_are_never_set():
-    # The entity has no sleep (IRac gets -1: setSleep(false)), and IRac has
-    # no air flow setting.
+def test_swing_offers_the_two_speeds_and_off():
+    # kGoodweatherSwingSlow / kGoodweatherSwingFast / kGoodweatherSwingOff.
+    assert device().capabilities.swing_v.values == ("off", "1", "2")
+
+
+def test_the_port_reproduces_the_swing_fast_capture():
+    # ir_Goodweather_test.cpp (issue #697): "Power: On, Mode: 1 (Cool),
+    # Temp: 20C, Fan: 3 (Low), Swing: 0 (Fast), Command: 0 (Power)".
+    target = HvacState(True, "cool", 20.0, fan="1", swing_v="2")
+    assert data(target) == ON_COOL_20_SWING_FAST
+
+
+@pytest.mark.parametrize("power", [True, False])
+def test_sleep_sets_the_sleep_bit(power):
+    # IRGoodweatherAc::setSleep; IRac::goodweather: setSleep(sleep >= 0). Its
+    # command is overwritten by setPower, as for light and turbo.
+    values = read(HvacState(power, "cool", 22.0, features={"sleep": True}))
+    assert (values["sleep"], values["command"]) == (1, "power")
+    assert read(HvacState(power, "cool", 22.0))["sleep"] == 0
+
+
+def test_undeclared_swing_fast_deviation_is_reported():
+    dev = device()
+    record = next(
+        r
+        for r in load_oracle("GOODWEATHER")
+        if r["state"].get("swing") == "auto high" and r["state"]["mode"] != "off"
+    )
+    with pytest.raises(AssertionError, match="swing_v"):
+        assert_matches_oracle(dev, record, dev.LAYOUTS, defects=())
+
+
+def test_air_flow_is_never_set():
+    # IRac has no air flow setting.
     values = read(
         HvacState(True, "heat", 18.0, fan="2", swing_v="1", features={"light": True})
     )
-    assert (values["sleep"], values["air_flow"]) == (0, 0)
+    assert values["air_flow"] == 0
 
 
 @pytest.mark.parametrize(
@@ -244,16 +280,6 @@ def test_message_shape():
 @pytest.mark.parametrize("model", GOODWEATHER_MODELS)
 def test_registry_serves_the_port(model):
     assert isinstance(registry.get_device("goodweather", model), GoodweatherDevice)
-
-
-@pytest.mark.parametrize("model", GOODWEATHER_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.goodweather import Goodweather
-
-    legacy = LegacyDevice("goodweather", model, Goodweather)
-    assert device(model).capabilities == legacy.capabilities
 
 
 def test_layouts_must_cover_every_frame():

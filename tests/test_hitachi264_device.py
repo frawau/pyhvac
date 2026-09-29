@@ -15,7 +15,11 @@ from pyhvac.ir.codec import decode
 
 # No declared defects: the C path sends the documented values for every
 # field it writes. Swing and the features have no bits (IRac::hitachi264
-# sets none of them), so the oracle's swing "on" records match as they are.
+# sets none of them) and are no longer offered, so the oracle's swing and
+# feature "on" keys are dropped (state_from_record reads only offered
+# controls) and its mode "auto" records normalise to cool, which is what C
+# sends for them (IRHitachiAc424::convertMode): C's frames stay the expected
+# ones.
 
 
 def device():
@@ -68,6 +72,8 @@ def test_off_carries_mode_cool_in_every_mode(mode):
 
 def test_auto_mode_is_sent_as_cool():
     # IRHitachiAc424::convertMode has no auto; kHitachiAc264* has none either.
+    # Auto is not offered: normalise maps it to cool, the first mode.
+    assert device().normalise(HvacState(True, "auto", 24.0)).mode == "cool"
     assert read(HvacState(True, "auto", 24.0))["mode"] == "cool"
 
 
@@ -147,14 +153,22 @@ def test_registry_serves_the_port(model):
     assert isinstance(registry.get_device("hitachi", model), Hitachi264Device)
 
 
-@pytest.mark.parametrize("model", HITACHI264_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.hitachi import Hitachi264
+def test_capabilities_are_the_documented_controls():
+    # kHitachiAc264{Cool,Fan,Dry,Heat}, kHitachiAc264Min/MaxTemp (16/32),
+    # kHitachiAc264Fan{Low,Medium,High,Auto}.
+    caps = device().capabilities
+    assert caps.modes == ("cool", "fan", "dry", "heat")
+    assert (caps.temperature.min, caps.temperature.max) == (16.0, 32.0)
+    assert caps.fan.values == ("auto", "1", "2", "3")
 
-    legacy = LegacyDevice("hitachi", model, Hitachi264)
-    assert Hitachi264Device("hitachi", model).capabilities == legacy.capabilities
+
+def test_no_op_controls_are_not_offered():
+    # The legacy entity offered auto mode (sent as cool), swing and five
+    # features, none of which has a bit in HitachiAC264Protocol.
+    caps = device().capabilities
+    assert "auto" not in caps.modes
+    assert caps.swing_v is None and caps.swing_h is None
+    assert dict(caps.features) == {}
 
 
 def test_undeclared_deviation_is_reported():

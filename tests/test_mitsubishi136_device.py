@@ -28,6 +28,18 @@ DEFECTS = (FAN_MIN, SWING_HIGHEST, SWING_HIGH)
 REAL_EXAMPLE = bytes.fromhex("23cb262100404137040000bfbec8fbffff")
 
 
+# The oracle records use the legacy vocabulary, which offered values the
+# protocol has no code for: fan "auto" (C sends kMitsubishi136FanMed), fan
+# "high" (C sends kMitsubishi136FanMax, as "highest") and swing "off" (C sends
+# kMitsubishi136SwingVAuto). They are read as the value C sent for them.
+AS_SENT = {"fan": {"auto": "medium", "high": "highest"}, "swing": {"off": "auto"}}
+
+
+def as_sent(record):
+    state = {k: AS_SENT.get(k, {}).get(v, v) for k, v in record["state"].items()}
+    return {**record, "state": state}
+
+
 def device(model="PEAD-RP71JAA Ducted"):
     return Mitsubishi136Device("mitsubishi_electric", model)
 
@@ -45,13 +57,13 @@ def read(state):
 @pytest.mark.parametrize("record", oracle_params("MITSUBISHI136"))
 def test_matches_c_library(record):
     dev = device()
-    assert_matches_oracle(dev, record, dev.LAYOUTS, DEFECTS)
+    assert_matches_oracle(dev, as_sent(record), dev.LAYOUTS, DEFECTS)
 
 
 def test_layout_round_trips_every_oracle_state():
     dev = device()
     for record in load_oracle("MITSUBISHI136"):
-        state = state_from_record(dev, record["state"])
+        state = state_from_record(dev, as_sent(record)["state"])
         (main,) = dev.frames(None, state, ())
         values = MITSUBISHI136_LAYOUT.read(main.data)
         assert MITSUBISHI136_LAYOUT.build(**values) == bytearray(main.data)
@@ -83,8 +95,6 @@ def test_checksum_rejects_a_broken_frame():
 
 def test_the_real_capture_is_reproduced():
     # With swing "1" as the documented Highest (the C path would send High).
-    state = HvacState(True, "cool", 20.0, fan="5", swing_v="1")
-    assert frame(state) == REAL_EXAMPLE
     assert frame(HvacState(True, "cool", 20.0, fan="4", swing_v="1")) == (REAL_EXAMPLE)
 
 
@@ -117,12 +127,39 @@ def test_mode_codes(mode, raw):
 
 
 @pytest.mark.parametrize(
-    "temp, raw", [(10.0, 1), (16.0, 1), (17.0, 1), (20.0, 4), (25.0, 9), (30.0, 9)]
+    "temp, raw",
+    [(10.0, 1), (16.0, 1), (17.0, 1), (20.0, 4), (25.0, 9), (30.0, 14), (35.0, 14)],
 )
-def test_setpoint_is_whole_degrees_clamped_to_17(temp, raw):
-    # setTemp clamps to kMitsubishi136MinTemp (17) and stores degrees - 16;
-    # the entity's range stops at 25.
+def test_setpoint_is_whole_degrees_clamped_to_17_30(temp, raw):
+    # setTemp clamps to kMitsubishi136MinTemp/MaxTemp (17-30) and stores
+    # degrees - 16.
     assert read(HvacState(True, "cool", temp))["temperature"] == raw
+
+
+def test_capabilities_are_the_documented_values():
+    caps = device().capabilities
+    # kMitsubishi136MinTemp / kMitsubishi136MaxTemp, whole degrees.
+    assert (caps.temperature.min, caps.temperature.max) == (17.0, 30.0)
+    assert caps.temperature.decimals == (0,)
+    # kMitsubishi136FanMin/Low/Med/Max: no auto code.
+    assert caps.fan.values == ("1", "2", "3", "4")
+    # kMitsubishi136SwingVAuto and four positions: no off code.
+    assert caps.swing_v.values == ("auto", "1", "2", "3", "4")
+    assert caps.swing_h is None
+    assert set(caps.features) == {"quiet"}
+
+
+@pytest.mark.parametrize("fan", ["auto", "5"])
+def test_fans_without_a_code_are_not_offered(fan):
+    # Removed: auto (C sent kMitsubishi136FanMed) and a fifth speed (C sent
+    # kMitsubishi136FanMax, as "4").
+    assert fan not in device().capabilities.fan.values
+
+
+def test_swing_off_is_not_offered():
+    # There is no kMitsubishi136SwingV off code; C sent SwingVAuto.
+    assert "off" not in device().capabilities.swing_v.values
+    assert device().normalise(HvacState(True, "cool", 22.0)).swing_v == "auto"
 
 
 def test_setpoint_is_kept_in_every_mode():
@@ -130,15 +167,13 @@ def test_setpoint_is_kept_in_every_mode():
         assert read(HvacState(True, mode, 22.0))["temperature"] == 6
 
 
-@pytest.mark.parametrize(
-    "fan, raw", [("auto", 2), ("1", 0), ("2", 1), ("3", 2), ("4", 3), ("5", 3)]
-)
+@pytest.mark.parametrize("fan, raw", [("1", 0), ("2", 1), ("3", 2), ("4", 3)])
 def test_every_fan_level(fan, raw):
-    # convertFan: kHigh and kMax -> FanMax, auto -> FanMed (no auto code).
+    # kMitsubishi136FanMin, FanLow, FanMed, FanMax.
     assert read(HvacState(True, "cool", 22.0, fan=fan))["fan"] == raw
 
 
-@pytest.mark.parametrize("fan", ["auto", "1", "2", "3", "4", "5"])
+@pytest.mark.parametrize("fan", ["1", "2", "3", "4"])
 def test_quiet_forces_the_quiet_fan(fan):
     state = HvacState(True, "cool", 22.0, fan=fan, features={"quiet": True})
     assert read(state)["fan"] == 0  # kMitsubishi136FanQuiet
@@ -148,11 +183,10 @@ def test_quiet_forces_the_quiet_fan(fan):
 
 @pytest.mark.parametrize(
     "swing, raw",
-    [("off", 12), ("auto", 12), ("1", 3), ("2", 2), ("3", 1), ("4", 0)],
+    [("auto", 12), ("1", 3), ("2", 2), ("3", 1), ("4", 0)],
 )
 def test_every_swing_value(swing, raw):
-    # No off code: convertSwingV(kOff) is SwingVAuto. Positions count down
-    # from SwingVHighest.
+    # SwingVAuto, then the positions counting down from SwingVHighest.
     assert read(HvacState(True, "cool", 22.0, swing_v=swing))["swing_v"] == raw
 
 
@@ -179,19 +213,9 @@ def test_registry_serves_the_port(model):
     )
 
 
-@pytest.mark.parametrize("model", MITSUBISHI136_MODELS)
-def test_capabilities_match_the_legacy_entity(model):
-    pytest.importorskip("pyhvac.irhvac")
-    from pyhvac.legacy import LegacyDevice
-    from pyhvac.plugins.mitsubishi_electric import Mitsubishi136
-
-    legacy = LegacyDevice("mitsubishi_electric", model, Mitsubishi136)
-    assert device(model).capabilities == legacy.capabilities
-
-
 def _record(swing=None, fan=None):
     return next(
-        r
+        as_sent(r)
         for r in load_oracle("MITSUBISHI136")
         if (swing is None or r["state"].get("swing") == swing)
         and (fan is None or r["state"].get("fan") == fan)

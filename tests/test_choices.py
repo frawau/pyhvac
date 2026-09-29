@@ -43,3 +43,10 @@ def test_swing_positions():
     assert choices.SWING_H_5.label("1") == "far left"
     assert choices.SWING_H_6.values == choices.SWING_H_5.values + ("6",)
     assert choices.SWING_H_6.label("6") == "wide"
+
+
+def test_fixed_fan_and_swing_without_off():
+    assert choices.FAN_3_FIXED.values == ("1", "2", "3")
+    assert choices.FAN_3_FIXED.label("1") == "low"
+    assert choices.SWING_V_AUTO_ANGLES.values == ("auto", "1", "2", "3", "4", "5")
+    assert choices.SWING_V_AUTO_ANGLES.label("3") == "45°"

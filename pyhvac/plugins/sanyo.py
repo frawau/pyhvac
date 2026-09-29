@@ -27,7 +27,7 @@ from .hvaclib import PulseBased, GenPluginObject
 from ..device import Device
 from ..fields import Field, Layout, NibbleSum
 from ..ir.model import Frame, Protocol, PulseDistance, Section
-from ..choices import FAN_3, ON_OFF, SWING
+from ..choices import FAN_3, ON_OFF, SWING, SWING_V_AUTO_ANGLES
 from ..state import Capabilities, Choice, TemperatureRange
 
 
@@ -164,17 +164,7 @@ class SanyoAcDevice(Device):
         modes=("auto", "cool", "dry", "heat"),
         temperature=TemperatureRange(16.0, 30.0),
         fan=FAN_3,
-        swing_v=Choice(
-            ("auto", "1", "2", "3", "4", "5"),
-            {
-                "auto": "auto",
-                "1": "90°",
-                "2": "60°",
-                "3": "45°",
-                "4": "30°",
-                "5": "0°",
-            },
-        ),
+        swing_v=SWING_V_AUTO_ANGLES,
         features={"sleep": ON_OFF},
     )
 

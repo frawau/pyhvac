@@ -35,8 +35,8 @@ from .hvaclib import HVAC, PulseBased, GenPluginObject, bit_reverse
 from ..device import Device
 from ..fields import Checksums, Copy, Field, Layout, Sum8
 from ..ir.model import Frame, Protocol, PulseDistance, Section
-from ..choices import FAN_5, ON_OFF, SWING, SWING_H_5
-from ..state import Capabilities, Choice, TemperatureRange
+from ..choices import FAN_5, ON_OFF, SWING, SWING_H_5, SWING_V_AUTO_ANGLES
+from ..state import Capabilities, TemperatureRange
 
 try:
     from ..irhvac import (
@@ -641,10 +641,7 @@ def _panasonic_ac_capabilities(variant):
         modes=("auto", "cool", "dry", "heat", "fan"),
         temperature=TemperatureRange(16.0, 30.0),
         fan=FAN_5,
-        swing_v=Choice(
-            ("auto", "1", "2", "3", "4", "5"),
-            {"auto": "auto", "1": "90°", "2": "60°", "3": "45°", "4": "30°", "5": "0°"},
-        ),
+        swing_v=SWING_V_AUTO_ANGLES,
         swing_h=swing_h,
         features=features,
     )
@@ -854,10 +851,7 @@ class PanasonicAc32Device(Device):
         modes=("auto", "cool", "dry", "heat", "fan"),
         temperature=TemperatureRange(16.0, 30.0),
         fan=FAN_5,
-        swing_v=Choice(
-            ("auto", "1", "2", "3", "4", "5"),
-            {"auto": "auto", "1": "90°", "2": "60°", "3": "45°", "4": "30°", "5": "0°"},
-        ),
+        swing_v=SWING_V_AUTO_ANGLES,
         swing_h=SWING,
     )
 

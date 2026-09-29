@@ -30,7 +30,7 @@ from .kelvinator import (
     KelvinatorBlockSum,
     KelvinatorDevice,
 )
-from ..choices import FAN_3, ON_OFF
+from ..choices import FAN_3, ON_OFF, SWING_V_AUTO_ANGLES
 from ..device import Device
 from ..fields import Field, Joined, Layout
 from ..ir.model import Frame, Protocol, PulseDistance, Section
@@ -262,10 +262,7 @@ GREE_LAYOUT = Layout(
 )
 
 # The legacy entities (Greev1/v2/v3): they differ in economy only.
-_GREE_SWING_V = Choice(
-    ("auto", "1", "2", "3", "4", "5"),
-    {"auto": "auto", "1": "90°", "2": "60°", "3": "45°", "4": "30°", "5": "0°"},
-)
+_GREE_SWING_V = SWING_V_AUTO_ANGLES
 _GREE_SWING_H = Choice(
     ("off", "auto", "1", "2", "3", "4", "5"),
     {

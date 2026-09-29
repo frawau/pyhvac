@@ -27,8 +27,8 @@ from .hvaclib import PulseBased, GenPluginObject
 from ..device import Device
 from ..fields import Field, Layout, NibbleSum
 from ..ir.model import Frame, Protocol, PulseDistance, Section
-from ..choices import ON_OFF, SWING
-from ..state import Capabilities, Choice, TemperatureRange
+from ..choices import FAN_3_FIXED, ON_OFF, SWING
+from ..state import Capabilities, TemperatureRange
 
 
 class Eurom(PulseBased):
@@ -132,7 +132,7 @@ class EuromDevice(Device):
     capabilities = Capabilities(
         modes=("cool", "heat", "fan", "dry"),
         temperature=TemperatureRange(16.0, 32.0),
-        fan=Choice(("1", "2", "3"), {"1": "low", "2": "medium", "3": "high"}),
+        fan=FAN_3_FIXED,
         swing_v=SWING,
         features={"sleep": ON_OFF},
     )

@@ -17,6 +17,8 @@ FAN_3 = Choice(
     ("auto", "1", "2", "3"),
     {"auto": "auto", "1": "low", "2": "medium", "3": "high"},
 )
+# A fan with three speeds and no auto.
+FAN_3_FIXED = Choice(("1", "2", "3"), {"1": "low", "2": "medium", "3": "high"})
 FAN_4 = Choice(
     ("auto", "1", "2", "3", "4"),
     {"auto": "auto", "1": "lowest", "2": "low", "3": "medium", "4": "high"},
@@ -45,6 +47,12 @@ SWING_V_ANGLES = Choice(
         "4": "30°",
         "5": "0°",
     },
+)
+
+# The same positions with auto but no "off".
+SWING_V_AUTO_ANGLES = Choice(
+    SWING_V_ANGLES.values[1:],
+    {k: v for k, v in SWING_V_ANGLES.labels.items() if k != "off"},
 )
 
 # Horizontal vane positions, far left ("1") to far right ("5"), and wide.

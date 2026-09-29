@@ -42,3 +42,35 @@ def test_a_pyhvac_console_script_is_declared():
     assert scripts and re.search(
         r'^pyhvac\s*=\s*"pyhvac\.__main__:main"', scripts.group(1), re.M
     )
+
+
+def run_raw(*args):
+    return subprocess.run(
+        [sys.executable, "-m", "pyhvac", *args], capture_output=True, text=True
+    )
+
+
+def test_bad_names_and_values_are_usage_errors_not_tracebacks():
+    for args in (
+        ("--list-models", "Nope"),
+        ("Nope", "X"),
+        ("Daikin",),  # several models, none given
+        ("Daikin", "nope"),
+        ("Daikin", "ARC433**", "--mode", "blah"),
+    ):
+        result = run_raw(*args)
+        assert result.returncode == 2, args
+        assert "Traceback" not in result.stderr and "error:" in result.stderr, args
+
+
+def test_a_state_the_device_changes_is_reported():
+    result = run_raw("Daikin", "ARC433**", "--temperature", "99", "--fan", "9")
+    assert result.returncode == 0
+    assert "sent" in result.stderr and "temperature" in result.stderr
+    assert "fan" in result.stderr
+
+
+def test_a_bare_feature_means_on():
+    brand, model = "Daikin", "ARC433**"
+    on = run("Daikin", model, "--feature", "powerful=on")
+    assert run(brand, model, "--feature", "powerful") == on

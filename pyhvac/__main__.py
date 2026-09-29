@@ -10,12 +10,27 @@ from .state import HvacState
 
 
 def _feature(text):
-    name, _, value = text.partition("=")
-    if value.lower() in ("on", "true", "yes"):
+    name, sep, value = text.partition("=")
+    if not sep or value.lower() in ("on", "true", "yes"):
         return name, True
     if value.lower() in ("off", "false", "no"):
         return name, False
     return name, value
+
+
+def _report_changes(asked, sent):
+    """Tell the user when the device could not send what was asked."""
+    changes = []
+    for name in ("power", "mode", "temperature", "fan", "swing_v", "swing_h"):
+        if getattr(asked, name) != getattr(sent, name):
+            changes.append(
+                f"{name} {getattr(sent, name)!r} (asked {getattr(asked, name)!r})"
+            )
+    for name, value in asked.features.items():
+        if sent.features.get(name) != value:
+            changes.append(f"{name} {sent.features.get(name)!r} (asked {value!r})")
+    if changes:
+        print("pyhvac: sent " + ", ".join(changes), file=sys.stderr)
 
 
 def main(argv=None):
@@ -38,22 +53,27 @@ def main(argv=None):
     if opts.list:
         print("\n".join(registry.brands()))
         return 0
-    if opts.list_models:
-        print("\n".join(registry.models(opts.list_models)))
-        return 0
-    if not opts.brand:
-        parser.error("a brand is required (see --list)")
-    device = registry.get_device(opts.brand, opts.model)
-    state = HvacState(
-        power=not opts.off,
-        mode=opts.mode,
-        temperature=opts.temperature,
-        fan=opts.fan,
-        swing_v=opts.swing_v,
-        swing_h=opts.swing_h,
-        features=dict(opts.feature),
-    )
-    signal = device.encode(None, state).signal
+    try:
+        if opts.list_models:
+            print("\n".join(registry.models(opts.list_models)))
+            return 0
+        if not opts.brand:
+            parser.error("a brand is required (see --list)")
+        device = registry.get_device(opts.brand, opts.model)
+        state = HvacState(
+            power=not opts.off,
+            mode=opts.mode,
+            temperature=opts.temperature,
+            fan=opts.fan,
+            swing_v=opts.swing_v,
+            swing_h=opts.swing_h,
+            features=dict(opts.feature),
+        )
+        command = device.encode(None, state)
+    except (KeyError, ValueError) as exc:
+        parser.error(exc.args[0] if exc.args else str(exc))
+    _report_changes(state, command.state)
+    signal = command.signal
     if opts.format == "broadlink":
         print(base64.b64encode(to_broadlink(signal)).decode())
     elif opts.format == "pronto":

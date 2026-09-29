@@ -33,6 +33,7 @@ from .hvaclib import HVAC, PulseBased, GenPluginObject, bit_reverse
 from ..device import Device
 from ..fields import Field, HighNibbleSum, Layout, NibbleSum, Sum8
 from ..ir.model import Frame, Protocol, PulseDistance, Section
+from ..choices import FAN_3, FAN_5, ON_OFF, SWING, SWING_V_ANGLES
 from ..state import Capabilities, Choice, TemperatureRange
 
 DAIKIN_NATIVE = Protocol(
@@ -480,23 +481,6 @@ def _bcd(n):
 
 
 DAIKIN_MODES = ("auto", "dry", "cool", "heat", "fan")
-DAIKIN_FAN_CHOICE = Choice(  # the three DAIKIN_FAN levels
-    ("auto", "1", "2", "3"),
-    {"auto": "auto", "1": "low", "2": "medium", "3": "high"},
-)
-DAIKIN_FAN_5_CHOICE = Choice(  # kDaikin64Fan*/kDaikin128Fan*: quiet to powerful
-    ("auto", "1", "2", "3", "4", "5"),
-    {
-        "auto": "auto",
-        "1": "lowest",
-        "2": "low",
-        "3": "medium",
-        "4": "high",
-        "5": "highest",
-    },
-)
-DAIKIN_SWING_CHOICE = Choice(("off", "swing"), {"off": "off", "swing": "on"})
-DAIKIN_ON_OFF = Choice((False, True), {False: "off", True: "on"})
 
 
 # --------------------------------------------------------------- Daikin2
@@ -573,7 +557,7 @@ class Daikin2Device(Device):
     capabilities = Capabilities(
         modes=DAIKIN_MODES,
         temperature=TemperatureRange(10.0, 32.0),
-        fan=DAIKIN_FAN_CHOICE,
+        fan=FAN_3,
         swing_v=Choice(
             ("off", "auto", "1", "2", "3", "4", "5", "6"),
             {
@@ -600,7 +584,7 @@ class Daikin2Device(Device):
             },
         ),
         features=dict.fromkeys(
-            ("economy", "powerful", "quiet", "cleaning", "purifier"), DAIKIN_ON_OFF
+            ("economy", "powerful", "quiet", "cleaning", "purifier"), ON_OFF
         ),
     )
 
@@ -703,12 +687,10 @@ class DaikinArcDevice(Device):
     capabilities = Capabilities(
         modes=DAIKIN_MODES,
         temperature=TemperatureRange(10.0, 32.0, (0, 5)),
-        fan=DAIKIN_FAN_CHOICE,
-        swing_v=DAIKIN_SWING_CHOICE,
-        swing_h=DAIKIN_SWING_CHOICE,
-        features=dict.fromkeys(
-            ("economy", "powerful", "quiet", "cleaning"), DAIKIN_ON_OFF
-        ),
+        fan=FAN_3,
+        swing_v=SWING,
+        swing_h=SWING,
+        features=dict.fromkeys(("economy", "powerful", "quiet", "cleaning"), ON_OFF),
     )
 
     def frames(self, previous, target, actions):
@@ -816,8 +798,8 @@ class Daikin64Device(Device):
     capabilities = Capabilities(
         modes=("dry", "cool", "heat", "fan"),
         temperature=TemperatureRange(16.0, 30.0),
-        fan=DAIKIN_FAN_5_CHOICE,
-        swing_v=DAIKIN_SWING_CHOICE,
+        fan=FAN_5,
+        swing_v=SWING,
     )
 
     def frames(self, previous, target, actions):
@@ -936,9 +918,9 @@ class Daikin128Device(Device):
     capabilities = Capabilities(
         modes=DAIKIN_MODES,
         temperature=TemperatureRange(16.0, 30.0),
-        fan=DAIKIN_FAN_5_CHOICE,
-        swing_v=DAIKIN_SWING_CHOICE,
-        features={"economy": DAIKIN_ON_OFF},
+        fan=FAN_5,
+        swing_v=SWING,
+        features={"economy": ON_OFF},
     )
 
     def frames(self, previous, target, actions):
@@ -1032,9 +1014,9 @@ class Daikin152Device(Device):
     capabilities = Capabilities(
         modes=DAIKIN_MODES,
         temperature=TemperatureRange(10.0, 32.0),
-        fan=DAIKIN_FAN_CHOICE,
-        swing_v=DAIKIN_SWING_CHOICE,
-        features=dict.fromkeys(("economy", "powerful", "quiet"), DAIKIN_ON_OFF),
+        fan=FAN_3,
+        swing_v=SWING,
+        features=dict.fromkeys(("economy", "powerful", "quiet"), ON_OFF),
     )
 
     def frames(self, previous, target, actions):
@@ -1122,19 +1104,8 @@ class Daikin160Device(Device):
     capabilities = Capabilities(
         modes=DAIKIN_MODES,
         temperature=TemperatureRange(10.0, 32.0),
-        fan=DAIKIN_FAN_CHOICE,
-        swing_v=Choice(
-            ("off", "auto", "1", "2", "3", "4", "5"),
-            {
-                "off": "off",
-                "auto": "auto",
-                "1": "90°",
-                "2": "60°",
-                "3": "45°",
-                "4": "30°",
-                "5": "0°",
-            },
-        ),
+        fan=FAN_3,
+        swing_v=SWING_V_ANGLES,
     )
 
     def frames(self, previous, target, actions):
@@ -1217,7 +1188,7 @@ class Daikin176Device(Device):
         modes=DAIKIN_MODES,
         temperature=TemperatureRange(10.0, 32.0),
         fan=Choice(("1", "2"), {"1": "low", "2": "high"}),
-        swing_h=DAIKIN_SWING_CHOICE,
+        swing_h=SWING,
     )
 
     def frames(self, previous, target, actions):
@@ -1296,10 +1267,10 @@ class Daikin216Device(Device):
     capabilities = Capabilities(
         modes=DAIKIN_MODES,
         temperature=TemperatureRange(10.0, 32.0),
-        fan=DAIKIN_FAN_CHOICE,
-        swing_v=DAIKIN_SWING_CHOICE,
-        swing_h=DAIKIN_SWING_CHOICE,
-        features=dict.fromkeys(("powerful", "quiet"), DAIKIN_ON_OFF),
+        fan=FAN_3,
+        swing_v=SWING,
+        swing_h=SWING,
+        features=dict.fromkeys(("powerful", "quiet"), ON_OFF),
     )
 
     def frames(self, previous, target, actions):
@@ -1387,9 +1358,9 @@ class Daikin312Device(Device):
     capabilities = Capabilities(
         modes=DAIKIN_MODES,
         temperature=TemperatureRange(10.0, 32.0, (0, 5)),
-        fan=DAIKIN_FAN_CHOICE,
-        swing_v=DAIKIN_SWING_CHOICE,
-        swing_h=DAIKIN_SWING_CHOICE,
+        fan=FAN_3,
+        swing_v=SWING,
+        swing_h=SWING,
         features=dict.fromkeys(
             (
                 "quiet",
@@ -1399,7 +1370,7 @@ class Daikin312Device(Device):
                 "purifier",
                 "cleaning",
             ),
-            DAIKIN_ON_OFF,
+            ON_OFF,
         ),
     )
 

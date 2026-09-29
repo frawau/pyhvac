@@ -794,6 +794,217 @@ HAIER_YRW02_MODELS = {  # model -> remote variant (haier_ac176_remote_model_t)
 DEVICES.update({m: HaierYrw02Device for m in HAIER_YRW02_MODELS})
 
 
+# --------------------------------------------------------------- Haier160
+# Layout from IRremoteESP8266's HaierAc160Protocol (ir_Haier.h): 20 bytes in
+# two checksummed sections, bytes 0-13 (Sum at byte 13) and 14-19 (Sum2 at
+# byte 19). Sent by sendHaierAC as one frame, MSB first, after a lone
+# kHaierAcHdr mark and space, the kHaierAcHdr/kHaierAcHdrGap header, and
+# closed by kHaierAcMinGap. IRHaierAC160::stateReset zeroes every byte, so
+# no bit comes from stale memory.
+
+HAIER160 = Protocol(
+    "haier160",
+    {
+        "main": Section(
+            PulseDistance(520, 650, 1650),  # kHaierAcBitMark/ZeroSpace/OneSpace
+            # mark(kHaierAcHdr), space(kHaierAcHdr), then sendGeneric's
+            # kHaierAcHdr/kHaierAcHdrGap header.
+            header=(3000, 3000, 3000, 4300),
+            footer=(520,),
+            gap=150000,  # kHaierAcMinGap
+            lsb_first=False,
+        )
+    },
+    carrier=38000,
+)
+
+
+@dataclass(frozen=True)
+class Haier160Checksum:
+    """IRHaierAC160::checksum: Sum = sumBytes(raw, 13) at byte 13, and
+    Sum2 = sumBytes(raw + 14, 5) at byte 19."""
+
+    parts: tuple = (Sum8(0, 13, 13), Sum8(14, 19, 19))
+
+    def positions(self):
+        return set().union(*(p.positions() for p in self.parts))
+
+    def apply(self, data):
+        for part in self.parts:
+            part.apply(data)
+
+    def check(self, data):
+        return all(part.check(data) for part in self.parts)
+
+
+HAIER160_BUTTON = {  # kHaierAcYrw02Button* / kHaierAc160Button*
+    "temp_up": 0b00000,
+    "temp_down": 0b00001,
+    "swing_v": 0b00010,
+    "swing_h": 0b00011,
+    "fan": 0b00100,
+    "power": 0b00101,
+    "mode": 0b00110,
+    "health": 0b00111,
+    "turbo": 0b01000,
+    "sleep": 0b01011,
+    "timer": 0b10000,
+    "lock": 0b10100,
+    "light": 0b10101,
+    "aux_heating": 0b10110,
+    "clean": 0b11001,
+    "cfab": 0b11010,
+}
+HAIER160_FAN = {  # canonical fan -> kHaierAcYrw02Fan*, as convertFan
+    "auto": 0b101,
+    "1": 0b011,  # low
+    "2": 0b010,  # medium
+    "3": 0b001,  # high
+}
+HAIER160_SWING_V = {  # canonical swing -> kHaierAc160SwingV*, as convertSwingV
+    "off": 0b0000,
+    "auto": 0b1100,  # airflow
+    "1": 0b0001,  # ceiling (kHighest): kHaierAc160SwingVTop
+    "2": 0b0100,  # 90° (kHigh): kHaierAc160SwingVHigh
+    "3": 0b0110,  # 45° (kMiddle): kHaierAc160SwingVMiddle
+    "4": 0b1000,  # 30° (kLow): kHaierAc160SwingVLow
+    "5": 0b0011,  # 0° (kLowest): kHaierAc160SwingVLowest
+}
+HAIER160_MIN_TEMP, HAIER160_MAX_TEMP = 16, 30  # kHaierAcYrw02Min/MaxTempC
+
+# Skeleton: IRHaierAC160::stateReset (Model kHaierAcYrw02ModelA, Prefix
+# kHaierAc160Prefix) with every field cleared; the device writes them all.
+HAIER160_LAYOUT = Layout(
+    bytes.fromhex("a6000000000000000000000000" "00b50000000000"),
+    {
+        "swing_v": Field.at(1, 0, 4, values=HAIER160_SWING_V),
+        "temperature": Field.at(  # whole °C, stored as degrees - 16
+            1,
+            4,
+            4,
+            values={
+                t: t - HAIER160_MIN_TEMP
+                for t in range(HAIER160_MIN_TEMP, HAIER160_MAX_TEMP + 1)
+            },
+        ),
+        "swing_h": Field.at(2, 5, 3),  # IRHaierAC160 has no setter
+        "health": Field.at(3, 1, 1),
+        "timer_mode": Field.at(3, 5, 3),
+        "power": Field.at(4, 6, 1),
+        "aux_heating": Field.at(4, 7, 1),
+        "off_timer_hrs": Field.at(5, 0, 5),
+        "fan": Field.at(5, 5, 3, values=HAIER160_FAN),
+        "off_timer_mins": Field.at(6, 0, 6),
+        "turbo": Field.at(6, 6, 1),
+        "quiet": Field.at(6, 7, 1),
+        "on_timer_hrs": Field.at(7, 0, 5),
+        "mode": Field.at(
+            7, 5, 3, values={"auto": 0, "cool": 1, "dry": 2, "heat": 4, "fan": 6}
+        ),
+        "on_timer_mins": Field.at(8, 0, 6),
+        "sleep": Field.at(8, 7, 1),
+        "extra_degree_f": Field.at(10, 0, 1),
+        "clean": Field.at(10, 4, 1),
+        "use_fahrenheit": Field.at(10, 5, 1),
+        "button": Field.at(12, 0, 5, values=HAIER160_BUTTON),
+        "lock": Field.at(12, 5, 1),
+        "clean2": Field.at(15, 6, 1),
+        # setFan: Fan2 is 0 for auto, else the Fan code.
+        "fan2": Field.at(16, 5, 3, values={**HAIER160_FAN, "auto": 0}),
+    },
+    checksum=Haier160Checksum(),
+)
+
+
+class Haier160Device(Device):
+    """Haier 160-bit (KFR-26GW/83@UI-Ge): full state, plus a light button.
+
+    As IRac::haier160 sends it: an off message carries mode auto
+    (convertMode maps IRac's "off" to kHaierAcYrw02Auto), so it also clears
+    turbo, quiet and AuxHeating; setMode sets AuxHeating in heat mode only;
+    turbo and quiet are kept in cool and heat only, and turbo wins when both
+    are asked (setQuiet, then setTurbo(true) clears Quiet); cleaning sets
+    Clean and Clean2; purifier sets Health; the temperature is Celsius.
+
+    The Button field (byte 12) is whatever setter ran last. IRac::haier160
+    ends with setPower (kHaierAcYrw02ButtonPower), then setLightToggle(light
+    ^ prevlight), which presses kHaierAc160ButtonLight when the light changes.
+    IRac::sendAc computes prevlight itself (not in handleToggles): the
+    previous state's light, and a fresh IRac's previous state has light off.
+    So with ``previous`` the light button is pressed only when the light
+    changes, as a persistent IRac does; with ``previous=None`` it is pressed
+    when the light is on, as a fresh IRac does. The port matches C in both.
+
+    Where the C path contradicts the header, the port sends the documented
+    value (see the Defects in tests/test_haier160_device.py):
+    - sleep: the old glue never passes sleep, so setSleep(sleep >= 0) always
+      clears Sleep; the port sets it.
+    """
+
+    PROTOCOL = HAIER160
+    LAYOUTS = (HAIER160_LAYOUT,)
+    capabilities = Capabilities(
+        modes=("auto", "cool", "dry", "heat", "fan"),
+        temperature=TemperatureRange(16.0, 30.0),
+        fan=Choice(
+            ("auto", "1", "2", "3"),
+            {"auto": "auto", "1": "low", "2": "medium", "3": "high"},
+        ),
+        swing_v=Choice(
+            ("off", "auto", "1", "2", "3", "4", "5"),
+            {
+                "off": "off",
+                "auto": "auto",
+                "1": "ceiling",
+                "2": "90°",
+                "3": "45°",
+                "4": "30°",
+                "5": "0°",
+            },
+        ),
+        features={
+            name: Choice((False, True), {False: "off", True: "on"})
+            for name in ("purifier", "sleep", "powerful", "quiet", "cleaning", "light")
+        },
+    )
+
+    def frames(self, previous, target, actions):
+        f = target.features
+        mode = target.mode if target.power else "auto"
+        # setTurbo/setQuiet only act in cool and heat; setMode(auto/dry/fan)
+        # clears both.
+        boost = mode in ("cool", "heat")
+        turbo = boost and f["powerful"]
+        quiet = boost and f["quiet"] and not f["powerful"]
+        if previous is None:
+            light = f["light"]
+        else:
+            light = f["light"] != previous.features["light"]
+        data = HAIER160_LAYOUT.build(
+            swing_v=target.swing_v,
+            temperature=int(target.temperature),
+            health=f["purifier"],
+            power=target.power,
+            aux_heating=mode == "heat",
+            fan=target.fan,
+            turbo=turbo,
+            quiet=quiet,
+            mode=mode,
+            sleep=f["sleep"],
+            clean=f["cleaning"],
+            clean2=f["cleaning"],
+            button="light" if light else "power",
+            fan2=target.fan,
+        )
+        return [Frame("main", bytes(data))]
+
+
+HAIER160_MODELS = ("KFR-26GW/83@UI-Ge", "generic 160")
+
+
+DEVICES.update({m: Haier160Device for m in HAIER160_MODELS})
+
+
 # Now the match between models and objects
 class PluginObject(GenPluginObject):
     MODELS = {

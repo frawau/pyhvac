@@ -34,7 +34,7 @@ from .hvaclib import HVAC, PulseBased, GenPluginObject
 from ..device import Device
 from ..ir.model import Frame, Protocol, PulseDistance, Section
 from ..state import BOOL, Capabilities, Choice, TemperatureRange
-from .kelvinator import Kelvinator
+from .kelvinator import KELVINATOR_SHARP_MODELS, Kelvinator, KelvinatorDevice
 
 try:
     from ..irhvac import A907, A903, A705
@@ -673,6 +673,7 @@ class JTechDevice(Device):
 
 
 DEVICES = {"j-tech": JTechDevice}
+DEVICES.update({m: KelvinatorDevice for m in KELVINATOR_SHARP_MODELS})
 
 
 class PluginObject(GenPluginObject):

@@ -24,7 +24,7 @@
 #
 
 from .hvaclib import PulseBased, GenPluginObject
-from .kelvinator import Kelvinator
+from .kelvinator import KELVINATOR_GREE_MODELS, Kelvinator, KelvinatorDevice
 
 try:
     from ..irhvac import YAW1F, YBOFB, YX1FSF
@@ -121,6 +121,10 @@ class Greev3(PulseBased):
             "economy": ["off", "on"],
             "cleaning": ["off", "on"],
         }
+
+
+DEVICES = {}
+DEVICES.update({m: KelvinatorDevice for m in KELVINATOR_GREE_MODELS})
 
 
 # Now the match between models and objects

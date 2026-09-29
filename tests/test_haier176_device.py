@@ -8,6 +8,7 @@ from pyhvac.ir.codec import decode
 from pyhvac.plugins.haier import (
     HAIER176,
     HAIER176_LAYOUT,
+    HAIER176_MABE_MODELS,
     HAIER176_MODELS,
     Haier176Device,
 )
@@ -364,3 +365,20 @@ def test_layouts_must_cover_every_frame():
     dev = device_for(record)
     with pytest.raises(AssertionError, match="layout"):
         assert_matches_oracle(dev, with_hswing(record), (), DEFECTS)
+
+
+@pytest.mark.parametrize("model", HAIER176_MABE_MODELS)
+def test_mabe_models_are_served_by_the_port(model):
+    # mabe.py's models use the Haier176A class: variant A.
+    dev = registry.get_device("mabe", model)
+    assert isinstance(dev, Haier176Device) and dev.variant == "A"
+
+
+@pytest.mark.parametrize("model", HAIER176_MABE_MODELS)
+def test_mabe_capabilities_match_the_legacy_entity(model):
+    pytest.importorskip("pyhvac.irhvac")
+    from pyhvac.legacy import LegacyDevice
+    from pyhvac.plugins.haier import Haier176A
+
+    legacy = LegacyDevice("mabe", model, Haier176A)
+    assert Haier176Device("mabe", model).capabilities == legacy.capabilities

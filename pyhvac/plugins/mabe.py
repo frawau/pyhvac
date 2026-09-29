@@ -24,7 +24,10 @@
 #
 
 from .hvaclib import PulseBased, GenPluginObject
-from .haier import Haier176A
+from .haier import HAIER176_MABE_MODELS, Haier176A, Haier176Device
+
+DEVICES = {}
+DEVICES.update({m: Haier176Device for m in HAIER176_MABE_MODELS})
 
 
 # Now the match between models and objects

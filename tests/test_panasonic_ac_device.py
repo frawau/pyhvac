@@ -493,3 +493,35 @@ def test_real_raw_capture_decodes():
     assert first.data + second.data == bytes.fromhex(
         "0220e00400000006" "0220e00400393480af0d000ee000008100001e"
     )
+
+
+# ------------------------------------------- variants from SmartIR captures
+# model_13 set with model_23 0x81: JKE-M13 (no swing_h, as JKE) in SmartIR
+# climate 1020/1024/1026, RKR-81 (swing_h positions, as RKR) in 1023/1028.
+
+
+@pytest.mark.parametrize(
+    "variant, target, capture",
+    [
+        (  # 1020 (CS-CE7HKEW): heat 30, fan 3
+            "JKE-M13",
+            HvacState(True, "heat", 30.0, fan="3", swing_v="auto"),
+            "0220e00400493c805f00000ee00000810000d9",
+        ),
+        (  # 1023 (CS-HE9JKE) / 1028 (CS-U9RKR): auto 30, fan 1, left
+            "RKR-81",
+            HvacState(True, "auto", 30.0, fan="1", swing_v="3", swing_h="2"),
+            "0220e00400093c80330a000ee0000081000077",
+        ),
+    ],
+)
+def test_smartir_variants_reproduce_the_captures(variant, target, capture):
+    dev = PanasonicAcDevice("Test", "unit", variant=variant)
+    sent = dev.frames(None, dev.normalise(target), ())
+    assert sent[-1].data.hex() == capture
+
+
+def test_smartir_variants_keep_their_base_capabilities():
+    for variant, base in (("JKE-M13", "JKE"), ("RKR-81", "RKR")):
+        caps = PanasonicAcDevice("Test", "unit", variant=variant).capabilities
+        assert caps == PanasonicAcDevice("Test", "unit", variant=base).capabilities

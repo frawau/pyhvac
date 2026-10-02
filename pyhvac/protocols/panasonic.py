@@ -187,7 +187,26 @@ PANASONIC_AC_VARIANTS = {
     "JKE": dict(model_13=0, model_21=0, model_23=0x81, clock=0, swing_h=None),
     "CKP": dict(model_13=0, model_21=1, model_23=0x01, clock=0, swing_h=None),
     "RKR": dict(model_13=1, model_21=0, model_23=0x89, clock=0, swing_h="positions"),
+    # Not panasonic_ac_remote_model_t: remotes SmartIR captured, each set
+    # model_13 with model_23 0x81, behaving otherwise as their ``base``.
+    "JKE-M13": dict(  # SmartIR climate 1020, 1024, 1026
+        model_13=1, model_21=0, model_23=0x81, clock=0, swing_h=None, base="JKE"
+    ),
+    "RKR-81": dict(  # SmartIR climate 1023, 1028
+        model_13=1,
+        model_21=0,
+        model_23=0x81,
+        clock=0,
+        swing_h="positions",
+        base="RKR",
+    ),
 }
+
+
+def _base(variant):
+    """The panasonic_ac_remote_model_t whose behaviour ``variant`` has."""
+    return PANASONIC_AC_VARIANTS[variant].get("base", variant)
+
 
 _PANASONIC_AC_ON_OFF = ON_OFF
 _PANASONIC_AC_POSITIONS = SWING_H_5
@@ -233,6 +252,7 @@ class PanasonicAcDevice(Device):
     """
 
     PROTOCOL = PANASONIC_AC
+    VARIANTS = ("JKE-M13", "RKR-81")  # beyond the 0.1.x models'
 
     def __init__(self, brand, model, variant=None):
         super().__init__(brand, model)
@@ -245,11 +265,10 @@ class PanasonicAcDevice(Device):
             )
         if self.variant not in PANASONIC_AC_VARIANTS:
             raise ValueError(f"unknown PanasonicAc variant {self.variant!r}")
-        self.capabilities = _panasonic_ac_capabilities(self.variant)
+        base = _base(self.variant)
+        self.capabilities = _panasonic_ac_capabilities(base)
         second = (
-            PANASONIC_AC_SECOND_CKP
-            if self.variant in ("CKP", "RKR")
-            else PANASONIC_AC_SECOND
+            PANASONIC_AC_SECOND_CKP if base in ("CKP", "RKR") else PANASONIC_AC_SECOND
         )
         self.LAYOUTS = (PANASONIC_AC_FIRST, second)
 

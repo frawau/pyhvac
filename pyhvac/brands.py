@@ -665,6 +665,69 @@ MODELS = (
     ("Mundoclima", "MUPR-24-H5A", "unit", ElectraAcDevice, "aux"),  # SmartIR 3220
     ("PARKAIR", "DI-A", "unit", ElectraAcDevice, "aux"),  # SmartIR 3300
     ("Zephir", "DualSplit", "unit", ElectraAcDevice, "aux"),  # SmartIR 3380
+    ("Toyotomi", "AKIRA GAN/GAG-A128 VL", "unit", GreeDevice, "YX1FSF"),  # SmartIR 1000
+    ("Panasonic", "CS-CE7HKEW", "unit", PanasonicAcDevice, "JKE-M13"),  # SmartIR 1020
+    ("Panasonic", "CS-CE9HKEW", "unit", PanasonicAcDevice, "JKE-M13"),  # SmartIR 1020
+    ("Panasonic", "CS-CE12HKEW", "unit", PanasonicAcDevice, "JKE-M13"),  # SmartIR 1020
+    ("Panasonic", "CS-PC24MKF", "unit", PanasonicAcDevice, "JKE-M13"),  # SmartIR 1020
+    ("Panasonic", "CS-C24PKF", "unit", PanasonicAcDevice, "JKE-M13"),  # SmartIR 1020
+    ("Panasonic", "CS-HE9JKE", "unit", PanasonicAcDevice, "RKR-81"),  # SmartIR 1023
+    ("Panasonic", "CS-HE12JKE", "unit", PanasonicAcDevice, "RKR-81"),  # SmartIR 1023
+    ("Panasonic", "CS-HE9LKE", "unit", PanasonicAcDevice, "RKR-81"),  # SmartIR 1023
+    ("Panasonic", "CS-PC12QKT", "unit", PanasonicAcDevice, "JKE-M13"),  # SmartIR 1026
+    ("Panasonic", "CS-U9RKR", "unit", PanasonicAcDevice, "RKR-81"),  # SmartIR 1028
+    ("Panasonic", "CS-U12RKR", "unit", PanasonicAcDevice, "RKR-81"),  # SmartIR 1028
+    ("Panasonic", "CS-E12JKDW", "unit", PanasonicAcDevice, "JKE-M13"),  # SmartIR 1030
+    (
+        "Panasonic",
+        "SRK25ZMP-S, SRK35ZMP-S, SRK45ZMP-S",
+        "unit",
+        MitsubishiHeavy88Device,
+        None,
+    ),  # SmartIR 1031
+    ("Hitachi", "RAC-50HK1", "unit", Hitachi264Device, None),  # SmartIR 1080
+    ("Daikin", "FTE09NV25", "unit", Daikin160Device, None),  # SmartIR 1111
+    (
+        "Mitsubishi Electric",
+        "PAR-FL32MA",
+        "unit",
+        Mitsubishi136Device,
+        None,
+    ),  # SmartIR 1131
+    ("Carrier", "40MAQB12B--3", "unit", MideaDevice, "RG57-F"),  # SmartIR 1163
+    ("Carrier", "40MAQB18B--3", "unit", MideaDevice, "RG57-F"),  # SmartIR 1163
+    ("Sungold", "Sungold", "unit", MideaDevice, "RG57-F"),  # SmartIR 1220
+    ("Consul", "CBV12CBBNA", "unit", KelonDevice, "dry-grade"),  # SmartIR 1241
+    ("Consul", "CBY12DBBNA", "unit", KelonDevice, "dry-grade"),  # SmartIR 1241
+    ("Haier", "Top-Tech 14", "unit", HaierYrw02Device, "A"),  # SmartIR 1321
+    ("Midea", "MPD-12CRN7", "unit", MideaDevice, "RG57"),  # SmartIR 1392
+    ("Midea", "MPPHB-09CRN7-QB6-N", "unit", MideaDevice, "RG57"),  # SmartIR 1393
+    ("Midea", "RG10B(D1)/BGEFU1", "remote", MideaDevice, "RG57"),  # SmartIR 1395
+    ("Hisense", "DGR11R2", "unit", KelonDevice, "dry-grade"),  # SmartIR 1522
+    ("Beko", "BXEU 090", "unit", HaierYrw02Device, "A"),  # SmartIR 1603
+    ("Electrolux", "EACS-HA", "unit", GreeDevice, "YAW1F"),  # SmartIR 1701
+    ("Trotec", "YX1F", "unit", GreeDevice, "YAW1F"),  # SmartIR 1781
+    ("Pioneer", "WYS018GMFI17RL", "unit", MideaDevice, "RG57-F"),  # SmartIR 2040
+    ("Pioneer", "WYS009GMFI17RL", "unit", MideaDevice, "RG57-F"),  # SmartIR 2040
+    ("Pioneer", "CB018GMFILCFHD", "unit", MideaDevice, "RG57-F"),  # SmartIR 2040
+    ("Pioneer", "CB012GMFILCFHD", "unit", MideaDevice, "RG57-F"),  # SmartIR 2040
+    ("IGC", "RAK-12NH", "unit", KelonDevice, "dry-grade"),  # SmartIR 2200
+    ("IGC", "RAK-18NH", "unit", KelonDevice, "dry-grade"),  # SmartIR 2200
+    ("Blueridge", "RG57A4", "unit", MideaDevice, "RG57-F"),  # SmartIR 2220
+    ("Blueridge", "BGEFU1", "unit", MideaDevice, "RG57-F"),  # SmartIR 2220
+    ("Endesa", "DGR11", "unit", KelonDevice, "dry-grade"),  # SmartIR 2500
+    ("Goodman", "MSH123E21AXAA", "unit", MideaDevice, "RG57"),  # SmartIR 2900
+    ("Goodman", "MST183E20ACAA", "unit", MideaDevice, "RG57"),  # SmartIR 2900
+    ("Goodman", "RG57E1/BGEU1", "remote", MideaDevice, "RG57"),  # SmartIR 2900
+    (
+        "EcoAir",
+        "Split Type Wall Air Conditioner",
+        "unit",
+        MideaDevice,
+        "RG57-F",
+    ),  # SmartIR 2960
+    ("Viessmann", "Vitoclima 300-S", "unit", GreeDevice, "YAW1F-wifi"),  # SmartIR 3040
+    ("Hisense", "AS-07UR4SYDD815G", "unit", KelonDevice, "dry-grade"),  # SmartIR 5520
 )
 
 # 0.1.x strings of the devices that were pure Python in 0.1.x.

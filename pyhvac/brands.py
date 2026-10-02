@@ -1020,6 +1020,9 @@ MODELS = (
     ("Daitsu", "DOS12KIDB", "unit", GreeDevice, "YAW1F-0"),  # SmartIR 1763
     ("Saunier Duval", "1", "unit", GreeDevice, "YAW1F"),  # SmartIR 1880
     ("Sigma", "SGS32H13NE", "unit", GreeDevice, "YAW1F"),  # SmartIR 8800
+    ("Panasonic", "CS-MRE7MKE", "unit", PanasonicAcDevice, "JKE-M13"),  # SmartIR 1024
+    ("LG", "A06AWV", "unit", LgAcDevice, "GE6711AR2853M"),  # SmartIR 1062
+    ("LG", "AKB74295303", "unit", Lg2Device, "AKB74955603"),  # SmartIR 1068
 )
 
 # 0.1.x strings of the devices that were pure Python in 0.1.x.

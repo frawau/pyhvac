@@ -643,6 +643,28 @@ MODELS = (
     ("Kaden", "KS24", "unit", CoolixDevice, None),  # SmartIR 3360
     ("Kaden", "KS28", "unit", CoolixDevice, None),  # SmartIR 3360
     ("LG", "P12RK", "unit", LgAcDevice, "GE6711AR2853M"),  # SmartIR 7062
+    ("Fujitsu", "ASYG18LF", "unit", FujitsuAcDevice, "ARRAH2E"),  # SmartIR 1292
+    ("Fujitsu", "AR-RY12", "unit", FujitsuAcDevice, "ARRAH2E"),  # SmartIR 1292
+    ("Beko", "BEVCA 120", "unit", ElectraAcDevice, "aux"),  # SmartIR 1600
+    ("Electrolux", "EXP26U758CW", "unit", ElectraAcDevice, "aux"),  # SmartIR 1703
+    ("Ballu", "YKR-K/002E", "unit", ElectraAcDevice, "aux"),  # SmartIR 1800
+    ("AUX", "AUX FREEDOM AUX-09FH", "unit", ElectraAcDevice, "aux"),  # SmartIR 1961
+    ("AUX", "iClima ICI-09A", "unit", ElectraAcDevice, "aux"),  # SmartIR 1962
+    ("AUX", "Kendal Split Inverter", "unit", ElectraAcDevice, "aux"),  # SmartIR 1963
+    ("Sendo", "SND-18/IK", "unit", ElectraAcDevice, "aux"),  # SmartIR 2080
+    ("BAXI", "BAXI", "unit", ElectraAcDevice, "aux"),  # SmartIR 2380
+    ("FanWorld", "FW6-3000", "unit", ElectraAcDevice, "aux"),  # SmartIR 2460
+    ("ELGIN", "HVQI18B2IA", "unit", ElectraAcDevice, "aux"),  # SmartIR 2800
+    ("Mundoclima", "MUPR-09-H9A", "unit", ElectraAcDevice, "aux"),  # SmartIR 3220
+    ("Mundoclima", "MUPR-12-H9A", "unit", ElectraAcDevice, "aux"),  # SmartIR 3220
+    ("Mundoclima", "MUPR-18-H9A", "unit", ElectraAcDevice, "aux"),  # SmartIR 3220
+    ("Mundoclima", "MUPR-24-H9A", "unit", ElectraAcDevice, "aux"),  # SmartIR 3220
+    ("Mundoclima", "MUPR-09-H5A", "unit", ElectraAcDevice, "aux"),  # SmartIR 3220
+    ("Mundoclima", "MUPR-12-H5A", "unit", ElectraAcDevice, "aux"),  # SmartIR 3220
+    ("Mundoclima", "MUPR-18-H5A", "unit", ElectraAcDevice, "aux"),  # SmartIR 3220
+    ("Mundoclima", "MUPR-24-H5A", "unit", ElectraAcDevice, "aux"),  # SmartIR 3220
+    ("PARKAIR", "DI-A", "unit", ElectraAcDevice, "aux"),  # SmartIR 3300
+    ("Zephir", "DualSplit", "unit", ElectraAcDevice, "aux"),  # SmartIR 3380
 )
 
 # 0.1.x strings of the devices that were pure Python in 0.1.x.

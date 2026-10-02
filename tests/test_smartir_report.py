@@ -70,8 +70,9 @@ def test_a_file_without_models_is_named_after_its_brand():
     assert (new[0].brand, new[0].model) == ("Acme", "Acme")
 
 
-def test_an_unknown_model_is_named_after_its_brand():
-    new, _ = rows([(file(8, "Acme", "Unknown"), Match("covered", "CoolixDevice"))])
+@pytest.mark.parametrize("unknown", ["Unknown", "Unknow"])
+def test_an_unknown_model_is_named_after_its_brand(unknown):
+    new, _ = rows([(file(8, "Acme", unknown), Match("covered", "CoolixDevice"))])
     assert (new[0].brand, new[0].model) == ("Acme", "Acme")
 
 

@@ -30,7 +30,7 @@ from smartir.codes import parse  # noqa: E402
 KIND = "unit"  # SmartIR lists the units a file was learned from
 # Manufacturer spellings corrected (author's decisions, 2026-10-02).
 BRANDS = {"ggeneralelectric": "General Electric", "fuji": "Fujitsu"}
-UNKNOWN_MODELS = {"unknown", ""}  # named after the brand instead
+UNKNOWN_MODELS = {"unknown", "unknow", ""}  # named after the brand instead
 REMOTE_SUFFIX = re.compile(r"\s*\(remote\)\s*$", re.IGNORECASE)
 SKIPPED_FLAG = 0.1  # a file with more unreadable codes than this is flagged
 

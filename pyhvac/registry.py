@@ -59,6 +59,16 @@ def get_device(brand, model=None):
     return cls(name, model, variant=variant)
 
 
+def variant_of(cls, brand, model):
+    """The variant pyhvac.brands gives ``cls`` for ``brand``/``model``, or
+    None (no row, another class, or the row has none): for Devices built
+    directly rather than through ``get_device``."""
+    entry = _ROWS.get(_key(brand), (None, {}))[1].get(_key(model))
+    if entry is None or entry[2] is not cls:
+        return None
+    return entry[3]
+
+
 def _brand(brand):
     try:
         return _ROWS[_key(brand)]

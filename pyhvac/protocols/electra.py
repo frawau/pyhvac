@@ -155,6 +155,10 @@ class ElectraAcDevice(Device):
 
     def __init__(self, brand, model, variant=None):
         super().__init__(brand, model)
+        if variant is None:  # built directly: the brands table's variant
+            from ..registry import variant_of
+
+            variant = variant_of(type(self), brand, model)
         if variant is not None and variant not in self.VARIANTS:
             raise ValueError(f"unknown Electra A/C variant {variant!r}")
         self.variant = variant

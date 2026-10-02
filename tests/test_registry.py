@@ -30,3 +30,11 @@ def test_model_may_be_left_out_only_for_single_model_brands():
     several = next(b for b in registry.brands() if len(registry.models(b)) > 1)
     with pytest.raises(KeyError, match="several models"):
         registry.get_device(several)
+
+
+def test_variant_of_reads_the_brands_table():
+    from pyhvac.protocols.coolix import CoolixDevice
+
+    assert registry.variant_of(CoolixDevice, "kelvinator", "KSV25HRG") == "quiet"
+    assert registry.variant_of(CoolixDevice, "Beko", "BINR 070/071") is None
+    assert registry.variant_of(CoolixDevice, "Nobody", "nothing") is None

@@ -392,3 +392,13 @@ def test_a_decode_without_data_is_no_decode():
     )
     f = synthetic(brand, model)
     assert all(decode_code(airwell, list(c.pulses)) is None for c in f.codes)
+
+
+def test_a_lead_in_before_the_message_is_skipped():
+    # Hitachi captures (1084) start with a 30 ms mark and a 50 ms space.
+    f = coolix_file()
+    led = tuple(
+        dataclasses.replace(c, pulses=(30000, 50000) + tuple(c.pulses)) for c in f.codes
+    )
+    m = match(dataclasses.replace(f, codes=led), CANDIDATES)
+    assert m.verdict == "covered" and m.candidate.startswith("CoolixDevice")

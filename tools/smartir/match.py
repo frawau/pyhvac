@@ -43,6 +43,7 @@ CUT_SPACE = 7000  # µs: a learned code may be cut after any space this long
 # Learned captures are jittery: decoding uses at least this tolerance (the
 # checksums and the encoding comparison decide whether a code is pyhvac's).
 LOOSE_TOLERANCE = 0.40
+LEAD_IN = 8  # pulses: a message may start after a long space this early
 LOOSE_GAP = 0.5  # and accepts gaps down to this share of the protocol's
 DECODE_SHARE = 0.75  # a candidate must decode this share of the codes
 SAMPLE = 24  # codes the mapping is fitted on
@@ -172,17 +173,20 @@ def _loose(protocol):
 
 def decode_code(candidate, pulses):
     """The frames a code decodes to (bytes per frame), or None: the longest
-    decode, the whole code first, then prefixes cut at long spaces (learned
-    codes often repeat), each with the longest sequences first."""
-    cuts = sorted(
-        {len(pulses)}
-        | {i + 1 for i, d in enumerate(pulses) if i % 2 and d >= CUT_SPACE},
-        reverse=True,
+    decode. It may start after a long space (a lead-in before the message)
+    and end at one (learned codes often repeat); longer spans and longer
+    sequences are tried first."""
+    long_spaces = [i + 1 for i, d in enumerate(pulses) if i % 2 and d >= CUT_SPACE]
+    starts = [0] + [i for i in long_spaces if i <= LEAD_IN]
+    ends = sorted({len(pulses)} | set(long_spaces), reverse=True)
+    spans = sorted(
+        ((a, b) for a in starts for b in ends if b > a),
+        key=lambda span: (span[0] - span[1], span[0]),
     )
-    for end in cuts:
+    for start, end in spans:
         for seq in reversed(candidate.sequences):
             try:
-                frames = decode(candidate.protocol, pulses[:end], expected=seq)
+                frames = decode(candidate.protocol, pulses[start:end], expected=seq)
             except (DecodeError, ValueError):
                 continue
             data = tuple(f.data for f in frames)

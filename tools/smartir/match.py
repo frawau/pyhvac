@@ -567,9 +567,12 @@ def _rank(m):
     )
 
 
-# Layout fields a file cannot pin down: the key pressed (button) and the
-# toggles (set when a setting changed), which depend on the previous state.
-UNRECORDED = re.compile(r"^(button|mode_button|.*_toggle)$")
+# Layout fields a file cannot pin down: the key pressed (button), the
+# toggles (set when a setting changed), which depend on the previous state,
+# and the remote's clock (the moment of the capture).
+UNRECORDED = re.compile(
+    r"^(button|mode_button|.*_toggle|clock|clock_.*|curr_(hours|mins)|unknown_clock)$"
+)
 # Fields an off message carries from the last state (mode, setpoint, fan,
 # swing): remotes send the last state, IRac-style ports a normalised one; the
 # unit turns off either way, so an off code is not compared on them.

@@ -1,4 +1,5 @@
 import dataclasses
+import itertools
 import random
 
 import pytest
@@ -402,3 +403,22 @@ def test_a_lead_in_before_the_message_is_skipped():
     )
     m = match(dataclasses.replace(f, codes=led), CANDIDATES)
     assert m.verdict == "covered" and m.candidate.startswith("CoolixDevice")
+
+
+def test_a_clock_field_is_not_compared():
+    # A remote sends its time of day: the capture's moment, not the state.
+    from pyhvac.protocols.mitsubishi_electric import MITSUBISHI_AC_LAYOUT
+
+    minutes = itertools.cycle(range(0, 1440, 7))
+
+    def clocked(data):
+        data = bytearray(data)
+        MITSUBISHI_AC_LAYOUT.write_raw(data, "clock", next(minutes) // 10)
+        MITSUBISHI_AC_LAYOUT.checksum.apply(data)
+        return bytes(data)
+
+    brand, model = next(
+        (b, m) for b, m, k, c, v in brands.MODELS if c.__name__ == "MitsubishiAcDevice"
+    )
+    m = match(synthetic(brand, model, tamper=clocked), CANDIDATES)
+    assert m.verdict == "covered" and m.candidate == "MitsubishiAcDevice"

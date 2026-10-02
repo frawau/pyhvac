@@ -1,4 +1,5 @@
 import base64
+import struct
 
 import pytest
 
@@ -29,9 +30,26 @@ def test_signed_raw_lists_become_pulses(controller, code):
     assert to_pulses(code, controller, "Raw") == PULSES
 
 
-def test_xiaomi_raw_is_unsupported():
+def z6(pulses):
+    """A Xiaomi (Chuangmi) "Z6" raw code: 0x67 0xA5, the pulse count (uint16
+    LE), 16 durations (uint32 LE), then one table index per pulse, two per
+    byte, low nibble first."""
+    table = sorted(set(pulses))
+    body = bytes([0x67, 0xA5]) + struct.pack("<H", len(pulses))
+    body += b"".join(struct.pack("<I", d) for d in table + [0] * (16 - len(table)))
+    idx = [table.index(p) for p in pulses] + [0] * (len(pulses) % 2)
+    body += bytes(idx[i] | idx[i + 1] << 4 for i in range(0, len(idx), 2))
+    return base64.b64encode(body).decode()
+
+
+def test_xiaomi_z6_codes_become_pulses():
+    assert to_pulses(z6(PULSES), "Xiaomi", "Raw") == PULSES
+
+
+def test_other_xiaomi_codes_are_unsupported():
+    # the compressed "m..."/"n..." codes
     with pytest.raises(UnsupportedFormat):
-        to_pulses("Z6WHAQAA", "Xiaomi", "Raw")
+        to_pulses("m0wmssmM4mIApTOYTKbSycgEnNJzOQA4mM1mEwAQwAPw", "Xiaomi", "Raw")
 
 
 def test_parse_walks_modes_fans_swings_and_temperatures():

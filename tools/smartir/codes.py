@@ -3,7 +3,7 @@
 SmartIR stores one learned code per state: ``commands["off"]`` and
 ``commands[mode][fan][swing?][temperature]``. Codes are Broadlink packets
 (base64), or signed µs lists (ESPHome: JSON, LOOKin: space separated).
-Xiaomi's compressed formats cannot be turned into pulses.
+Xiaomi's "Z6" raw codes are read; its compressed ones cannot be.
 
 Development tool only: the files are analysed to find, fix or port the
 pyhvac protocol that generates their codes; pyhvac never serves them.
@@ -52,10 +52,32 @@ def _broadlink_pulses(packet):
     return pulses
 
 
+def _xiaomi_pulses(code):
+    """µs pulses of a Xiaomi (Chuangmi) "Z6" raw code: 0x67 0xA5, the pulse
+    count (uint16 LE), 16 durations (uint32 LE), then one table index per
+    pulse, two per byte, low nibble first. Xiaomi's other (compressed)
+    codes are unsupported."""
+    if not isinstance(code, str):
+        raise ValueError(f"not a code: {code!r}")
+    text = code.strip()
+    try:
+        data = base64.b64decode(text + "=" * (-len(text) % 4))
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError(f"bad base64: {exc}") from None
+    if data[:2] != b"\x67\xa5" or len(data) < 68:
+        raise UnsupportedFormat("Xiaomi compressed IR codes")
+    (count,) = struct.unpack("<H", data[2:4])
+    table = struct.unpack("<16I", data[4:68])
+    nibbles = [n for byte in data[68:] for n in (byte & 0x0F, byte >> 4)]
+    if len(nibbles) < count:
+        raise ValueError("Z6 code shorter than its pulse count")
+    return [table[i] for i in nibbles[:count]]
+
+
 def to_pulses(code, controller, encoding):
     """Unsigned µs pulses (mark first) for one stored code."""
     if controller == "Xiaomi":
-        raise UnsupportedFormat("Xiaomi compressed IR codes")
+        return _xiaomi_pulses(code)
     if not isinstance(code, (str, list)):
         raise ValueError(f"not a code: {code!r}")
     if encoding == "Base64":

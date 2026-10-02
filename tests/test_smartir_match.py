@@ -486,3 +486,37 @@ def test_frames_of_the_same_length_with_different_layouts_are_valid():
     dev = Tcl112AcDevice("TCL", "unit", variant="TAC09CHSD-R")
     m = match(synthetic("TCL", "unit", dev=dev), CANDIDATES)
     assert m.verdict == "covered" and m.candidate == "Tcl112AcDevice/TAC09CHSD-R"
+
+
+def test_a_feature_used_under_one_label_is_explained_on_a_large_device():
+    # TCL112 -X: 5 modes, half degrees, 6 fans, 14 swing pairs; the
+    # "turbo" label's codes are the powerful feature.
+    from pyhvac.protocols.tcl import Tcl112AcDevice
+
+    dev = Tcl112AcDevice("TCL", "unit", variant="TAC09CHSD-X83")
+    codes = []
+    for mode in ("cool", "heat"):
+        for label, fan, powerful in (("low", "1", False), ("turbo", "auto", True)):
+            for t in range(16, 31):
+                st = HvacState(
+                    True, mode, float(t), fan=fan, features={"powerful": powerful}
+                )
+                pulses = dev.encode(None, st).signal.pulses
+                codes.append(Code(Key(mode, label, None, float(t)), tuple(pulses)))
+    f = SmartIRFile(
+        5,
+        "TCL",
+        ("X",),
+        "Broadlink",
+        "Base64",
+        16,
+        30,
+        1,
+        ("cool", "heat"),
+        ("low", "turbo"),
+        (),
+        tuple(codes),
+        0,
+    )
+    m = match(f, CANDIDATES)
+    assert m.verdict == "covered" and m.candidate == "Tcl112AcDevice/TAC09CHSD-X83"

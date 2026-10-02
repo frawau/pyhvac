@@ -463,13 +463,23 @@ def _off_frames(device, decoded, units, fan_map, swing_map, features, modes):
 
 
 def _temperatures(device, decoded, units):
-    """The setpoints worth trying: the file's keys and the device's whole
-    degrees (and its half degrees, if it has them)."""
+    """The setpoints worth trying: the file's keys (a code is relabelled
+    within the file's own states), else the device's whole degrees (and its
+    half degrees, if it has them)."""
     caps = device.capabilities.temperature
     out = {_celsius(k, units) for k, _ in decoded if k.temperature is not None}
-    step = 5 if 5 in caps.decimals else 10
-    out |= {t / 10 for t in range(round(caps.min * 10), round(caps.max * 10) + 1, step)}
-    return sorted(t for t in out if t is not None)
+    if not out:
+        step = 5 if 5 in caps.decimals else 10
+        lo, hi = round(caps.min * 10), round(caps.max * 10)
+        out = {t / 10 for t in range(lo, hi + 1, step)}
+    return sorted(out)
+
+
+def _modes(device, decoded):
+    """The file's modes the device has, else all of the device's."""
+    caps = device.capabilities
+    out = [m for m in caps.modes if m in {MODE.get(k.mode) for k, _ in decoded}]
+    return out or list(caps.modes)
 
 
 def _reachable(device, decoded, units, features):
@@ -487,12 +497,13 @@ def _reachable(device, decoded, units, features):
         for value in choice.values:
             if value != features.get(name):
                 variants.append({**features, name: value})
-    size = 2 * len(caps.modes) * len(temps) * len(fans) * len(swings)
+    modes = _modes(device, decoded)
+    size = 2 * len(modes) * len(temps) * len(fans) * len(swings)
     if size * len(variants) > REACH_LIMIT:
         variants = variants[: max(1, REACH_LIMIT // max(size, 1))]
     out = {}
     for feats in variants:
-        product = itertools.product((True, False), caps.modes, temps, fans, swings)
+        product = itertools.product((True, False), modes, temps, fans, swings)
         for power, mode, t, fan, swing in product:
             try:
                 v, h = swing or ("off", "off")

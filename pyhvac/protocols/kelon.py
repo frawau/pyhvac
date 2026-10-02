@@ -84,6 +84,11 @@ KELON_LAYOUT = Layout(
 # capture (0x1679030683) carries 25C.
 KELON_FIXED_TEMPERATURE = {"auto": 26, "dry": 25, "fan": 25}
 KELON_MIN_TEMP = 18  # kKelonMinTemp
+# The "dry-grade" variant: in dry mode the setpoint sets the dehumidifier
+# grade (DryGrade, sign-magnitude -2..+2) relative to the 25 °C dry mode
+# sends, as SmartIR climate 1522, 2200, 2500 and 5520 step it with the
+# temperature keys. IRac::kelon passes grade 0.
+KELON_DRY_GRADE = {-2: 0b110, -1: 0b101, 0: 0, 1: 0b001, 2: 0b010}
 
 
 class KelonDevice(Device):
@@ -137,6 +142,7 @@ class KelonDevice(Device):
 
     PROTOCOL = KELON
     LAYOUTS = (KELON_LAYOUT,)
+    VARIANTS = ("dry-grade",)
     capabilities = Capabilities(
         modes=("auto", "cool", "fan", "dry", "heat"),
         temperature=TemperatureRange(18.0, 32.0),
@@ -144,6 +150,16 @@ class KelonDevice(Device):
         swing_v=SWING,
         features={"sleep": ON_OFF, "powerful": ON_OFF},
     )
+
+    def __init__(self, brand, model, variant=None):
+        super().__init__(brand, model)
+        if variant is None:  # built directly: the brands table's variant
+            from ..registry import variant_of
+
+            variant = variant_of(type(self), brand, model)
+        if variant is not None and variant not in self.VARIANTS:
+            raise ValueError(f"unknown Kelon variant {variant!r}")
+        self.variant = variant
 
     def frames(self, previous, target, actions):
         mode, fan = target.mode, target.fan
@@ -157,7 +173,12 @@ class KelonDevice(Device):
         super_cool = target.features.get("powerful", False)
         if super_cool:  # IRKelonAc::setSupercool(true)
             mode, temperature, fan = "cool", KELON_MIN_TEMP, "3"
+        grade = 0
+        if self.variant == "dry-grade" and mode == "dry" and not super_cool:
+            offset = int(target.temperature) - KELON_FIXED_TEMPERATURE["dry"]
+            grade = KELON_DRY_GRADE[max(-2, min(2, offset))]
         data = KELON_LAYOUT.build(
+            dry_grade=grade,
             fan=fan,
             power_toggle=toggle,
             sleep=target.features["sleep"],

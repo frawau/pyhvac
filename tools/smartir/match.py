@@ -215,12 +215,12 @@ def _owners(device, lengths):
 @functools.lru_cache(maxsize=None)
 def _mask(device, lengths):
     """Joined-message mask clearing the checksum bits (a checksum follows
-    the other fields) and the key-pressed fields (KEY_FIELDS: a capture's
-    value there is the key the person pressed, which the file does not
-    record): neither counts as a difference."""
+    the other fields) and the UNRECORDED fields (a capture's value there
+    depends on the key pressed or the previous state, which the file does
+    not record): neither counts as a difference."""
     mask = bytearray(b"\xff" * sum(lengths))
     for bit, name in _owners(device, lengths).items():
-        if name == "checksum" or name in KEY_FIELDS:
+        if name == "checksum" or UNRECORDED.match(name):
             mask[bit // 8] &= ~(1 << bit % 8) & 0xFF
     return bytes(mask)
 
@@ -241,7 +241,7 @@ def _off_mask(device, lengths):
     """``_mask`` also clearing the CARRIED fields."""
     mask = bytearray(_mask(device, lengths))
     for bit, name in _owners(device, lengths).items():
-        if CARRIED.match(name) and name not in KEY_FIELDS:
+        if CARRIED.match(name) and not UNRECORDED.match(name):
             mask[bit // 8] &= ~(1 << bit % 8) & 0xFF
     return bytes(mask)
 
@@ -349,7 +349,7 @@ def _gaps(device, frames, expected):
         for bit in range(8):
             if (p ^ q) >> bit & 1:
                 out.add(owners.get(8 * i + bit, f"byte {i} bit {bit}"))
-    out -= set(KEY_FIELDS)  # the key pressed is not a gap
+    out = {n for n in out if not UNRECORDED.match(n)}  # not gaps
     if len(out) > 1:
         out.discard("checksum")  # it follows the other fields
     return out
@@ -490,7 +490,9 @@ def _rank(m):
     )
 
 
-KEY_FIELDS = ("button", "mode_button")  # layout fields holding the key pressed
+# Layout fields a file cannot pin down: the key pressed (button) and the
+# toggles (set when a setting changed), which depend on the previous state.
+UNRECORDED = re.compile(r"^(button|mode_button|.*_toggle)$")
 # Fields an off message carries from the last state (mode, setpoint, fan,
 # swing): remotes send the last state, IRac-style ports a normalised one; the
 # unit turns off either way, so an off code is not compared on them.

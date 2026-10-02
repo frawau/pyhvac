@@ -64,9 +64,9 @@ def test_a_file_learned_from_a_pyhvac_device_is_covered():
 
 
 def test_constant_features_are_found():
-    f = synthetic("Electra", registry.models("Electra")[0], features={"light": True})
+    f = synthetic("Electra", registry.models("Electra")[0], features={"cleaning": True})
     m = match(f, CANDIDATES)
-    assert m.verdict == "covered" and m.features["light"] is True
+    assert m.verdict == "covered" and m.features["cleaning"] is True
 
 
 def test_fahrenheit_keys_are_recognised():
@@ -268,3 +268,24 @@ def test_an_off_code_carrying_another_state_is_explained():
     f = dataclasses.replace(f, codes=f.codes[:-1] + (carried,))
     m = match(f, CANDIDATES)
     assert m.verdict == "covered" and m.relabelled == 1
+
+
+def test_a_toggle_field_is_not_compared():
+    # Kelon's power toggle depends on the previous state, which the file
+    # does not record: a capture made with the unit on has it clear.
+    from pyhvac.protocols.kelon import KELON_LAYOUT
+
+    def no_toggle(data):
+        data = bytearray(data)
+        KELON_LAYOUT.write_raw(data, "power_toggle", 0)
+        return bytes(data)
+
+    m = match(synthetic("Hisense", "unit", tamper=no_toggle, dev=kelon()), CANDIDATES)
+    assert m.verdict == "covered" and m.candidate.startswith("KelonDevice")
+    assert m.relabelled == 0  # each code verified as its own state, not as off
+
+
+def kelon():
+    from pyhvac.protocols.kelon import KelonDevice
+
+    return KelonDevice("Hisense", "unit")

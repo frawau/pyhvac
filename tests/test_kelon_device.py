@@ -302,3 +302,30 @@ def test_layouts_must_cover_every_frame():
 # decodeKelon matches with _tolerance (25 %) and no mark excess.
 def test_decode_tolerance_is_the_c_decoders():
     assert (KELON.tolerance, KELON.mark_excess) == (0.25, 0)
+
+
+# ------------------------------------------------------ "dry-grade" variant
+# Dry mode's setpoint sets the dehumidifier grade (-2..+2), relative to the
+# 25 °C dry mode sends: SmartIR climate 1522, 2200, 2500, 5520 (Hisense,
+# IGC, Endesa) step the grade with the temperature keys.
+
+
+@pytest.mark.parametrize(
+    "t, grade",
+    [(20.0, 6), (23.0, 6), (24.0, 5), (25.0, 0), (26.0, 1), (27.0, 2), (30.0, 2)],
+)
+def test_dry_grade_variant_maps_the_dry_setpoint_to_the_grade(t, grade):
+    dev = KelonDevice("Test", "unit", variant="dry-grade")
+    (frame,) = dev.frames(None, dev.normalise(HvacState(True, "dry", t)), ())
+    values = KELON_LAYOUT.read(frame.data)
+    assert KELON_LAYOUT.read_raw(frame.data, "dry_grade") == grade
+    assert values["temperature"] == 25
+
+
+def test_dry_grade_variant_leaves_other_modes_alone():
+    plain, graded = KelonDevice("T", "u"), KelonDevice("T", "u", variant="dry-grade")
+    for mode in ("cool", "heat", "auto", "fan"):
+        st = HvacState(True, mode, 22.0)
+        assert plain.frames(None, plain.normalise(st), ()) == graded.frames(
+            None, graded.normalise(st), ()
+        )

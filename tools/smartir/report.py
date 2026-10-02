@@ -3,7 +3,7 @@
     python tools/smartir/report.py OUT_DIR [--cache DIR] [--no-fetch] [--jobs N]
 
 Writes OUT_DIR/report.md (verdict per file, gaps, clusters), OUT_DIR/rows.py
-(proposed pyhvac/brands.py rows for covered and table files, for review)
+(proposed pyhvac/brands.py rows for the covered files, for review)
 and OUT_DIR/results.json. SmartIR files stay in the cache, never in OUT_DIR.
 """
 
@@ -38,7 +38,6 @@ class Row:
     cls: str  # Device class name
     variant: Optional[str]
     source: int  # upstream file number
-    verdict: str  # the file's verdict: covered, near, unknown
 
 
 def _key(text):
@@ -53,23 +52,20 @@ def _existing():
 
 
 def rows(results):
-    """Proposed rows and conflicts from [(SmartIRFile, Match)]: a covered
-    file names its candidate; any other file whose codes can be read is
-    served by TableDevice. A name already taken by the same device is
-    skipped; taken by another device, it is a conflict."""
+    """Proposed rows and conflicts from [(SmartIRFile, Match)]: only a
+    covered file, whose codes pyhvac generates, becomes a row naming its
+    candidate. A name already taken by the same device is skipped; taken by
+    another device, it is a conflict."""
     taken, brand_names = _existing()
     out, conflicts = [], []
     for f, m in sorted(results, key=lambda r: r[0].number):
-        if m.verdict == "unsupported" or not f.codes:
+        if m.verdict != "covered":
             continue
-        if m.verdict == "covered":
-            cls, _, variant = m.candidate.partition("/")
-            variant = variant or None
-        else:
-            cls, variant = "TableDevice", str(f.number)
+        cls, _, variant = m.candidate.partition("/")
+        variant = variant or None
         brand = brand_names.get(_key(f.manufacturer), f.manufacturer.strip())
         for model in f.models or (f"SmartIR {f.number}",):
-            row = Row(brand, model.strip(), cls, variant, f.number, m.verdict)
+            row = Row(brand, model.strip(), cls, variant, f.number)
             k = (_key(brand), _key(row.model))
             if not k[0] or not k[1]:
                 conflicts.append((row, "empty name"))

@@ -28,6 +28,3 @@ version = { attr = "pyhvac.__version__" }
 
 [tool.setuptools.packages.find]
 include = ["pyhvac*"]
-
-[tool.pytest.ini_options]
-markers = ["network: fetches from the internet (run with --network)"]

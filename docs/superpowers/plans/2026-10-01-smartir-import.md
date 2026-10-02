@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Amended 2026-10-02 after execution** (see the spec's amendment): pyhvac handles only the codes it generates. Task 1 (°F `TemperatureRange`) and the `TableDevice` parts of Task 2 and Task 8 were reverted; the SmartIR code reader moved into `tools/smartir/codes.py`; `report.py` proposes rows for covered files only; `brands.py` keeps the 4 covered rows. The tasks below are the record of what was executed.
+
 **Goal:** Give every upstream SmartIR climate code file a verdict (covered, near, unknown, unsupported). Serve covered files with their pyhvac device and every other readable file with a `TableDevice` that fetches the file from upstream at runtime.
 
 **Architecture:**

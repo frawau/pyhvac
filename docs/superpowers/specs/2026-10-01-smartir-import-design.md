@@ -1,7 +1,24 @@
 # SmartIR climate codes: import, match, port — design
 
 Status: approved in conversation 2026-10-01 (sections 1–4). Branch:
-`smartir`, forked from `phase4`.
+`smartir`, forked from `phase4`. Amended 2026-10-02 (below).
+
+## Amendment 2026-10-02
+
+The author's rule: pyhvac handles only the codes it can generate. The
+SmartIR files are evidence for decoding, fixing and porting protocols, not
+something pyhvac serves. "Grab the datafiles from the web" meant fetching
+them for analysis instead of keeping them in this repo; it did not mean a
+runtime fallback. Therefore:
+- No `TableDevice`, no runtime fetch or cache: files that are not covered
+  get no row until a gap fix or a port makes them covered.
+- The importer (`tools/smartir/`, with its development cache) stays; it
+  proposes rows for covered files only.
+- No °F-stepped `TemperatureRange`. A °F-native protocol follows the
+  Airspool pattern: the library stays °C (half-degree range), and the
+  encoder converts to the nearest whole °F when it builds the frame.
+The sections below are kept as approved; where they describe the table
+fallback or the °F range, this amendment overrides them.
 
 ## Intent
 
@@ -20,11 +37,10 @@ What the author said:
 - When temperatures differ, check whether the cause is Fahrenheit vs
   Celsius (either way). pyhvac uses metric only, but must adapt to cover
   every value a unit accepts.
-- New devices: real ports where possible; otherwise devices that use the
-  data files fetched from the web. The unknown/undecoded files are not kept
-  in this repo.
-- Table devices follow upstream `master` (upstream is responsible for the
-  codes); no pinning.
+- New devices: real ports where possible; the data files are fetched from
+  the web for analysis and the unknown/undecoded files are not kept in this
+  repo. (Amended: no runtime table devices.)
+- The importer follows upstream `master`; no pinning.
 - Matcher: inference plus an encode check (approach 3).
 
 Assumptions (not stated by the author, open to correction):

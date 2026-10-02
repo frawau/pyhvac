@@ -130,6 +130,27 @@ MITSUBISHI_AC_LAYOUT = Layout(
     checksum=Sum8(0, 17, 17),
 )
 
+# The "remote" variant, as the remotes SmartIR captured send it (climate
+# 1120-1138, 4124): byte 9 bits 6-7 follow the key pressed (0b01 after a
+# temperature key, 0b10 often after the others; the port sends 0b01) and
+# FanAuto is never set: fan auto is Fan 0 alone.
+MITSUBISHI_AC_REMOTE_LAYOUT = Layout(
+    MITSUBISHI_AC_LAYOUT.skeleton,
+    {
+        **{
+            name: field
+            for name, field in MITSUBISHI_AC_LAYOUT.fields.items()
+            if name not in ("vane_bit", "fan_auto")
+        },
+        "button": Field.at(9, 6, 2),
+    },
+    checksum=Sum8(0, 17, 17),
+)
+MITSUBISHI_AC_REMOTE_TEMP_KEY = 0b01
+# The remotes' byte 8 low nibble (all 15 files agree) and left vane: auto
+# as cool, fan 0; the left vane is left at 0.
+MITSUBISHI_AC_REMOTE_MODE_AUX = {**MITSUBISHI_AC_MODE_AUX, "auto": 0b0110, "fan": 0}
+
 
 class MitsubishiAcDevice(Device):
     """Mitsubishi 144-bit (MSZ-GV2519 and others): a full-state protocol,
@@ -149,6 +170,7 @@ class MitsubishiAcDevice(Device):
 
     PROTOCOL = MITSUBISHI_AC
     LAYOUTS = (MITSUBISHI_AC_LAYOUT, MITSUBISHI_AC_LAYOUT)
+    VARIANTS = ("remote",)
     capabilities = Capabilities(
         modes=("auto", "cool", "fan", "dry", "heat"),
         temperature=TemperatureRange(16.0, 31.0, decimals=(0, 5)),
@@ -158,6 +180,18 @@ class MitsubishiAcDevice(Device):
         features={"economy": ON_OFF},
     )
 
+    def __init__(self, brand, model, variant=None):
+        super().__init__(brand, model)
+        if variant is None:  # built directly: the brands table's variant
+            from ..registry import variant_of
+
+            variant = variant_of(type(self), brand, model)
+        if variant is not None and variant not in self.VARIANTS:
+            raise ValueError(f"unknown Mitsubishi A/C variant {variant!r}")
+        self.variant = variant
+        if variant == "remote":
+            self.LAYOUTS = (MITSUBISHI_AC_REMOTE_LAYOUT,) * 2
+
     def frames(self, previous, target, actions):
         # As the C path: an off message carries mode auto (IRac passes mode
         # "off", which convertMode maps to kMitsubishiAcAuto) and every other
@@ -166,18 +200,31 @@ class MitsubishiAcDevice(Device):
         # setTemp: half degrees, clamped to 16-31 (normalise already did).
         halves = int(target.temperature * 2)
         fan, fan_auto = MITSUBISHI_AC_FAN[target.fan]
-        data = MITSUBISHI_AC_LAYOUT.build(
+        if self.variant == "remote":
+            keys = dict(
+                button=MITSUBISHI_AC_REMOTE_TEMP_KEY,
+                swing_v_left="off",
+            )
+            aux = MITSUBISHI_AC_REMOTE_MODE_AUX[mode]
+            layout = MITSUBISHI_AC_REMOTE_LAYOUT
+        else:
+            keys = dict(
+                fan_auto=fan_auto,
+                vane_bit=1,  # setVane always sets it
+                swing_v_left=target.swing_v,
+            )
+            aux = MITSUBISHI_AC_MODE_AUX[mode]
+            layout = MITSUBISHI_AC_LAYOUT
+        data = layout.build(
             power=target.power,
             mode=mode,
             temperature=halves // 2,
             half_degree=halves & 1,
-            mode_aux=MITSUBISHI_AC_MODE_AUX[mode],
+            mode_aux=aux,
             swing_h=target.swing_h,
             fan=fan,
-            fan_auto=fan_auto,
             swing_v=target.swing_v,
-            vane_bit=1,  # setVane always sets it
-            swing_v_left=target.swing_v,
+            **keys,
             isave_10c=0,  # IRac calls setISave10C(false)
             ecocool=target.features.get("economy", False),
         )

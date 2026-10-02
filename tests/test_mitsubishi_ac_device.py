@@ -362,3 +362,56 @@ def test_real_raw_captures_decode(raw, state):
     pulses = [int(x) for x in raw.split()]
     frames = decode(MITSUBISHI_AC, pulses, expected=["main", "main"])
     assert [f.data.hex() for f in frames] == [state, state]
+
+
+# ---------------------------------------------------------- "remote" variant
+# As the remotes SmartIR captured send it (climate 1120-1138, 4124; e.g.
+# KM09D): byte 9 bits 6-7 follow the key pressed (0b01 after a temperature
+# key, 0b10 often after the others) and FanAuto is never set: fan auto is
+# Fan 0 alone.
+
+
+def remote_byte9(target):
+    from pyhvac.protocols.mitsubishi_electric import MitsubishiAcDevice
+
+    dev = MitsubishiAcDevice("Test", "unit", variant="remote")
+    frame, _ = dev.frames(None, dev.normalise(target), ())
+    return frame.data[9]
+
+
+@pytest.mark.parametrize("fan", ["auto", "1", "2", "3", "4", "5"])
+def test_remote_variant_fan_auto_is_fan_0_without_fanauto(fan):
+    from pyhvac.protocols.mitsubishi_electric import MITSUBISHI_AC_FAN
+
+    byte9 = remote_byte9(HvacState(True, "cool", 25.0, fan=fan))
+    assert byte9 & 0b111 == MITSUBISHI_AC_FAN[fan][0]
+    assert byte9 >> 6 == 0b01  # the temperature-key form, FanAuto clear
+
+
+def test_remote_variant_names_bits_6_7_button():
+    from pyhvac.protocols.mitsubishi_electric import (
+        MITSUBISHI_AC_REMOTE_LAYOUT,
+        MitsubishiAcDevice,
+    )
+
+    dev = MitsubishiAcDevice("Test", "unit", variant="remote")
+    assert dev.LAYOUTS == (MITSUBISHI_AC_REMOTE_LAYOUT,) * 2
+    assert "button" in MITSUBISHI_AC_REMOTE_LAYOUT.fields
+    assert "fan_auto" not in MITSUBISHI_AC_REMOTE_LAYOUT.fields
+
+
+@pytest.mark.parametrize(
+    "mode, aux", [("auto", 6), ("cool", 6), ("dry", 2), ("heat", 0), ("fan", 0)]
+)
+def test_remote_variant_mode_aux_and_untouched_left_vane(mode, aux):
+    from pyhvac.protocols.mitsubishi_electric import (
+        MITSUBISHI_AC_REMOTE_LAYOUT,
+        MitsubishiAcDevice,
+    )
+
+    dev = MitsubishiAcDevice("Test", "unit", variant="remote")
+    target = HvacState(True, mode, 24.0, swing_v="2")
+    frame, _ = dev.frames(None, dev.normalise(target), ())
+    values = MITSUBISHI_AC_REMOTE_LAYOUT.read(frame.data)
+    assert values["mode_aux"] == aux
+    assert values["swing_v"] == "2" and values["swing_v_left"] == "off"

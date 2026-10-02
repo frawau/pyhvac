@@ -70,3 +70,15 @@ def test_direct_construction_never_picks_a_wrong_variant(row):
     except ValueError:
         return
     assert dev.variant == variant
+
+
+def test_table_rows_name_a_smartir_file_and_do_not_fetch(monkeypatch):
+    from pyhvac.protocols import table
+    from pyhvac.protocols.table import TableDevice
+
+    monkeypatch.setattr(table, "fetch", None)  # construction must not fetch
+    rows = [r for r in brands.MODELS if r[3] is TableDevice]
+    assert rows
+    for brand, model, kind, cls, variant in rows:
+        assert kind == "unit" and variant.isdigit()
+        assert registry.get_device(brand, model).variant == variant

@@ -369,3 +369,15 @@ def test_short_gaps_between_frames_still_decode():
     )
     m = match(dataclasses.replace(f, codes=short), CANDIDATES)
     assert m.verdict == "covered" and m.candidate.startswith("CoolixDevice")
+
+
+def test_codes_explained_only_under_other_labels_are_not_covered():
+    # If no label agrees, the candidate is guessing: near, not covered.
+    f = coolix_file()
+    on = [c for c in f.codes if c.key.mode != "off"]
+    shifted = tuple(
+        dataclasses.replace(c, pulses=on[(i + 1) % len(on)].pulses)
+        for i, c in enumerate(on)
+    )
+    m = match(dataclasses.replace(f, codes=shifted), CANDIDATES)
+    assert m.verdict == "near"

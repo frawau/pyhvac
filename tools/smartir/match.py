@@ -171,12 +171,16 @@ def _loose(protocol):
 
 
 def decode_code(candidate, pulses):
-    """The frames a code decodes to (bytes per frame), or None."""
-    cuts = [len(pulses)] + [
-        i + 1 for i, d in enumerate(pulses) if i % 2 and d >= CUT_SPACE
-    ]
+    """The frames a code decodes to (bytes per frame), or None: the longest
+    decode, the whole code first, then prefixes cut at long spaces (learned
+    codes often repeat), each with the longest sequences first."""
+    cuts = sorted(
+        {len(pulses)}
+        | {i + 1 for i, d in enumerate(pulses) if i % 2 and d >= CUT_SPACE},
+        reverse=True,
+    )
     for end in cuts:
-        for seq in candidate.sequences:
+        for seq in reversed(candidate.sequences):
             try:
                 frames = decode(candidate.protocol, pulses[:end], expected=seq)
             except (DecodeError, ValueError):
@@ -491,6 +495,16 @@ def _describe(state):
     return text + "".join(f" +{n}" for n in on)
 
 
+def _parts(frames):
+    """The whole message, its starts and its tails: what a remote may send
+    of it."""
+    return (
+        {frames}
+        | {frames[:i] for i in range(1, len(frames))}
+        | {frames[i:] for i in range(1, len(frames))}
+    )
+
+
 def _verify(device, decoded, units, fan_map, swing_map, features, smartir_modes):
     """(verified count, relabels [(key, state)], unexplained keys, Counter of
     differing fields). A code pyhvac sends for its labelled state is
@@ -525,7 +539,9 @@ def _verify(device, decoded, units, fan_map, swing_map, features, smartir_modes)
                 features,
             )
             want = None if st is None else _frames(device, st)
-            ok = _comparable(device, want) == _comparable(device, frames)
+            ok = want is not None and _comparable(device, frames) in {
+                _comparable(device, part) for part in _parts(want)
+            }
         if ok:
             verified += 1
             continue
@@ -542,6 +558,7 @@ def _verify(device, decoded, units, fan_map, swing_map, features, smartir_modes)
 
 def _rank(m):
     return (
+        m.verdict == "covered",
         m.verdict != "unknown",
         m.verified + m.relabelled,
         m.verified,
@@ -558,6 +575,10 @@ UNRECORDED = re.compile(r"^(button|mode_button|.*_toggle)$")
 CARRIED = re.compile(
     r"^(mode|temp|temperature|fan|swing)(_.*)?$|^(half_degrees?|heat_flag)$"
 )
+# A covered file has this share of its decoded codes verified under their
+# own labels: a candidate explaining them only through other states (one
+# without a checksum can explain much) is guessing.
+VERIFIED_SHARE = 0.25
 VALID_SHARE = 0.5  # codes whose checksums hold: below this, another protocol
 SHAPE_SHARE = 0.5  # a candidate whose frames differ in shape this often is wrong
 REACH_LIMIT = 60000  # states enumerated per file and candidate, at most
@@ -604,7 +625,12 @@ def match(smartir_file, cands):
             if gaps["frames"] > SHAPE_SHARE * len(decoded):
                 continue
             result = Match(
-                "covered" if explained == len(decoded) else "near",
+                (
+                    "covered"
+                    if explained == len(decoded)
+                    and verified >= VERIFIED_SHARE * len(decoded)
+                    else "near"
+                ),
                 cand.name,
                 units,
                 fan_map,
@@ -620,6 +646,4 @@ def match(smartir_file, cands):
             )
             if _rank(result) > _rank(best):
                 best = result
-            if result.verdict == "covered":
-                return best
     return best

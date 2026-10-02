@@ -1,7 +1,7 @@
 import io
 import zipfile
 
-from smartir.fetch import ARCHIVE, fetch, files
+from hvacir.fetch import ARCHIVE, fetch, files
 
 
 def archive():

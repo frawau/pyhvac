@@ -1,6 +1,6 @@
 """Run the SmartIR climate import and write its report.
 
-    python tools/smartir/report.py OUT_DIR [--cache DIR] [--no-fetch] [--jobs N]
+    python tools/hvacir/report.py OUT_DIR [--cache DIR] [--no-fetch] [--jobs N]
 
 Writes OUT_DIR/report.md (verdict per file, gaps, clusters), OUT_DIR/rows.py
 (proposed pyhvac/brands.py rows for the covered files, for review)
@@ -23,9 +23,9 @@ for path in (ROOT, ROOT / "tools"):
         sys.path.insert(0, str(path))
 
 from pyhvac import brands  # noqa: E402
-from smartir import cluster as clustering  # noqa: E402
-from smartir import fetch, match  # noqa: E402
-from smartir.codes import parse  # noqa: E402
+from hvacir import cluster as clustering  # noqa: E402
+from hvacir import fetch, match  # noqa: E402
+from hvacir.codes import parse  # noqa: E402
 
 KIND = "unit"  # SmartIR lists the units a file was learned from
 # Manufacturer spellings corrected (author's decisions, 2026-10-02).

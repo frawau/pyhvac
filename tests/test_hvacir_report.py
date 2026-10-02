@@ -2,9 +2,9 @@ import dataclasses
 
 import pytest
 
-from smartir.codes import Code, Key, SmartIRFile
-from smartir.match import Match
-from smartir.report import Row, markdown, python_rows, rows
+from hvacir.codes import Code, Key, SmartIRFile
+from hvacir.match import Match
+from hvacir.report import Row, markdown, python_rows, rows
 
 CODE = (Code(Key("cool", "low", None, 20.0), (500, 500)),)
 
@@ -127,7 +127,7 @@ def test_a_file_with_many_unreadable_codes_is_flagged():
 
 
 def test_the_report_lists_files_that_are_not_json(tmp_path):
-    from smartir.report import main
+    from hvacir.report import main
 
     cache = tmp_path / "cache"
     cache.mkdir()

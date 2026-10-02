@@ -4,7 +4,7 @@ import struct
 import pytest
 
 from pyhvac.ir.formats import broadlink_packet
-from smartir.codes import Key, UnsupportedFormat, parse, to_pulses
+from hvacir.codes import Key, UnsupportedFormat, parse, to_pulses
 
 PULSES = [3000, 1500, 500, 500, 500, 1500, 500, 100000]
 

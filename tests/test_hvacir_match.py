@@ -9,8 +9,8 @@ from pyhvac.ir.codec import encode as ir_encode
 from pyhvac.protocols.coolix import COOLIX, COOLIX_TURBO, coolix_message
 from pyhvac.protocols.electra import ELECTRA_AC_LAYOUT
 from pyhvac.state import HvacState
-from smartir.codes import Code, Key, SmartIRFile
-from smartir.match import candidates, decode_code, match
+from hvacir.codes import Code, Key, SmartIRFile
+from hvacir.match import candidates, decode_code, match
 
 CANDIDATES = candidates()
 FANS = {"low": "1", "mid": "2", "high": "3", "auto": "auto"}

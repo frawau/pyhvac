@@ -1,7 +1,7 @@
 from pyhvac import registry
 from pyhvac.state import HvacState
-from smartir.cluster import cluster, signature
-from smartir.codes import Code, Key, SmartIRFile
+from hvacir.cluster import cluster, signature
+from hvacir.codes import Code, Key, SmartIRFile
 
 
 def learned(number, brand, temps=range(17, 27)):

@@ -14,9 +14,9 @@ TIMEOUT = 60  # s, per socket operation
 
 
 def default_dir():
-    """``$XDG_CACHE_HOME/pyhvac-dev/smartir/climate`` (else ~/.cache/...)."""
+    """``$XDG_CACHE_HOME/pyhvac-dev/hvacir/climate`` (else ~/.cache/...)."""
     base = os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache"
-    return Path(base) / "pyhvac-dev" / "smartir" / "climate"
+    return Path(base) / "pyhvac-dev" / "hvacir" / "climate"
 
 
 def download(url):

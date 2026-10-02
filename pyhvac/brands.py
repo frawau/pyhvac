@@ -567,7 +567,7 @@ MODELS = (
         WhirlpoolAcDevice,
         "DG11J191",
     ),
-    # SmartIR climate files (tools/smartir; docs/smartir/report.md)
+    # SmartIR climate files (tools/hvacir; docs/hvacir/report.md)
     ("LG", "W12TCM", "unit", LgAcDevice, "GE6711AR2853M"),  # SmartIR 1067
     ("Actron", "Actron", "unit", CoolixDevice, None),  # SmartIR 1140
     ("Electrolux", "EACS/I-HAT/N3", "unit", CoolixDevice, None),  # SmartIR 1700

@@ -110,15 +110,47 @@ class HvacState:
         return cls(features=dict(features), **kwargs)
 
 
+def fahrenheit(celsius):
+    """The whole °F a °C setpoint stands for (edge conversion only)."""
+    return round(celsius * 9 / 5 + 32)
+
+
 @dataclass(frozen=True)
 class TemperatureRange:
-    """Allowed setpoints: [min, max] in °C, with the listed tenths only."""
+    """Allowed setpoints: [min, max] in °C, with the listed tenths only, or
+    exactly ``values`` (sorted °C setpoints, one decimal) when given."""
 
     min: float
     max: float
     decimals: Tuple[int, ...] = (0,)
+    values: Optional[Tuple[float, ...]] = None
+
+    @classmethod
+    def fahrenheit(cls, lo_f, hi_f):
+        """One °C setpoint per whole °F from ``lo_f`` to ``hi_f``: for a unit
+        that steps in °F, reachable while the state stays in °C."""
+        values = tuple(round((f - 32) * 5 / 9, 1) for f in range(lo_f, hi_f + 1))
+        decimals = tuple(sorted({round(v * 10) % 10 for v in values}))
+        return cls(values[0], values[-1], decimals, values)
 
     def __post_init__(self):
+        if self.values is not None:
+            tenths = [_tenths(v, "values") for v in self.values]
+            if (
+                not tenths
+                or tenths != sorted(set(tenths))
+                or any(abs(t - v * 10) > 1e-6 for t, v in zip(tenths, self.values))
+            ):
+                raise ValueError(
+                    f"values must be sorted unique setpoints with one decimal, "
+                    f"got {self.values!r}"
+                )
+            if tenths[0] < round(self.min * 10) or tenths[-1] > round(self.max * 10):
+                raise ValueError(
+                    f"values must lie within [{self.min}, {self.max}], "
+                    f"got {self.values!r}"
+                )
+            object.__setattr__(self, "values", tuple(t / 10 for t in tenths))
         decimals = tuple(sorted(self.decimals))
         if (
             not decimals
@@ -145,6 +177,8 @@ class TemperatureRange:
         """Nearest allowed setpoint, ties to the lower one, clamped to [min, max]."""
         lo, hi = round(self.min * 10), round(self.max * 10)
         t = min(max(_tenths(celsius, "temperature"), lo), hi)
+        if self.values is not None:
+            return min(self.values, key=lambda v: (abs(round(v * 10) - t), v))
         base = (t // 10) * 10
         candidates = [
             b + d

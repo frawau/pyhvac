@@ -463,46 +463,46 @@ def _off_frames(device, decoded, units, fan_map, swing_map, features, modes):
 
 
 def _temperatures(device, decoded, units):
-    """The setpoints worth trying: the file's keys (a code is relabelled
-    within the file's own states), else the device's whole degrees (and its
-    half degrees, if it has them)."""
+    """The setpoints worth trying: the file's keys and the device's whole
+    degrees (and its half degrees, if it has them)."""
     caps = device.capabilities.temperature
     out = {_celsius(k, units) for k, _ in decoded if k.temperature is not None}
-    if not out:
-        step = 5 if 5 in caps.decimals else 10
-        lo, hi = round(caps.min * 10), round(caps.max * 10)
-        out = {t / 10 for t in range(lo, hi + 1, step)}
-    return sorted(out)
+    step = 5 if 5 in caps.decimals else 10
+    out |= {t / 10 for t in range(round(caps.min * 10), round(caps.max * 10) + 1, step)}
+    return sorted(t for t in out if t is not None)
 
 
-def _modes(device, decoded):
-    """The file's modes the device has, else all of the device's."""
+def _file_states(device, decoded, units):
+    """The file's own modes and setpoints (the device's when it lists none):
+    the narrower space the feature changes are tried over."""
     caps = device.capabilities
-    out = [m for m in caps.modes if m in {MODE.get(k.mode) for k, _ in decoded}]
-    return out or list(caps.modes)
+    keyed = {MODE.get(k.mode) for k, _ in decoded}
+    modes = [m for m in caps.modes if m in keyed] or list(caps.modes)
+    temps = {_celsius(k, units) for k, _ in decoded if k.temperature is not None}
+    return modes, sorted(temps) or _temperatures(device, decoded, units)
 
 
 def _reachable(device, decoded, units, features):
-    """Frame tuple -> a state that sends it, over power on and off and every
-    mode, setpoint, fan and swing (both axes) with the file's features, and
-    with each feature changed alone.
-    The tail of a multi-frame message counts too (a remote may send a
-    toggle word alone, pyhvac sends it after the state word)."""
+    """Frame tuple -> a state that sends it: power on and off, every mode,
+    setpoint, fan and swing (both axes) with the file's features; and, over
+    the file's own modes and setpoints, with each feature changed alone.
+    Parts of a message count too (see _parts)."""
     caps = device.capabilities
     fans = caps.fan.values if caps.fan else ("auto",)
     swings = _swings(caps)
-    temps = _temperatures(device, decoded, units)
-    variants = [dict(features)]
-    for name, choice in caps.features.items():
-        for value in choice.values:
-            if value != features.get(name):
-                variants.append({**features, name: value})
-    modes = _modes(device, decoded)
+    spaces = [(dict(features), list(caps.modes), _temperatures(device, decoded, units))]
+    modes, temps = _file_states(device, decoded, units)
+    changed = [
+        {**features, name: value}
+        for name, choice in caps.features.items()
+        for value in choice.values
+        if value != features.get(name)
+    ]
     size = 2 * len(modes) * len(temps) * len(fans) * len(swings)
-    if size * len(variants) > REACH_LIMIT:
-        variants = variants[: max(1, REACH_LIMIT // max(size, 1))]
+    changed = changed[: max(0, REACH_LIMIT // max(size, 1))]
+    spaces += [(feats, modes, temps) for feats in changed]
     out = {}
-    for feats in variants:
+    for feats, modes, temps in spaces:
         product = itertools.product((True, False), modes, temps, fans, swings)
         for power, mode, t, fan, swing in product:
             try:

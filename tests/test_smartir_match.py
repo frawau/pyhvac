@@ -459,3 +459,20 @@ def test_an_off_code_with_its_power_bit_clear_is_explained():
     kept = dataclasses.replace(off, pulses=ir_encode(dev.PROTOCOL, frames).pulses)
     m = match(dataclasses.replace(f, codes=f.codes[:-1] + (kept,)), CANDIDATES)
     assert m.verdict == "covered" and m.candidate.startswith("GreeDevice")
+
+
+def test_an_off_message_under_an_on_label_is_explained():
+    # A capture with the power bit clear, filed under an on state: an off
+    # code in the wrong place.
+    f = synthetic("Electra", registry.models("Electra")[0])
+    dev = registry.get_device("Electra", registry.models("Electra")[0])
+    (frame,) = dev.frames(None, dev.normalise(HvacState(False, "cool", 24.0)), ())
+    data = bytearray(frame.data)
+    ELECTRA_AC_LAYOUT.write_raw(data, "mode", 1)  # carrying cool
+    ELECTRA_AC_LAYOUT.checksum.apply(data)
+    frames = [dataclasses.replace(frame, data=bytes(data))]
+    misfiled = dataclasses.replace(
+        f.codes[0], pulses=ir_encode(dev.PROTOCOL, frames).pulses
+    )
+    m = match(dataclasses.replace(f, codes=(misfiled,) + f.codes[1:]), CANDIDATES)
+    assert m.verdict == "covered"

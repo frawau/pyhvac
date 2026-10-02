@@ -562,6 +562,8 @@ def _verify(device, decoded, units, fan_map, swing_map, features, smartir_modes)
         seen = _comparable(device, frames)
         if seen in reach and _valid(device, frames):
             relabels.append((key, _describe(reach[seen])))
+        elif _valid(device, frames) and _powered_off(device, frames):
+            relabels.append((key, "off, carrying another state"))  # misfiled
         else:
             unexplained.append(key)
             gaps.update(_gaps(device, frames, want))

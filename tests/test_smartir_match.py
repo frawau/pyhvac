@@ -476,3 +476,13 @@ def test_an_off_message_under_an_on_label_is_explained():
     )
     m = match(dataclasses.replace(f, codes=(misfiled,) + f.codes[1:]), CANDIDATES)
     assert m.verdict == "covered"
+
+
+def test_frames_of_the_same_length_with_different_layouts_are_valid():
+    # TCL112's special and normal messages are both 14 bytes, with
+    # different checksums.
+    from pyhvac.protocols.tcl import Tcl112AcDevice
+
+    dev = Tcl112AcDevice("TCL", "unit", variant="TAC09CHSD-R")
+    m = match(synthetic("TCL", "unit", dev=dev), CANDIDATES)
+    assert m.verdict == "covered" and m.candidate == "Tcl112AcDevice/TAC09CHSD-R"

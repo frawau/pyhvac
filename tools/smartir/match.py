@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from typing import Dict, Optional, Tuple
 
 from pyhvac import brands
-from pyhvac.fields import Joined, checksum_bits
+from pyhvac.fields import Joined, Layout, checksum_bits
 from pyhvac.ir.codec import DecodeError, decode
 from pyhvac.state import HvacState
 
@@ -332,15 +332,29 @@ def _powered_off(device, frames):
 
 def _valid(device, frames):
     """Whether every checksum of the layouts placed over ``frames`` holds: a
-    protocol sharing the timing but not the checksums is another one."""
+    protocol sharing the timing but not the checksums is another one. A
+    frame the placed layout rejects is still valid if another single-frame
+    layout of its length accepts it (two messages of one length, such as
+    TCL112's special and normal ones, have different checksums)."""
+    layouts = getattr(device, "LAYOUTS", ())
     joined = bytearray(b"".join(frames))
-    for offset, layout in _place(
-        getattr(device, "LAYOUTS", ()), tuple(len(f) for f in frames)
-    ):
+    for offset, layout in _place(layouts, tuple(len(f) for f in frames)):
         if layout.checksum is None:
             continue
         data = joined[offset : offset + len(layout.skeleton)]
-        if not layout.checksum.check(data):
+        if layout.checksum.check(data):
+            continue
+        alternatives = [
+            other
+            for other in layouts
+            if isinstance(other, Layout)
+            and other is not layout
+            and len(other.skeleton) == len(data)
+        ]
+        if not any(
+            other.checksum is None or other.checksum.check(data)
+            for other in alternatives
+        ):
             return False
     return True
 

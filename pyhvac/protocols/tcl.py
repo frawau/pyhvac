@@ -63,7 +63,9 @@ TCL112AC_MODEL = {"TAC09CHSD": 1, "GZ055BE1": 0}
 # The "-R" variants: the documented remote as the remotes SmartIR captured
 # send it (16 files): TimerIndicator clear, and TAC09CHSD-R sends the
 # special message, carrying quiet, before every normal one.
-TCL112AC_REMOTE_VARIANTS = ("GZ055BE1-R", "TAC09CHSD-R")
+# TAC09CHSD-RH is TAC09CHSD-R with the model bit (isTcl) cleared in heat:
+# SmartIR climate 1900 (TCL), 2920 (Best), 2980 (Agratto).
+TCL112AC_REMOTE_VARIANTS = ("GZ055BE1-R", "TAC09CHSD-R", "TAC09CHSD-RH")
 
 # Skeleton: IRTcl112Ac::stateReset's known good state (on, cool, 24 C), with
 # the fields the device always writes cleared and the sum cleared; stateReset
@@ -191,13 +193,15 @@ class Tcl112AcDevice(Device):
             )
         if self.variant not in (*TCL112AC_MODEL, *TCL112AC_REMOTE_VARIANTS):
             raise ValueError(f"unknown Tcl112Ac variant {self.variant!r}")
-        self.model_variant = self.variant.removesuffix("-R")
+        self.model_variant = self.variant.split("-")[0]
         self.remote = self.variant in TCL112AC_REMOTE_VARIANTS
+        if self.variant.startswith("TAC09CHSD-R"):  # every message: special, normal
+            self.LAYOUTS = (TCL112AC_LAYOUT, TCL112AC_QUIET_LAYOUT)
 
     def sends_quiet(self, previous, target):
         """Whether the special (quiet) message goes before the normal one."""
         quiet = target.features["quiet"]
-        if self.variant == "TAC09CHSD-R":
+        if self.variant.startswith("TAC09CHSD-R"):
             return True  # every message, as these remotes send it
         if previous is None:
             return quiet  # a fresh IRTcl112Ac: its last quiet sent is off
@@ -219,7 +223,11 @@ class Tcl112AcDevice(Device):
             fan="4" if powerful else target.fan,
             swing_v="auto" if powerful else target.swing_v,
             swing_h=target.swing_h,
-            model=self.model_variant,
+            model=(
+                "GZ055BE1"
+                if self.variant == "TAC09CHSD-RH" and target.mode == "heat"
+                else self.model_variant
+            ),
         )
         if self.remote:
             TCL112AC_LAYOUT.write_raw(main, "timer_indicator", 0)

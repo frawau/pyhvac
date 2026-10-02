@@ -651,3 +651,18 @@ def test_tac09chsd_r_always_sends_the_special_message():
 def test_the_documented_variants_keep_the_timer_indicator(variant):
     (main,) = r_frames(variant, HvacState(True, "cool", 24.0))
     assert TCL112AC_LAYOUT.read(bytes.fromhex(main))["timer_indicator"] == 1
+
+
+def test_tac09chsd_rh_clears_the_model_bit_in_heat():
+    # SmartIR climate 2920 (Best), 1900 (TCL), 2980 (Agratto): heat 22, fan 2
+    target = HvacState(True, "heat", 22.0, fan="2", features={"light": True})
+    assert r_frames("TAC09CHSD-RH", target) == [
+        "23cb260200400000000000000065",
+        "23cb260100240109020000000045",
+    ]
+
+
+@pytest.mark.parametrize("mode", ["cool", "dry", "fan", "auto"])
+def test_tac09chsd_rh_is_tac09chsd_r_outside_heat(mode):
+    target = HvacState(True, mode, 22.0)
+    assert r_frames("TAC09CHSD-RH", target) == r_frames("TAC09CHSD-R", target)

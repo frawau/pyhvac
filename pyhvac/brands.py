@@ -1044,6 +1044,34 @@ MODELS = (
     ("TCL", "TAC-12CHSD/XA21I", "unit", Tcl112AcDevice, "TAC09CHSD-RH"),  # SmartIR 1900
     ("Best", "BSTS18CNE2", "unit", Tcl112AcDevice, "TAC09CHSD-RH"),  # SmartIR 2920
     ("Devanti", "WAC-05C-WH", "unit", Tcl112AcDevice, "TAC09CHSD-R"),  # SmartIR 3180
+    ("Gree", "Smart Inverter", "unit", GreeDevice, "YAW1F-0"),  # SmartIR 1183
+    ("Gree", "KFR-50LW", "unit", GreeDevice, "YX1FSF-H"),  # SmartIR 1185
+    ("Gree", "YAP1F2", "unit", GreeDevice, "YX1FSF-H"),  # SmartIR 1185
+    ("ROYAL", "RC-G25HN", "unit", Tcl112AcDevice, "TAC09CHSD-X03"),  # SmartIR 1661
+    ("Trotec", "YX1F6", "unit", GreeDevice, "YAW1F-0"),  # SmartIR 1780
+    (
+        "TCL",
+        "TAC-12CHSD/XA71IN",
+        "unit",
+        Tcl112AcDevice,
+        "TAC09CHSD-X83",
+    ),  # SmartIR 1901
+    ("Lennox", "LNINVE052", "unit", GreeDevice, "YAW1F"),  # SmartIR 2162
+    ("Lennox", "LNINVC052", "unit", GreeDevice, "YAW1F"),  # SmartIR 2162
+    (
+        "HappyTree",
+        "TAC-12CHSD/XA81",
+        "unit",
+        Tcl112AcDevice,
+        "TAC09CHSD-X80",
+    ),  # SmartIR 3060
+    (
+        "Cecotec",
+        "EnergySilence 12000 AirClima (05290)",
+        "unit",
+        Tcl112AcDevice,
+        "TAC09CHSD-X83",
+    ),  # SmartIR 3100
 )
 
 # 0.1.x strings of the devices that were pure Python in 0.1.x.

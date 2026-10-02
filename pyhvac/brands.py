@@ -926,6 +926,100 @@ MODELS = (
     ("Daikin", "FTXS60BVMB", "unit", Daikin216Device, None),  # SmartIR 4100
     ("Daikin", "FVXS25BVMB", "unit", Daikin216Device, None),  # SmartIR 4100
     ("Midea", "MCD-24HRN1-Q1", "unit", CoolixDevice, None),  # SmartIR 4380
+    ("LG", "RAS-32CNH2", "unit", Hitachi264Device, None),  # SmartIR 1083
+    ("Daikin", "Daikin", "unit", MitsubishiAcDevice, "remote"),  # SmartIR 1103
+    ("Daikin", "FTXV35AV1B", "unit", GreeDevice, "YX1FSF"),  # SmartIR 1113
+    (
+        "Mitsubishi Electric",
+        "MSZ-GA35VA",
+        "unit",
+        MitsubishiAcDevice,
+        "remote",
+    ),  # SmartIR 1121
+    (
+        "Mitsubishi Electric",
+        "MSZ-HJ25VA",
+        "unit",
+        MitsubishiAcDevice,
+        "remote",
+    ),  # SmartIR 1127
+    (
+        "Mitsubishi Electric",
+        "MSZ-HJ35VA",
+        "unit",
+        MitsubishiAcDevice,
+        "remote",
+    ),  # SmartIR 1128
+    (
+        "Mitsubishi Electric",
+        "MSZ-GE22VA",
+        "unit",
+        MitsubishiAcDevice,
+        "remote",
+    ),  # SmartIR 1129
+    (
+        "Mitsubishi Electric",
+        "MS-SGD18VC",
+        "unit",
+        MitsubishiAcDevice,
+        "remote",
+    ),  # SmartIR 1130
+    (
+        "Mitsubishi Electric",
+        "MG-GN18VF",
+        "unit",
+        MitsubishiAcDevice,
+        "remote",
+    ),  # SmartIR 1134
+    (
+        "Mitsubishi Electric",
+        "MS-GN18VF",
+        "unit",
+        MitsubishiAcDevice,
+        "remote",
+    ),  # SmartIR 1134
+    (
+        "Mitsubishi Electric",
+        "MS-GN13VF",
+        "unit",
+        MitsubishiAcDevice,
+        "remote",
+    ),  # SmartIR 1134
+    (
+        "Mitsubishi Electric",
+        "MSXY-FP10VG",
+        "unit",
+        MitsubishiAcDevice,
+        "remote",
+    ),  # SmartIR 1136
+    (
+        "Mitsubishi Electric",
+        "MSXY-FP13VG",
+        "unit",
+        MitsubishiAcDevice,
+        "remote",
+    ),  # SmartIR 1136
+    (
+        "Mitsubishi Electric",
+        "MSXY-FP18VG",
+        "unit",
+        MitsubishiAcDevice,
+        "remote",
+    ),  # SmartIR 1136
+    (
+        "Mitsubishi Electric",
+        "MSZ-HR35VF",
+        "unit",
+        MitsubishiAcDevice,
+        "remote",
+    ),  # SmartIR 1137
+    ("Tadiran", "Tadiran-10i/15i/inv220a", "unit", GreeDevice, "YAW1F"),  # SmartIR 1342
+    ("Tadiran", "Remote Control YB1FA", "unit", GreeDevice, "YAW1F"),  # SmartIR 1344
+    ("Tadiran", "Tadiran Inverter", "unit", GreeDevice, "YAW1F"),  # SmartIR 1344
+    ("Beko", "BPAK 120", "unit", GreeDevice, "YAW1F"),  # SmartIR 1601
+    ("Daitsu", "DOS12KIDB", "unit", GreeDevice, "YAW1F-0"),  # SmartIR 1763
+    ("Saunier Duval", "1", "unit", GreeDevice, "YAW1F"),  # SmartIR 1880
+    ("Sigma", "SGS32H13NE", "unit", GreeDevice, "YAW1F"),  # SmartIR 8800
 )
 
 # 0.1.x strings of the devices that were pure Python in 0.1.x.

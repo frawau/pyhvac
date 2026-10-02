@@ -89,7 +89,8 @@ MIDEA_MAX = 30  # kMideaACMaxTempC
 MIDEA_MIN_F, MIDEA_MAX_F = 62, 86  # kMideaACMinTempF / kMideaACMaxTempF
 # The RG57-family variants, from SmartIR captures (climate 1392, 1393, 1395,
 # 1782, 2900 in °C; 1163, 1220, 2040, 2220, 2960 in °F): fan auto also sets
-# data[1] bit 5 ("unknown"), fan mode sends setpoint code 30, and RG57-F
+# data[1] bit 5 ("unknown") in cool, heat and fan modes, dry and auto send
+# fan auto with the bit clear, fan mode sends setpoint code 30, and RG57-F
 # sends the setpoint as whole °F with useFahrenheit (the state stays °C).
 MIDEA_FAN_MODE_TEMP_CODE = 30
 
@@ -262,7 +263,10 @@ class MideaDevice(Device):
         )
         raw = {}
         if self.variant in ("RG57", "RG57-F"):
-            raw["unknown"] = int(target.fan == "auto")
+            if mode in ("dry", "auto"):  # fan forced to auto, bit 5 clear
+                values["fan"] = "auto"
+            else:
+                raw["unknown"] = int(target.fan == "auto")
             if self.variant == "RG57-F":
                 f = round(target.temperature * 9 / 5 + 32)
                 values["fahrenheit"] = 1

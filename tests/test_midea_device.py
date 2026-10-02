@@ -544,3 +544,15 @@ def test_rg57_f_reaches_every_whole_fahrenheit_from_62_to_86():
         sent.add(MIDEA_LAYOUT.read_raw(data, "temperature") + 62)
         t = round(t + 0.5, 1)
     assert sent == set(range(62, 87))
+
+
+@pytest.mark.parametrize("variant", ["RG57", "RG57-F"])
+@pytest.mark.parametrize("mode", ["dry", "auto"])
+@pytest.mark.parametrize("fan", ["auto", "1", "2", "3"])
+def test_rg57_dry_and_auto_force_fan_auto_without_the_bit(variant, mode, fan):
+    # SmartIR climate 2040 and 1392: every dry and auto code, whatever the
+    # fan key, carries fan auto with data[1] bit 5 clear.
+    dev = MideaDevice("Test", "unit", variant=variant)
+    data = dev.frames(None, dev.normalise(HvacState(True, mode, 24.0, fan=fan)), ())
+    values = MIDEA_LAYOUT.read(data[0].data)
+    assert (values["fan"], values["unknown"]) == ("auto", 0)

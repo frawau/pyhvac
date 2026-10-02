@@ -1023,6 +1023,27 @@ MODELS = (
     ("Panasonic", "CS-MRE7MKE", "unit", PanasonicAcDevice, "JKE-M13"),  # SmartIR 1024
     ("LG", "A06AWV", "unit", LgAcDevice, "GE6711AR2853M"),  # SmartIR 1062
     ("LG", "AKB74295303", "unit", Lg2Device, "AKB74955603"),  # SmartIR 1068
+    (
+        "Mitsubishi Electric",
+        "MSC-A12YV",
+        "unit",
+        Tcl112AcDevice,
+        "GZ055BE1-R",
+    ),  # SmartIR 1132
+    ("Akai", "TEM-26CHSAAK5", "unit", Tcl112AcDevice, "GZ055BE1-R"),  # SmartIR 1441
+    ("Akai", "TEM-70CHSAAK5", "unit", Tcl112AcDevice, "GZ055BE1-R"),  # SmartIR 1441
+    ("Akai", "TEM-26CHSAKA5", "unit", Tcl112AcDevice, "GZ055BE1-R"),  # SmartIR 1441
+    ("Akai", "TEM-35CHSAKA", "unit", Tcl112AcDevice, "GZ055BE1-R"),  # SmartIR 1441
+    ("Akai", "TEM-50CHSAKA", "unit", Tcl112AcDevice, "GZ055BE1-R"),  # SmartIR 1441
+    ("Akai", "TEM-35CHSABH", "unit", Tcl112AcDevice, "GZ055BE1-R"),  # SmartIR 1441
+    ("Akai", "TEM-35CHSF", "unit", Tcl112AcDevice, "GZ055BE1-R"),  # SmartIR 1441
+    ("Erisson", "EC-S07T2", "unit", Tcl112AcDevice, "GZ055BE1-R"),  # SmartIR 1720
+    ("Daitsu", "DS-9KIDT", "unit", Tcl112AcDevice, "TAC09CHSD-R"),  # SmartIR 1761
+    ("Hualing", "KFR-45GW/JNV", "unit", Tcl112AcDevice, "GZ055BE1-R"),  # SmartIR 1840
+    ("Hualing", "KFR-45G/JNV", "unit", Tcl112AcDevice, "GZ055BE1-R"),  # SmartIR 1840
+    ("TCL", "TAC-12CHSD/XA21I", "unit", Tcl112AcDevice, "TAC09CHSD-RH"),  # SmartIR 1900
+    ("Best", "BSTS18CNE2", "unit", Tcl112AcDevice, "TAC09CHSD-RH"),  # SmartIR 2920
+    ("Devanti", "WAC-05C-WH", "unit", Tcl112AcDevice, "TAC09CHSD-R"),  # SmartIR 3180
 )
 
 # 0.1.x strings of the devices that were pure Python in 0.1.x.

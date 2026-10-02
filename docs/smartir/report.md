@@ -1,8 +1,8 @@
 # SmartIR climate import
 
-- covered: 148
-- near: 136
-- unknown: 63
+- covered: 156
+- near: 130
+- unknown: 61
 - unsupported: 9
 - not JSON: 2680
 
@@ -28,8 +28,8 @@ Codes: read from the file, decoded by the candidate, verified (sent by pyhvac fo
 | 1029 | Panasonic | near | PanasonicAcDevice/DKE | C | 361 | 345 | 343 | 1 | 0 | model_23 (1) |
 | 1030 | Panasonic | covered | PanasonicAcDevice/JKE-M13 | C | 2160 | 2117 | 1614 | 503 | 0 |  |
 | 1031 | Panasonic | covered | MitsubishiHeavy88Device | C | 209 | 209 | 159 | 50 | 0 |  |
-| 1032 | Panasonic | near | PanasonicNativeDevice/4 way cassette | C | 301 | 293 | 18 | 1 | 0 | byte 17 bit 6 (274), swing (274), byte 17 bit 5 (274), mode (274), byte 23 bit 7 (274), byte 23 bit 5 (274), fan (52), profile (42) |
-| 1040 | Ggeneral Electric | near | ElectraAcDevice | C | 205 | 205 | 0 | 1 | 0 | byte 2 bit 1 (187), byte 3 bit 3 (153), byte 2 bit 0 (153), byte 3 bit 4 (153), byte 2 bit 3 (136), byte 3 bit 2 (119), byte 3 bit 0 (93), byte 2 bit 4 (68), temperature (68), byte 2 bit 2 (68), byte 3 bit 1 (57), fan (17) |
+| 1032 | Panasonic | near | PanasonicNativeDevice/4 way cassette | C | 301 | 293 | 18 | 1 | 0 | byte 17 bit 5 (274), byte 23 bit 5 (274), byte 23 bit 7 (274), byte 17 bit 6 (274), swing (274), mode (274), fan (52), profile (42) |
+| 1040 | Ggeneral Electric | near | ElectraAcDevice | C | 205 | 205 | 0 | 1 | 0 | byte 2 bit 1 (187), byte 3 bit 3 (153), byte 3 bit 4 (153), byte 2 bit 0 (153), byte 2 bit 3 (136), byte 3 bit 2 (119), byte 3 bit 0 (93), byte 2 bit 4 (68), temperature (68), byte 2 bit 2 (68), byte 3 bit 1 (57), fan (17) |
 | 1041 | Ggeneral Electric | covered | KelvinatorDevice | C | 301 | 297 | 59 | 238 | 0 |  |
 | 1042 | Ggeneral Electric | covered | FujitsuAcDevice/ARRAH2E | C | 336 | 335 | 223 | 112 | 0 |  |
 | 1043 | General Electric | near | FujitsuAcDevice/ARRAH2E | C | 336 | 285 | 1 | 0 | 0 | byte 8 bit 0 (284), byte 15 bit 0 (208), byte 15 bit 1 (113), byte 15 bit 2 (85), byte 10 bit 0 (76), byte 15 bit 4 (32), byte 15 bit 3 (27), byte 15 bit 7 (26), byte 15 bit 5 (24), byte 10 bit 1 (20), byte 8 bit 4 (19), byte 8 bit 5 (19), byte 8 bit 6 (19), byte 15 bit 6 (18), byte 8 bit 7 (18), byte 10 bit 2 (10) |
@@ -47,25 +47,25 @@ Codes: read from the file, decoded by the candidate, verified (sent by pyhvac fo
 | 1070 | LG | covered | Lg2Device/AKB74955603 | C | 261 | 261 | 165 | 96 | 0 |  |
 | 1080 | Hitachi | covered | Hitachi264Device | C | 136 | 136 | 135 | 1 | 0 |  |
 | 1081 | Hitachi | near | Hitachi296Device | C | 137 | 133 | 8 | 1 | 0 | byte 11 bit 1 (121), byte 11 bit 0 (121), byte 11 bit 2 (121), byte 9 bit 1 (34), byte 9 bit 3 (34), temperature (8), unset_high (8) |
-| 1082 | Hitachi | near | Hitachi296Device | C | 341 | 333 | 37 | 19 | 0 | byte 11 bit 1 (176), byte 11 bit 0 (176), byte 11 bit 2 (176), byte 9 bit 1 (100), byte 9 bit 3 (100), temperature (97), byte 11 bit 4 (82), byte 11 bit 6 (82), mode (82), fan (67), unset_high (15) |
+| 1082 | Hitachi | near | Hitachi296Device | C | 341 | 333 | 37 | 19 | 0 | byte 11 bit 1 (176), byte 11 bit 0 (176), byte 11 bit 2 (176), byte 9 bit 1 (100), byte 9 bit 3 (100), temperature (97), byte 11 bit 6 (82), byte 11 bit 4 (82), mode (82), fan (67), unset_high (15) |
 | 1083 | LG | covered | Hitachi264Device | C | 205 | 204 | 153 | 51 | 0 |  |
-| 1084 | Hitachi | near | HitachiAcDevice | C | 358 | 351 | 0 | 1 | 0 | byte 15 bit 6 (350), byte 14 bit 6 (350), byte 14 bit 5 (350), byte 15 bit 5 (350), min_temp (110), byte 9 bit 5 (77), temperature (68), byte 9 bit 4 (1), byte 9 bit 6 (1) |
-| 1085 | Hitachi | near | Mitsubishi112Device | C | 38 | 37 | 0 | 1 | 0 | byte 11 bit 7 (36), swing_h (36), swing_v (36), temperature (5) |
+| 1084 | Hitachi | near | HitachiAcDevice | C | 358 | 351 | 0 | 1 | 0 | byte 14 bit 6 (350), byte 15 bit 6 (350), byte 15 bit 5 (350), byte 14 bit 5 (350), min_temp (110), byte 9 bit 5 (77), temperature (68), byte 9 bit 4 (1), byte 9 bit 6 (1) |
+| 1085 | Hitachi | near | Mitsubishi112Device | C | 38 | 37 | 0 | 1 | 0 | swing_h (36), swing_v (36), byte 11 bit 7 (36), temperature (5) |
 | 1086 | Hitachi | unknown |  |  | 144 | 0 | 0 | 0 | 0 |  |
 | 1087 | Hitachi | near | HitachiAcDevice | C | 426 | 421 | 156 | 19 | 0 | min_temp (166), temperature (92), byte 9 bit 5 (85), fan (47) |
 | 1088 | Hitachi | unknown |  |  | 426 | 0 | 0 | 0 | 0 |  |
-| 1089 | Hitachi | near | HitachiAcDevice | C | 358 | 293 | 0 | 0 | 0 | byte 25 bit 4 (186), byte 25 bit 5 (186), byte 23 bit 0 (186), frames (107), temperature (33), byte 9 bit 5 (33), min_temp (2), mode (1) |
+| 1089 | Hitachi | near | HitachiAcDevice | C | 358 | 293 | 0 | 0 | 0 | byte 23 bit 0 (186), byte 25 bit 4 (186), byte 25 bit 5 (186), frames (107), temperature (33), byte 9 bit 5 (33), min_temp (2), mode (1) |
 | 1090 | Hitachi | near | HitachiAcDevice | C | 1701 | 1701 | 0 | 1 | 0 | byte 23 bit 0 (1700), temperature (340), fan (204), min_temp (20) |
 | 1091 | Hitachi | near | KelonDevice/16C | C | 452 | 448 | 121 | 237 | 0 | temperature (90), smart (90) |
-| 1092 | Hitachi | near | HitachiAcDevice | C | 205 | 201 | 0 | 1 | 0 | byte 15 bit 5 (200), byte 14 bit 6 (200), byte 14 bit 5 (200) |
-| 1100 | Daikin | near | Daikin216Device | C | 261 | 259 | 154 | 53 | 0 | byte 14 bit 7 (52), temperature (52), fan (39) |
+| 1092 | Hitachi | near | HitachiAcDevice | C | 205 | 201 | 0 | 1 | 0 | byte 14 bit 6 (200), byte 15 bit 5 (200), byte 14 bit 5 (200) |
+| 1100 | Daikin | near | Daikin216Device | C | 261 | 259 | 154 | 53 | 0 | temperature (52), byte 14 bit 7 (52), fan (39) |
 | 1101 | Daikin | covered | Daikin312Device | C | 521 | 521 | 520 | 1 | 0 |  |
 | 1102 | Daikin | near | Daikin128Device | C | 271 | 271 | 0 | 270 | 0 | frames (1) |
 | 1103 | Daikin | covered | MitsubishiAcDevice/remote | C | 65 | 62 | 61 | 1 | 0 |  |
 | 1104 | Daikin | unknown |  |  | 316 | 0 | 0 | 0 | 0 |  |
 | 1105 | Dalkin | unknown |  |  | 1036 | 0 | 0 | 0 | 0 |  |
 | 1106 | Daikin | covered | Daikin312Device | C | 456 | 453 | 452 | 1 | 0 |  |
-| 1107 | Daikin | near | Daikin160Device | C | 313 | 308 | 86 | 96 | 0 | byte 16 bit 7 (78), temperature (78), fan (65), mode (48) |
+| 1107 | Daikin | near | Daikin160Device | C | 313 | 308 | 86 | 96 | 0 | temperature (78), byte 16 bit 7 (78), fan (65), mode (48) |
 | 1108 | Daikin | covered | Daikin312Device | C | 601 | 601 | 600 | 1 | 0 |  |
 | 1109 | Daikin | near | Daikin176Device | C | 193 | 189 | 1 | 1 | 0 | alt_mode (187), fan (95), temperature (1) |
 | 1110 | Daikin | covered | DaikinArcDevice | C | 181 | 181 | 180 | 1 | 0 |  |
@@ -78,25 +78,25 @@ Codes: read from the file, decoded by the candidate, verified (sent by pyhvac fo
 | 1117 | Daikin | covered | Daikin312Device | C | 553 | 551 | 550 | 1 | 0 |  |
 | 1118 | Daikin | covered | Daikin312Device | C | 85 | 85 | 84 | 1 | 0 |  |
 | 1119 | Daikin | covered | Daikin216Device | C | 43 | 41 | 13 | 28 | 0 |  |
-| 1120 | Mitsubishi Electric | near | MitsubishiAcDevice/remote | C | 180 | 174 | 0 | 1 | 1 | byte 32 bit 1 (166), byte 14 bit 1 (166), swing_v (60), temperature (56), frames (7) |
+| 1120 | Mitsubishi Electric | near | MitsubishiAcDevice/remote | C | 180 | 174 | 0 | 1 | 1 | byte 14 bit 1 (166), byte 32 bit 1 (166), swing_v (60), temperature (56), frames (7) |
 | 1121 | Mitsubishi Electric | covered | MitsubishiAcDevice/remote | C | 65 | 62 | 61 | 1 | 0 |  |
 | 1122 | Mitsubishi | unknown |  |  | 265 | 0 | 0 | 0 | 0 |  |
-| 1123 | Mitsubishi Electric | near | MitsubishiHeavy152Device | C | 91 | 87 | 0 | 1 | 0 | byte 13 bit 5 (86), swing_v (14), byte 13 bit 6 (14), temp (1) |
+| 1123 | Mitsubishi Electric | near | MitsubishiHeavy152Device | C | 91 | 87 | 0 | 1 | 0 | byte 13 bit 5 (86), byte 13 bit 6 (14), swing_v (14), temp (1) |
 | 1124 | Mitsubishi | unknown |  |  | 481 | 0 | 0 | 0 | 0 |  |
-| 1125 | Mitsubishi Electric | near | MitsubishiAcDevice/remote | C | 257 | 200 | 0 | 0 | 0 | byte 32 bit 1 (189), byte 32 bit 0 (189), byte 14 bit 0 (189), byte 14 bit 1 (189), swing_h (189), temperature (120), frames (11) |
+| 1125 | Mitsubishi Electric | near | MitsubishiAcDevice/remote | C | 257 | 200 | 0 | 0 | 0 | byte 14 bit 0 (189), byte 14 bit 1 (189), swing_h (189), byte 32 bit 0 (189), byte 32 bit 1 (189), temperature (120), frames (11) |
 | 1126 | Mitsubishi Electric | unknown |  |  | 257 | 0 | 0 | 0 | 0 |  |
 | 1127 | Mitsubishi Electric | covered | MitsubishiAcDevice/remote | C | 161 | 141 | 140 | 1 | 0 |  |
 | 1128 | Mitsubishi Electric | covered | MitsubishiAcDevice/remote | C | 321 | 310 | 162 | 148 | 0 |  |
 | 1129 | Mitsubishi Electric  | covered | MitsubishiAcDevice/remote | C | 2689 | 2656 | 1985 | 671 | 0 |  |
 | 1130 | Mitsubishi Electric | covered | MitsubishiAcDevice/remote | C | 193 | 177 | 71 | 106 | 0 |  |
 | 1131 | Mitsubishi Electric | covered | Mitsubishi136Device | C | 145 | 141 | 96 | 45 | 0 |  |
-| 1132 | Mitsubishi Electric | near | Mitsubishi112Device | C | 193 | 193 | 0 | 1 | 0 | swing_h (192), byte 5 bit 7 (192), temperature (120) |
+| 1132 | Mitsubishi Electric | covered | Tcl112AcDevice/GZ055BE1-R | C | 193 | 181 | 61 | 120 | 0 |  |
 | 1133 | Mitsubishi Electric Starmex | near | MitsubishiAcDevice/remote | C | 2129 | 2127 | 753 | 1262 | 0 | frames (112) |
 | 1134 | Mitsubishi Electric | covered | MitsubishiAcDevice/remote | C | 241 | 239 | 88 | 151 | 0 |  |
 | 1135 | Mitsubishi | near | MitsubishiAcDevice/remote | C | 481 | 480 | 0 | 1 | 0 | swing_h (477), temperature (180), swing_v (64), frames (2) |
 | 1136 | Mitsubishi Electric | covered | MitsubishiAcDevice/remote | C | 289 | 249 | 97 | 152 | 0 |  |
 | 1137 | Mitsubishi Electric | covered | MitsubishiAcDevice/remote | C | 2241 | 1911 | 995 | 916 | 0 |  |
-| 1138 | Mitsubishi Electric | near | MitsubishiAcDevice/remote | C | 321 | 317 | 0 | 1 | 0 | byte 32 bit 4 (312), isee (312), swing_h (312), byte 14 bit 4 (312), mode_aux (76), mode (76), temperature (75), ecocool (16), frames (4) |
+| 1138 | Mitsubishi Electric | near | MitsubishiAcDevice/remote | C | 321 | 317 | 0 | 1 | 0 | byte 14 bit 4 (312), byte 32 bit 4 (312), swing_h (312), isee (312), mode_aux (76), mode (76), temperature (75), ecocool (16), frames (4) |
 | 1139 | Mitsubishi | unknown |  |  | 58 | 0 | 0 | 0 | 0 |  |
 | 1140 | Actron | covered | CoolixDevice | C | 113 | 113 | 113 | 0 | 0 |  |
 | 1160 | Carrier | covered | CoolixDevice | C | 281 | 281 | 195 | 86 | 0 |  |
@@ -106,15 +106,15 @@ Codes: read from the file, decoded by the candidate, verified (sent by pyhvac fo
 | 1164 | Carrier | covered | CoolixDevice | C | 238 | 233 | 193 | 40 | 1 |  |
 | 1165 | Carrier | unknown |  |  | 321 | 0 | 0 | 0 | 0 |  |
 | 1166 | Carrier | unknown |  |  | 130 | 0 | 0 | 0 | 0 |  |
-| 1180 | Gree | near | GreeDevice/YX1FSF | C | 301 | 300 | 238 | 2 | 0 | display_temp (60), wifi (60), model_a (60), byte 5 bit 5 (60), swing_auto (60), swing_v (60) |
+| 1180 | Gree | near | GreeDevice/YX1FSF | C | 301 | 300 | 238 | 2 | 0 | display_temp (60), swing_v (60), swing_auto (60), wifi (60), byte 5 bit 5 (60), model_a (60) |
 | 1181 | Gree | near | KelvinatorDevice | C | 79 | 61 | 21 | 23 | 0 | frames (11), byte 7 bit 3 (6), turbo (3), quiet (2) |
 | 1182 | Gree | near | KelvinatorDevice | C | 301 | 301 | 61 | 239 | 0 | frames (1) |
 | 1183 | Gree | near | GreeDevice/YAW1F-0 | C | 961 | 952 | 474 | 1 | 0 | light (476), frames (1) |
 | 1184 | Gree | near | GreeDevice/YX1FSF-H | C | 301 | 298 | 201 | 62 | 0 | byte 5 bit 5 (35), turbo (11) |
 | 1185 | Gree | near | GreeDevice/YX1FSF-H | C | 301 | 300 | 285 | 1 | 0 | light (14) |
 | 1186 | Gree | covered | GreeDevice/YAW1F-wifi | C | 60 | 57 | 56 | 1 | 0 |  |
-| 1187 | Gree | near | GreeDevice/YAW1F | C | 61 | 61 | 0 | 31 | 0 | swing_v (30), light (30) |
-| 1188 | Gree | near | GreeDevice/YAW1F-wifi | F | 521 | 493 | 0 | 1 | 0 | use_fahrenheit (490), byte 5 bit 7 (490), temp_extra_degree_f (173), frames (2), temp (1) |
+| 1187 | Gree | near | GreeDevice/YAW1F | C | 61 | 61 | 0 | 31 | 0 | light (30), swing_v (30) |
+| 1188 | Gree | near | GreeDevice/YAW1F-wifi | F | 521 | 493 | 0 | 1 | 0 | byte 5 bit 7 (490), use_fahrenheit (490), temp_extra_degree_f (173), frames (2), temp (1) |
 | 1200 | Tosot | near | GreeDevice/YAW1F | C | 301 | 301 | 0 | 61 | 0 | display_temp (120), swing_auto (120), swing_v (120), xfan (120) |
 | 1220 | Sungold | covered | MideaDevice/RG57-F | F | 201 | 201 | 189 | 12 | 0 |  |
 | 1240 | Consul | unknown |  |  | 118 | 0 | 0 | 0 | 0 |  |
@@ -134,15 +134,15 @@ Codes: read from the file, decoded by the candidate, verified (sent by pyhvac fo
 | 1286 | Fujitsu | covered | FujitsuAcDevice/ARDB1 | C | 326 | 325 | 200 | 125 | 0 |  |
 | 1287 | Fujitsu | covered | FujitsuAcDevice/ARRAH2E | C | 336 | 336 | 224 | 112 | 0 |  |
 | 1288 | Fujitsu | unknown |  |  | 209 | 0 | 0 | 0 | 0 |  |
-| 1289 | Fujitsu | near | FujitsuAcDevice/ARREW4E | C | 209 | 193 | 1 | 0 | 52 (!) | byte 14 bit 5 (192), byte 14 bit 0 (192), byte 11 bit 3 (192), byte 12 bit 2 (192), byte 15 bit 7 (164), byte 11 bit 4 (128), byte 13 bit 0 (116), byte 15 bit 0 (107), byte 15 bit 1 (106), byte 13 bit 6 (101), byte 15 bit 2 (100), byte 15 bit 4 (95), byte 11 bit 0 (89), byte 15 bit 6 (87), byte 15 bit 5 (83), byte 13 bit 3 (72), byte 15 bit 3 (67), byte 13 bit 5 (65), byte 12 bit 0 (64), byte 13 bit 2 (63), byte 13 bit 1 (59), byte 13 bit 4 (42), byte 8 bit 4 (28), byte 8 bit 3 (28), byte 8 bit 6 (24), byte 8 bit 5 (24), byte 8 bit 7 (24) |
+| 1289 | Fujitsu | near | FujitsuAcDevice/ARREW4E | C | 209 | 193 | 1 | 0 | 52 (!) | byte 12 bit 2 (192), byte 11 bit 3 (192), byte 14 bit 0 (192), byte 14 bit 5 (192), byte 15 bit 7 (164), byte 11 bit 4 (128), byte 13 bit 0 (116), byte 15 bit 0 (107), byte 15 bit 1 (106), byte 13 bit 6 (101), byte 15 bit 2 (100), byte 15 bit 4 (95), byte 11 bit 0 (89), byte 15 bit 6 (87), byte 15 bit 5 (83), byte 13 bit 3 (72), byte 15 bit 3 (67), byte 13 bit 5 (65), byte 12 bit 0 (64), byte 13 bit 2 (63), byte 13 bit 1 (59), byte 13 bit 4 (42), byte 8 bit 4 (28), byte 8 bit 3 (28), byte 8 bit 5 (24), byte 8 bit 6 (24), byte 8 bit 7 (24) |
 | 1290 | Fujitsu | unknown |  |  | 376 | 0 | 0 | 0 | 0 |  |
-| 1291 | Fujitsu | near | FujitsuAcDevice/ARRAH2E | C | 210 | 206 | 1 | 0 | 52 (!) | byte 11 bit 4 (204), byte 8 bit 0 (204), byte 12 bit 1 (204), byte 13 bit 4 (178), byte 13 bit 6 (178), byte 15 bit 5 (150), byte 13 bit 0 (137), byte 15 bit 0 (130), byte 15 bit 7 (121), byte 15 bit 2 (108), byte 13 bit 3 (100), byte 15 bit 1 (100), byte 15 bit 3 (98), byte 15 bit 6 (87), byte 11 bit 0 (78), byte 15 bit 4 (76), byte 13 bit 2 (67), byte 11 bit 2 (62), byte 13 bit 1 (51), byte 10 bit 0 (39), byte 8 bit 5 (35), byte 8 bit 7 (35), byte 8 bit 6 (30), byte 8 bit 4 (30), byte 11 bit 3 (13), frames (1) |
+| 1291 | Fujitsu | near | FujitsuAcDevice/ARRAH2E | C | 210 | 206 | 1 | 0 | 52 (!) | byte 12 bit 1 (204), byte 8 bit 0 (204), byte 11 bit 4 (204), byte 13 bit 4 (178), byte 13 bit 6 (178), byte 15 bit 5 (150), byte 13 bit 0 (137), byte 15 bit 0 (130), byte 15 bit 7 (121), byte 15 bit 2 (108), byte 13 bit 3 (100), byte 15 bit 1 (100), byte 15 bit 3 (98), byte 15 bit 6 (87), byte 11 bit 0 (78), byte 15 bit 4 (76), byte 13 bit 2 (67), byte 11 bit 2 (62), byte 13 bit 1 (51), byte 10 bit 0 (39), byte 8 bit 5 (35), byte 8 bit 7 (35), byte 8 bit 6 (30), byte 8 bit 4 (30), byte 11 bit 3 (13), frames (1) |
 | 1292 | Fujitsu | covered | FujitsuAcDevice/ARRAH2E | C | 1301 | 1300 | 852 | 448 | 0 |  |
 | 1293 | Fujitsu | covered | FujitsuAcDevice/ARRAH2E | C | 651 | 651 | 427 | 224 | 0 |  |
 | 1294 | Fujitsu | near | FujitsuAcDevice/ARRAH2E | C | 548 | 522 | 390 | 131 | 0 | frames (1) |
-| 1300 | Sharp | near | SharpAcDevice/A907 | C | 301 | 301 | 0 | 0 | 0 | byte 9 bit 4 (225), swing (150), temp_flags (150), temperature (141), fan (75), frames (75), mode (1), byte 9 bit 5 (1) |
+| 1300 | Sharp | near | SharpAcDevice/A907 | C | 301 | 301 | 0 | 0 | 0 | byte 9 bit 4 (225), temp_flags (150), swing (150), temperature (141), fan (75), frames (75), byte 9 bit 5 (1), mode (1) |
 | 1301 | Sharp | near | SharpAcDevice/A903 | C | 241 | 241 | 15 | 106 | 0 | temperature (116), temp_flags (60), mode (60) |
-| 1320 | Haier | near | HaierYrw02Device/A | C | 301 | 301 | 0 | 1 | 0 | byte 2 bit 1 (300), byte 2 bit 4 (300) |
+| 1320 | Haier | near | HaierYrw02Device/A | C | 301 | 301 | 0 | 1 | 0 | byte 2 bit 4 (300), byte 2 bit 1 (300) |
 | 1321 | Haier | covered | HaierYrw02Device/A | C | 181 | 181 | 50 | 131 | 0 |  |
 | 1322 | Haier | covered | Haier176Device/A | C | 241 | 233 | 120 | 113 | 0 |  |
 | 1340 | Tadiran | near | AmcorDevice | C | 136 | 136 | 57 | 3 | 0 | vent (76), temp (42), mode (1) |
@@ -150,7 +150,7 @@ Codes: read from the file, decoded by the candidate, verified (sent by pyhvac fo
 | 1342 | Tadiran | covered | GreeDevice/YAW1F | C | 121 | 113 | 56 | 57 | 0 |  |
 | 1343 | Tadiran | near | GreeDevice/YAW1F-wifi | C | 181 | 157 | 20 | 1 | 0 | byte 5 bit 7 (135), fan (19), model_a (3), frames (1) |
 | 1344 | Tadiran | covered | GreeDevice/YAW1F | C | 1321 | 1315 | 1076 | 239 | 60 |  |
-| 1345 | Tadiran | near | AmcorDevice | C | 301 | 295 | 57 | 3 | 0 | byte 13 bit 0 (203), byte 5 bit 1 (203), byte 5 bit 0 (203), byte 13 bit 1 (203), vent (89), fan (60), mode (1), frames (1) |
+| 1345 | Tadiran | near | AmcorDevice | C | 301 | 295 | 57 | 3 | 0 | byte 13 bit 1 (203), byte 5 bit 0 (203), byte 5 bit 1 (203), byte 13 bit 0 (203), vent (89), fan (60), mode (1), frames (1) |
 | 1346 | Tadiran | covered | AmcorDevice | C | 137 | 135 | 134 | 1 | 0 |  |
 | 1360 | Springer | covered | CoolixDevice | C | 273 | 273 | 213 | 60 | 8 |  |
 | 1380 | Midea | covered | CoolixDevice | C | 157 | 156 | 117 | 39 | 0 |  |
@@ -180,10 +180,10 @@ Codes: read from the file, decoded by the candidate, verified (sent by pyhvac fo
 | 1408 | Samsung | unknown |  |  | 901 | 0 | 0 | 0 | 0 |  |
 | 1420 | Sintech | near | Mitsubishi112Device | C | 257 | 193 | 0 | 1 | 0 | byte 8 bit 6 (192), swing_h (192), byte 4 bit 7 (192), temperature (64), fan (16) |
 | 1440 | Akai | near | GoodweatherDevice | C | 341 | 341 | 197 | 115 | 0 | temperature (28), air_flow (17), byte 8 bit 4 (12) |
-| 1441 | Akai | near | Tcl112AcDevice/GZ055BE1 | C | 257 | 254 | 0 | 1 | 0 | timer_indicator (253), temperature (121), fan (64) |
+| 1441 | Akai | covered | Tcl112AcDevice/GZ055BE1-R | C | 257 | 254 | 128 | 126 | 0 |  |
 | 1460 | Alliance | covered | CoolixDevice | C | 211 | 211 | 127 | 84 | 0 |  |
-| 1480 | Junkers | near | GreeDevice/YAW1F | C | 181 | 181 | 45 | 16 | 0 | model_a (60), fan (60), display_temp (60), wifi (60), byte 5 bit 5 (60), swing_auto (60), swing_v (60) |
-| 1481 | Junkers | near | GreeDevice/YX1FSF | C | 361 | 361 | 0 | 61 | 0 | display_temp (300), model_a (300), wifi (60), byte 5 bit 5 (60), temp (12) |
+| 1480 | Junkers | near | GreeDevice/YAW1F | C | 181 | 181 | 45 | 16 | 0 | model_a (60), fan (60), swing_v (60), swing_auto (60), wifi (60), byte 5 bit 5 (60), display_temp (60) |
+| 1481 | Junkers | near | GreeDevice/YX1FSF | C | 361 | 361 | 0 | 61 | 0 | model_a (300), display_temp (300), wifi (60), byte 5 bit 5 (60), temp (12) |
 | 1500 | Sanyo | unknown |  |  | 157 | 0 | 0 | 0 | 0 |  |
 | 1501 | Sanyo | unknown |  |  | 286 | 0 | 0 | 0 | 0 |  |
 | 1520 | Hisense | covered | FujitsuAcDevice/ARRAH2E | C | 261 | 261 | 261 | 0 | 0 |  |
@@ -205,36 +205,36 @@ Codes: read from the file, decoded by the candidate, verified (sent by pyhvac fo
 | 1623 | Tornado | near | GoodweatherDevice | C | 91 | 90 | 0 | 1 | 0 | air_flow (89), command (89), swing_v (30) |
 | 1624 | Tornado | covered | KelonDevice/16C | C | 121 | 120 | 119 | 1 | 0 |  |
 | 1625 | Tornado | near | NeoclimaDevice | C | 91 | 88 | 0 | 0 | 0 | follow (88), byte 3 bit 5 (88) |
-| 1626 | Tornado | near | ElectraAcDevice/aux | C | 121 | 121 | 120 | 0 | 0 | byte 10 bit 7 (1), heat_flag (1), byte 6 bit 4 (1), fan (1), mode (1), power (1), byte 4 bit 4 (1) |
+| 1626 | Tornado | near | ElectraAcDevice/aux | C | 121 | 121 | 120 | 0 | 0 | heat_flag (1), byte 4 bit 4 (1), power (1), byte 6 bit 4 (1), byte 10 bit 7 (1), fan (1), mode (1) |
 | 1627 | Tornado | near | KelonDevice/dry-grade | C | 241 | 240 | 134 | 46 | 0 | temperature (60), dry_grade (56) |
 | 1640 | FUJIKO | unknown |  |  | 301 | 0 | 0 | 0 | 0 |  |
-| 1660 | ROYAL | near | CoolixDevice | C | 281 | 274 | 179 | 81 | 0 | byte 6 bit 0 (14), temp (14), fan (14), byte 0 bit 0 (14), sensor_temp (14), byte 0 bit 1 (14), byte 6 bit 1 (14), mode (14), byte 6 bit 2 (14), byte 0 bit 2 (14) |
-| 1661 | ROYAL | near | AirspoolDevice | F | 385 | 367 | 0 | 0 | 0 | byte 4 bit 5 (367), byte 4 bit 0 (367), byte 8 bit 6 (367), byte 3 bit 1 (367), byte 4 bit 6 (367), byte 3 bit 0 (367), byte 5 bit 2 (366), byte 6 bit 1 (287), byte 6 bit 0 (271), byte 6 bit 6 (244), byte 13 bit 6 (209), byte 13 bit 3 (190), byte 13 bit 5 (187), byte 13 bit 2 (177), byte 13 bit 4 (177), byte 13 bit 1 (176), byte 13 bit 7 (154), byte 6 bit 7 (134), byte 6 bit 5 (105), byte 13 bit 0 (96), byte 5 bit 5 (44) |
+| 1660 | ROYAL | near | CoolixDevice | C | 281 | 274 | 179 | 81 | 0 | byte 6 bit 1 (14), byte 6 bit 0 (14), sensor_temp (14), byte 0 bit 2 (14), byte 6 bit 2 (14), byte 0 bit 1 (14), fan (14), temp (14), byte 0 bit 0 (14), mode (14) |
+| 1661 | ROYAL | near | Tcl112AcDevice/TAC09CHSD-R | C | 385 | 368 | 0 | 31 | 0 | fan (337), byte 6 bit 6 (274), temperature (165), byte 6 bit 7 (131), byte 20 bit 6 (44), quiet (43), turbo (20) |
 | 1680 | Mitsubishi Heavy | covered | MitsubishiHeavy88Device | C | 157 | 143 | 109 | 34 | 0 |  |
-| 1681 | Mitsubishi Heavy | near | MitsubishiHeavy88Device | C | 196 | 196 | 52 | 1 | 0 | byte 5 bit 4 (130), byte 5 bit 0 (130), swing_h (130), fan (91) |
-| 1682 | Mitsubishi Heavy | near | TranscoldDevice | C | 157 | 156 | 0 | 0 | 0 | byte 0 bit 4 (156), fan (156), mode (103), temp (1) |
+| 1681 | Mitsubishi Heavy | near | MitsubishiHeavy88Device | C | 196 | 196 | 52 | 1 | 0 | byte 5 bit 0 (130), swing_h (130), byte 5 bit 4 (130), fan (91) |
+| 1682 | Mitsubishi Heavy | near | TranscoldDevice | C | 157 | 156 | 0 | 0 | 0 | fan (156), byte 0 bit 4 (156), mode (103), temp (1) |
 | 1683 | Mitsubishi Heavy | near | MitsubishiHeavy152Device | C | 196 | 193 | 0 | 1 | 0 | byte 13 bit 7 (192), temp (57) |
 | 1684 | Mitsubishi Heavy Industries | near | PanasonicAcDevice/JKE-M13 | C | 121 | 113 | 59 | 0 | 0 | frames (54) |
-| 1685 | Mitsubishi Heavy | near | MitsubishiHeavy152Device | C | 325 | 323 | 0 | 1 | 0 | byte 13 bit 5 (322), byte 13 bit 6 (322), temp (60), fan (52) |
+| 1685 | Mitsubishi Heavy | near | MitsubishiHeavy152Device | C | 325 | 323 | 0 | 1 | 0 | byte 13 bit 6 (322), byte 13 bit 5 (322), temp (60), fan (52) |
 | 1686 | Mitsubishi Heavy | covered | MitsubishiHeavy152Device | C | 326 | 303 | 207 | 96 | 0 |  |
 | 1687 | Mitsubishi Heavy | covered | MitsubishiHeavy88Device | C | 157 | 142 | 105 | 37 | 0 |  |
 | 1688 | Mitsubishi Heavy | covered | MitsubishiHeavy88Device | C | 261 | 235 | 162 | 73 | 0 |  |
 | 1689 | Mitsubishi Heavy | near | MitsubishiHeavy152Device | C | 326 | 322 | 0 | 1 | 4 | byte 13 bit 7 (321), swing_h (192), swing_v (192), byte 13 bit 6 (129), temp (57), fan (52) |
 | 1690 | Mitsubishi Heavy | unknown |  |  | 326 | 0 | 0 | 0 | 0 |  |
-| 1691 | Mitsubishi Heavy | near | MitsubishiHeavy152Device | C | 976 | 956 | 207 | 113 | 0 | byte 13 bit 6 (494), d (190), three (190), swing_h (142), swing_v (142), byte 13 bit 5 (129), temp (120), fan (102) |
+| 1691 | Mitsubishi Heavy | near | MitsubishiHeavy152Device | C | 976 | 956 | 207 | 113 | 0 | byte 13 bit 6 (494), three (190), d (190), swing_v (142), swing_h (142), byte 13 bit 5 (129), temp (120), fan (102) |
 | 1692 | Mitsubishi Heavy | covered | MitsubishiHeavy88Device | C | 157 | 136 | 73 | 63 | 13 |  |
 | 1700 | Electrolux | covered | CoolixDevice | C | 57 | 57 | 57 | 0 | 0 |  |
 | 1701 | Electrolux | covered | GreeDevice/YAW1F | C | 181 | 181 | 177 | 4 | 0 |  |
 | 1702 | Electrolux | unknown |  |  | 362 | 0 | 0 | 0 | 14 |  |
 | 1703 | Electrolux | covered | ElectraAcDevice/aux | C | 273 | 273 | 237 | 36 | 0 |  |
 | 1704 | Electrolux | covered | CoolixDevice | C | 182 | 181 | 180 | 1 | 1 |  |
-| 1705 | Electrolux | near | ElectraAcDevice/aux | C | 545 | 543 | 506 | 35 | 0 | heat_flag (2), fan (2), mode (2), power (2), byte 10 bit 7 (1), byte 2 bit 4 (1), swing_h (1) |
-| 1720 | Erisson | near | Tcl112AcDevice/GZ055BE1 | C | 321 | 292 | 0 | 1 | 0 | timer_indicator (227), temperature (105), fan (64), frames (64) |
+| 1705 | Electrolux | near | ElectraAcDevice/aux | C | 545 | 543 | 506 | 35 | 0 | heat_flag (2), power (2), fan (2), mode (2), swing_h (1), byte 10 bit 7 (1), byte 2 bit 4 (1) |
+| 1720 | Erisson | covered | Tcl112AcDevice/GZ055BE1-R | C | 321 | 292 | 118 | 174 | 0 |  |
 | 1740 | Kelvinator | covered | CoolixDevice/quiet | C | 351 | 350 | 252 | 98 | 0 |  |
 | 1741 | Kelvinator | covered | KelvinatorDevice | C | 451 | 414 | 98 | 316 | 0 |  |
 | 1760 | Daitsu | covered | CoolixDevice | C | 281 | 279 | 195 | 84 | 0 |  |
-| 1761 | Daitsu | near | AirspoolDevice | F | 321 | 313 | 0 | 0 | 0 | byte 4 bit 5 (250), byte 5 bit 6 (250), byte 4 bit 0 (250), byte 3 bit 1 (250), byte 13 bit 4 (250), byte 13 bit 3 (250), byte 4 bit 6 (250), byte 3 bit 0 (250), byte 5 bit 2 (249), byte 6 bit 0 (186), byte 6 bit 1 (186), byte 13 bit 2 (65), byte 6 bit 7 (64), byte 13 bit 5 (64), byte 6 bit 5 (64), byte 13 bit 1 (64), byte 6 bit 6 (64), byte 13 bit 0 (64), frames (63) |
-| 1762 | Daitsu | near | AirspoolDevice | F | 257 | 242 | 0 | 0 | 0 | byte 4 bit 5 (242), byte 5 bit 6 (242), byte 4 bit 0 (242), byte 3 bit 1 (242), byte 13 bit 3 (242), byte 4 bit 6 (242), byte 3 bit 0 (242), byte 13 bit 4 (241), byte 5 bit 2 (241), byte 6 bit 1 (188), byte 6 bit 0 (178), byte 13 bit 0 (65), byte 13 bit 2 (56), byte 13 bit 1 (55), byte 6 bit 7 (54), byte 13 bit 5 (54), byte 6 bit 5 (54), byte 6 bit 6 (54), byte 12 bit 7 (1), byte 13 bit 6 (1), byte 11 bit 1 (1) |
+| 1761 | Daitsu | covered | Tcl112AcDevice/TAC09CHSD-R | C | 321 | 313 | 123 | 190 | 0 |  |
+| 1762 | Daitsu | near | Tcl112AcDevice/TAC09CHSD-R | C | 257 | 241 | 115 | 125 | 0 | byte 11 bit 1 (1), model (1) |
 | 1763 | Daitsu | covered | GreeDevice/YAW1F-0 | C | 301 | 300 | 299 | 1 | 0 |  |
 | 1764 | Daitsu | near | GreeDevice/YAW1F-wifi | C | 301 | 294 | 0 | 1 | 0 | wifi (293), swing_v (58) |
 | 1780 | Trotec | near | GreeDevice/YAW1F-0 | C | 121 | 121 | 104 | 1 | 0 | xfan (16) |
@@ -242,12 +242,12 @@ Codes: read from the file, decoded by the candidate, verified (sent by pyhvac fo
 | 1782 | Trotec | near | MideaDevice/RG57 | C | 169 | 169 | 115 | 40 | 0 | fan_auto (14) |
 | 1800 | Ballu | covered | ElectraAcDevice/aux | C | 137 | 136 | 135 | 1 | 0 |  |
 | 1801 | Ballu | covered | CoolixDevice | C | 168 | 166 | 87 | 79 | 1 |  |
-| 1820 | Riello | near | Hitachi264Device | C | 273 | 268 | 0 | 1 | 0 | byte 29 bit 1 (267), byte 31 bit 2 (267), byte 29 bit 2 (267), byte 31 bit 0 (267), byte 29 bit 5 (267), fan (65), temperature (64) |
-| 1840 | Hualing | near | Mitsubishi112Device | C | 257 | 250 | 0 | 1 | 0 | swing_h (249), temperature (118), byte 6 bit 3 (64), mode (64) |
+| 1820 | Riello | near | Hitachi264Device | C | 273 | 268 | 0 | 1 | 0 | byte 31 bit 2 (267), byte 29 bit 2 (267), byte 29 bit 5 (267), byte 29 bit 1 (267), byte 31 bit 0 (267), fan (65), temperature (64) |
+| 1840 | Hualing | covered | Tcl112AcDevice/GZ055BE1-R | C | 257 | 248 | 131 | 117 | 0 |  |
 | 1860 | Simbio | unknown |  |  | 129 | 0 | 0 | 0 | 0 |  |
 | 1880 | Saunier Duval | covered | GreeDevice/YAW1F | C | 121 | 121 | 120 | 1 | 0 |  |
-| 1900 | TCL | near | AirspoolDevice | F | 33 | 30 | 0 | 0 | 0 | byte 4 bit 5 (30), byte 6 bit 0 (30), byte 5 bit 6 (30), byte 4 bit 0 (30), byte 3 bit 1 (30), byte 13 bit 4 (30), byte 13 bit 3 (30), byte 4 bit 6 (30), byte 3 bit 0 (30), byte 5 bit 2 (29), byte 13 bit 2 (17), byte 6 bit 7 (16), byte 13 bit 5 (16), byte 6 bit 5 (16), byte 13 bit 1 (16), byte 6 bit 6 (16), byte 6 bit 1 (14) |
-| 1901 | TCL | near | AirspoolDevice | F | 129 | 124 | 0 | 0 | 0 | byte 4 bit 5 (124), byte 5 bit 6 (124), byte 4 bit 0 (124), byte 3 bit 1 (124), byte 3 bit 0 (124), byte 4 bit 6 (124), byte 5 bit 2 (123), byte 8 bit 7 (123), byte 6 bit 1 (94), byte 6 bit 0 (92), byte 13 bit 5 (62), byte 13 bit 4 (62), byte 13 bit 1 (62), byte 6 bit 6 (62), byte 13 bit 7 (61), byte 13 bit 2 (61), byte 7 bit 3 (61), byte 13 bit 3 (61), byte 7 bit 7 (61), byte 7 bit 4 (61), byte 13 bit 6 (45), byte 6 bit 5 (33), byte 13 bit 0 (32), byte 6 bit 7 (30) |
+| 1900 | TCL | covered | Tcl112AcDevice/TAC09CHSD-RH | C | 33 | 30 | 27 | 3 | 0 |  |
+| 1901 | TCL | near | Tcl112AcDevice/TAC09CHSD-R | C | 129 | 124 | 0 | 9 | 0 | byte 8 bit 7 (115), fan (115), turbo (83), swing_v (58), swing_h (58), byte 7 bit 7 (57), byte 7 bit 4 (57), temperature (57), byte 6 bit 6 (32) |
 | 1920 | Aokesi | near | ElectraAcDevice | C | 118 | 118 | 0 | 1 | 0 | fan (117), byte 9 bit 4 (54), mode (39) |
 | 1940 | Electra | covered | AirwellDevice | C | 181 | 180 | 178 | 2 | 0 |  |
 | 1941 | Electra | covered | CoolixDevice/16C | C | 181 | 181 | 181 | 0 | 0 |  |
@@ -256,21 +256,21 @@ Codes: read from the file, decoded by the candidate, verified (sent by pyhvac fo
 | 1944 | Electra | covered | CoolixDevice | C | 113 | 113 | 111 | 2 | 0 |  |
 | 1945 | Electra | near | AirwellDevice | C | 56 | 55 | 29 | 16 | 11 (!) | unnamed_high (10), fan (7) |
 | 1946 | Electra | covered | AirwellDevice | C | 181 | 181 | 180 | 1 | 0 |  |
-| 1947 | Electra | near | SanyoAc88Device | C | 127 | 123 | 0 | 1 | 0 | byte 25 bit 7 (122), byte 14 bit 7 (122), start_timer (122), byte 18 bit 0 (122), byte 29 bit 0 (122), byte 7 bit 0 (122), mode (122), byte 3 bit 7 (122), byte 12 bit 2 (111), byte 1 bit 2 (111), byte 23 bit 2 (111), byte 1 bit 4 (108), byte 23 bit 4 (108), byte 12 bit 4 (108), byte 23 bit 0 (91), byte 12 bit 0 (91), byte 1 bit 0 (90), byte 21 bit 7 (70), byte 32 bit 7 (70), byte 10 bit 7 (65), byte 21 bit 0 (41), byte 32 bit 0 (41), byte 10 bit 0 (41), byte 32 bit 1 (40), byte 10 bit 1 (40), byte 21 bit 1 (40), byte 12 bit 1 (30), byte 23 bit 1 (30), byte 1 bit 1 (29), byte 12 bit 6 (14), byte 23 bit 3 (14), byte 1 bit 5 (14), byte 23 bit 6 (14), byte 1 bit 6 (14), byte 23 bit 5 (14), byte 12 bit 3 (14), byte 1 bit 3 (14), byte 12 bit 5 (14) |
+| 1947 | Electra | near | SanyoAc88Device | C | 127 | 123 | 0 | 1 | 0 | mode (122), start_timer (122), byte 7 bit 0 (122), byte 18 bit 0 (122), byte 25 bit 7 (122), byte 3 bit 7 (122), byte 14 bit 7 (122), byte 29 bit 0 (122), byte 12 bit 2 (111), byte 1 bit 2 (111), byte 23 bit 2 (111), byte 23 bit 4 (108), byte 12 bit 4 (108), byte 1 bit 4 (108), byte 12 bit 0 (91), byte 23 bit 0 (91), byte 1 bit 0 (90), byte 32 bit 7 (70), byte 21 bit 7 (70), byte 10 bit 7 (65), byte 32 bit 0 (41), byte 21 bit 0 (41), byte 10 bit 0 (41), byte 10 bit 1 (40), byte 21 bit 1 (40), byte 32 bit 1 (40), byte 12 bit 1 (30), byte 23 bit 1 (30), byte 1 bit 1 (29), byte 1 bit 5 (14), byte 23 bit 5 (14), byte 12 bit 3 (14), byte 23 bit 3 (14), byte 12 bit 5 (14), byte 23 bit 6 (14), byte 1 bit 3 (14), byte 1 bit 6 (14), byte 12 bit 6 (14) |
 | 1948 | Electra | unknown |  |  | 241 | 0 | 0 | 0 | 0 |  |
 | 1960 | AUX | near | ElectraAcDevice | C | 118 | 118 | 0 | 1 | 0 | fan (117), byte 9 bit 4 (54), mode (39) |
 | 1961 | AUX | covered | ElectraAcDevice/aux | C | 991 | 989 | 659 | 330 | 0 |  |
 | 1962 | AUX | covered | ElectraAcDevice/aux | C | 427 | 421 | 370 | 51 | 0 |  |
 | 1963 | AUX | covered | ElectraAcDevice/aux | C | 512 | 510 | 339 | 171 | 0 |  |
 | 1980 | Fuji | covered | FujitsuAcDevice/ARDB1 | C | 79 | 79 | 79 | 0 | 0 |  |
-| 2000 | Aeronik | near | GreeDevice/YAW1F-wifi | C | 301 | 301 | 0 | 1 | 0 | display_temp (299), byte 5 bit 7 (299), ifeel (299), swing_v (179), swing_auto (119), frames (1) |
+| 2000 | Aeronik | near | GreeDevice/YAW1F-wifi | C | 301 | 301 | 0 | 1 | 0 | byte 5 bit 7 (299), ifeel (299), display_temp (299), swing_v (179), swing_auto (119), frames (1) |
 | 2020 | Ariston | covered | CoolixDevice | C | 281 | 276 | 193 | 83 | 0 |  |
 | 2040 | Pioneer | covered | MideaDevice/RG57-F | F | 501 | 496 | 495 | 1 | 0 |  |
-| 2041 | Pioneer | near | AirspoolDevice | C | 1121 | 1091 | 0 | 0 | 0 | byte 4 bit 7 (1091), byte 4 bit 2 (1091), byte 4 bit 1 (1091), byte 3 bit 1 (1089), byte 8 bit 7 (1089), byte 3 bit 0 (1089), byte 5 bit 2 (1088), byte 13 bit 2 (925), byte 6 bit 1 (867), byte 6 bit 0 (866), byte 13 bit 0 (866), byte 6 bit 5 (778), byte 6 bit 6 (721), byte 13 bit 5 (663), byte 13 bit 1 (589), byte 13 bit 7 (535), byte 6 bit 7 (437), byte 13 bit 6 (388), byte 8 bit 1 (277), byte 13 bit 4 (205), byte 7 bit 7 (203), byte 7 bit 4 (203), byte 5 bit 5 (114), byte 13 bit 3 (2), byte 7 bit 3 (2), byte 8 bit 6 (2), byte 12 bit 7 (2), byte 7 bit 1 (1), byte 12 bit 3 (1), byte 7 bit 2 (1), byte 8 bit 0 (1), byte 6 bit 3 (1), byte 7 bit 0 (1), byte 8 bit 2 (1) |
-| 2060 | Dimplex | near | Tcl112AcDevice/GZ055BE1 | C | 321 | 321 | 0 | 1 | 0 | timer_indicator (320), temperature (244), fan (140), byte 11 bit 0 (28) |
+| 2041 | Pioneer | near | Tcl112AcDevice/TAC09CHSD-R | F | 1121 | 1091 | 1 | 46 | 0 | byte 8 bit 7 (1043), timer_indicator (1043), swing_h (846), byte 6 bit 6 (739), half_degree (447), byte 6 bit 7 (430), temperature (404), turbo (275), byte 26 bit 2 (266), byte 7 bit 7 (197), byte 7 bit 4 (197), fan (168), quiet (110), byte 20 bit 6 (81), frames (1) |
+| 2060 | Dimplex | near | Tcl112AcDevice/GZ055BE1-R | C | 321 | 321 | 18 | 275 | 0 | byte 11 bit 0 (28), temperature (16), fan (3) |
 | 2080 | Sendo | covered | ElectraAcDevice/aux | C | 205 | 201 | 201 | 0 | 0 |  |
 | 2100 | Mirage | covered | CoolixDevice | C | 57 | 53 | 53 | 0 | 0 |  |
-| 2120 | Technibel | near | ArgoDevice/WREM2 | C | 392 | 369 | 0 | 1 | 0 | byte 8 bit 4 (368), byte 8 bit 1 (368), byte 5 bit 7 (368), byte 5 bit 6 (368), room_temp (368), byte 7 bit 1 (368), byte 7 bit 0 (368), byte 5 bit 5 (368), byte 8 bit 3 (368), byte 7 bit 2 (368), byte 1 bit 5 (368), byte 7 bit 6 (263), byte 7 bit 7 (228), byte 7 bit 5 (196), byte 7 bit 4 (184), byte 7 bit 3 (177), mode (92), byte 8 bit 2 (92), filter (91), byte 8 bit 0 (40), temperature (2) |
+| 2120 | Technibel | near | ArgoDevice/WREM2 | C | 392 | 369 | 0 | 1 | 0 | byte 8 bit 1 (368), byte 8 bit 4 (368), byte 1 bit 5 (368), byte 8 bit 3 (368), byte 7 bit 2 (368), byte 5 bit 7 (368), byte 7 bit 0 (368), room_temp (368), byte 5 bit 6 (368), byte 5 bit 5 (368), byte 7 bit 1 (368), byte 7 bit 6 (263), byte 7 bit 7 (228), byte 7 bit 5 (196), byte 7 bit 4 (184), byte 7 bit 3 (177), byte 8 bit 2 (92), mode (92), filter (91), byte 8 bit 0 (40), temperature (2) |
 | 2140 | Unionaire | unknown |  |  | 91 | 0 | 0 | 0 | 0 |  |
 | 2160 | Lennox | unknown |  |  | 227 | 0 | 0 | 0 | 1 |  |
 | 2161 | Lennox | covered | CoolixDevice | C | 281 | 265 | 137 | 128 | 0 |  |
@@ -293,7 +293,7 @@ Codes: read from the file, decoded by the candidate, verified (sent by pyhvac fo
 | 2360 | Flouu | near | GreeDevice/YX1FSF-H | C | 196 | 192 | 0 | 1 | 0 | display_temp (191), mode (60), temp (56) |
 | 2380 | BAXI | covered | ElectraAcDevice/aux | C | 627 | 620 | 620 | 0 | 34 |  |
 | 2400 | Yamatsu | unknown |  |  | 257 | 0 | 0 | 0 | 0 |  |
-| 2420 | VS | near | ElectraAcDevice/aux | C | 340 | 335 | 1 | 1 | 1 | byte 3 bit 4 (253), byte 3 bit 3 (201), byte 3 bit 0 (149), byte 3 bit 2 (97), byte 3 bit 1 (95), heat_flag (65), byte 2 bit 4 (47), byte 2 bit 2 (47), byte 2 bit 0 (35), byte 2 bit 1 (35), fan (17), byte 3 bit 5 (13) |
+| 2420 | VS | near | ElectraAcDevice/aux | C | 340 | 335 | 1 | 1 | 1 | byte 3 bit 4 (253), byte 3 bit 3 (201), byte 3 bit 0 (149), byte 3 bit 2 (97), byte 3 bit 1 (95), heat_flag (65), byte 2 bit 4 (47), byte 2 bit 2 (47), byte 2 bit 1 (35), byte 2 bit 0 (35), fan (17), byte 3 bit 5 (13) |
 | 2440 | Vaillant | near | GreeDevice/YAW1F-wifi | C | 196 | 196 | 0 | 1 | 0 | byte 5 bit 7 (195), swing_v (15), fan (6) |
 | 2460 | FanWorld | covered | ElectraAcDevice/aux | C | 273 | 270 | 249 | 21 | 0 |  |
 | 2480 | Rotenso | covered | CoolixDevice | C | 281 | 281 | 197 | 84 | 0 |  |
@@ -301,7 +301,7 @@ Codes: read from the file, decoded by the candidate, verified (sent by pyhvac fo
 | 2520 | Galanz | unknown |  |  | 257 | 0 | 0 | 0 | 0 |  |
 | 2540 | Audinac | near | MirageDevice/KKG29AC1 | C | 301 | 301 | 0 | 301 | 0 |  |
 | 2560 | Mistral | near | Trotec3550Device | C | 271 | 268 | 65 | 173 | 0 | temp_f (30) |
-| 2580 | KOREL | near | ElectraAcDevice/aux | C | 793 | 791 | 625 | 165 | 33 | sensor_update (1), half_degree (1), fan (1), byte 2 bit 4 (1), mode (1), power (1), byte 9 bit 3 (1), swing_h (1) |
+| 2580 | KOREL | near | ElectraAcDevice/aux | C | 793 | 791 | 625 | 165 | 33 | power (1), swing_h (1), byte 9 bit 3 (1), fan (1), sensor_update (1), half_degree (1), byte 2 bit 4 (1), mode (1) |
 | 2600 | Equation | unknown |  |  | 301 | 0 | 0 | 0 | 0 |  |
 | 2620 | Komeco | covered | CoolixDevice | C | 281 | 281 | 197 | 84 | 0 |  |
 | 2640 | Fisher | unknown |  |  | 169 | 0 | 0 | 0 | 0 |  |
@@ -311,7 +311,7 @@ Codes: read from the file, decoded by the candidate, verified (sent by pyhvac fo
 | 2662 | Hyndai | covered | ElectraAcDevice/aux | C | 341 | 341 | 273 | 68 | 0 |  |
 | 2700 | Kolin | unknown |  |  | 64 | 0 | 0 | 0 | 0 |  |
 | 2720 | AEG | near | ElectraAcDevice | C | 273 | 235 | 74 | 110 | 1 | temperature (51), fan (34) |
-| 2740 | Bosch | unknown |  |  | 376 | 0 | 0 | 0 | 0 |  |
+| 2740 | Bosch | near | Bosch144Device | C | 376 | 360 | 188 | 52 | 0 | temp_s1 (120), fan_s1 (60), mode_s1 (60) |
 | 2760 | Tristar | near | GoodweatherDevice | C | 137 | 132 | 5 | 17 | 0 | command (109), temperature (39), byte 8 bit 4 (5) |
 | 2780 | Xiaomi | unknown |  |  | 993 | 0 | 0 | 0 | 0 |  |
 | 2800 | ELGIN | covered | ElectraAcDevice/aux | C | 35 | 35 | 18 | 17 | 0 |  |
@@ -319,22 +319,22 @@ Codes: read from the file, decoded by the candidate, verified (sent by pyhvac fo
 | 2820 | Pearl | unknown |  |  | 181 | 0 | 0 | 0 | 0 |  |
 | 2840 | HTW | covered | CoolixDevice | C | 281 | 256 | 174 | 82 | 0 |  |
 | 2860 | Senville | covered | MideaDevice/RG57 | C | 211 | 208 | 207 | 1 | 0 |  |
-| 2880 | Bora | near | Tcl112AcDevice/GZ055BE1 | C | 312 | 288 | 0 | 14 | 0 | on_timer (274), off_timer (274), timer_indicator (274), byte 4 bit 6 (274), byte 4 bit 4 (194), byte 4 bit 1 (194), byte 4 bit 2 (194), temperature (179), byte 12 bit 4 (143), byte 9 bit 0 (143), byte 10 bit 0 (131), byte 12 bit 0 (90), byte 12 bit 1 (77), swing_h (39), fan (12), byte 12 bit 2 (12) |
+| 2880 | Bora | near | Tcl112AcDevice/GZ055BE1-R | C | 312 | 288 | 0 | 14 | 0 | on_timer (274), off_timer (274), byte 4 bit 6 (274), byte 4 bit 4 (194), byte 4 bit 2 (194), byte 4 bit 1 (194), temperature (179), byte 12 bit 4 (143), byte 9 bit 0 (143), byte 10 bit 0 (131), byte 12 bit 0 (90), byte 12 bit 1 (77), swing_h (39), byte 12 bit 2 (12), fan (12) |
 | 2900 | Goodman | covered | MideaDevice/RG57 | C | 169 | 166 | 165 | 1 | 0 |  |
-| 2920 | Best | near | AirspoolDevice | F | 241 | 241 | 0 | 0 | 0 | byte 4 bit 5 (241), byte 5 bit 6 (241), byte 4 bit 0 (241), byte 3 bit 1 (241), byte 13 bit 4 (241), byte 13 bit 3 (241), byte 4 bit 6 (241), byte 3 bit 0 (241), byte 5 bit 2 (240), byte 6 bit 0 (181), byte 6 bit 1 (181), byte 13 bit 2 (61), byte 13 bit 0 (60), byte 6 bit 7 (60), byte 13 bit 5 (60), byte 6 bit 5 (60), byte 13 bit 1 (60), byte 6 bit 6 (60) |
+| 2920 | Best | covered | Tcl112AcDevice/TAC09CHSD-RH | C | 241 | 241 | 78 | 163 | 0 |  |
 | 2940 | SAGA | near | GoodweatherDevice | C | 545 | 544 | 0 | 1 | 0 | command (543), air_flow (271), byte 8 bit 4 (32), temperature (32), swing_v (14) |
 | 2960 | EcoAir | covered | MideaDevice/RG57-F | C | 281 | 280 | 279 | 1 | 0 |  |
-| 2980 | Agratto | near | AirspoolDevice | F | 94 | 84 | 0 | 0 | 0 | byte 4 bit 5 (84), byte 6 bit 0 (84), byte 4 bit 0 (84), byte 13 bit 4 (84), byte 4 bit 6 (84), byte 5 bit 6 (83), byte 3 bit 1 (83), byte 13 bit 3 (83), byte 3 bit 0 (83), byte 5 bit 2 (82), byte 6 bit 1 (57), byte 13 bit 2 (28), byte 13 bit 5 (28), byte 13 bit 1 (28), byte 6 bit 7 (27), byte 6 bit 5 (27), byte 6 bit 6 (27), byte 13 bit 0 (1), byte 6 bit 3 (1), byte 7 bit 0 (1), byte 7 bit 3 (1), byte 5 bit 5 (1), byte 7 bit 2 (1) |
+| 2980 | Agratto | near | Tcl112AcDevice/TAC09CHSD-RH | C | 94 | 84 | 55 | 1 | 0 | model (27), frames (1) |
 | 3000 | Philco | near | MirageDevice/KKG29AC1 | C | 273 | 273 | 0 | 272 | 0 | pad5 (1), mode (1) |
-| 3020 | Klasse | near | AirspoolDevice | F | 241 | 238 | 0 | 0 | 0 | byte 4 bit 5 (238), byte 4 bit 0 (238), byte 3 bit 4 (238), byte 3 bit 1 (238), byte 6 bit 1 (238), byte 13 bit 6 (238), byte 13 bit 3 (238), byte 4 bit 6 (238), byte 3 bit 0 (238), byte 5 bit 2 (237), byte 6 bit 0 (158), byte 13 bit 0 (80), byte 13 bit 2 (1) |
+| 3020 | Klasse | near | Tcl112AcDevice/TAC09CHSD-R | C | 241 | 239 | 0 | 18 | 0 | byte 17 bit 4 (221), light (221), byte 3 bit 4 (221), temperature (135), fan (109) |
 | 3040 | Viessmann | covered | GreeDevice/YAW1F-wifi | C | 241 | 238 | 237 | 1 | 0 |  |
-| 3060 | HappyTree | near | AirspoolDevice | F | 241 | 241 | 0 | 0 | 0 | byte 4 bit 5 (241), byte 5 bit 6 (241), byte 4 bit 0 (241), byte 3 bit 1 (241), byte 3 bit 0 (241), byte 8 bit 7 (241), byte 4 bit 6 (241), byte 5 bit 2 (240), byte 7 bit 7 (239), byte 7 bit 3 (239), byte 7 bit 4 (239), byte 6 bit 5 (208), byte 13 bit 5 (208), byte 6 bit 0 (161), byte 6 bit 6 (160), byte 6 bit 1 (160), byte 13 bit 7 (83), byte 6 bit 7 (81), byte 13 bit 1 (81), byte 13 bit 2 (80), byte 13 bit 6 (80), byte 13 bit 0 (80), byte 13 bit 3 (3), byte 13 bit 4 (2) |
-| 3080 | Voltas | near | VoltasDevice/122LZF | C | 722 | 683 | 0 | 11 | 0 | wifi (655), temperature (430), fan (214), swing_v (137), swing_h_change (125), off_timer_hrs (34), off_timer_mins (34), byte 6 bit 2 (34), byte 6 bit 6 (34), byte 6 bit 3 (34), on_timer_hrs (34), on_timer_mins (34), byte 5 bit 6 (34), byte 2 bit 4 (34), byte 4 bit 6 (34), byte 6 bit 0 (34), byte 3 bit 5 (34), mode (34), power (34), swing_h (30), byte 8 bit 0 (18), byte 1 bit 4 (4), byte 3 bit 4 (2) |
-| 3100 | Cecotec | near | AirspoolDevice | F | 321 | 314 | 0 | 0 | 0 | byte 4 bit 5 (314), byte 4 bit 0 (314), byte 8 bit 6 (314), byte 3 bit 1 (314), byte 3 bit 0 (314), byte 8 bit 7 (314), byte 4 bit 6 (314), byte 5 bit 2 (313), byte 6 bit 5 (265), byte 6 bit 1 (237), byte 6 bit 0 (234), byte 6 bit 6 (220), byte 13 bit 5 (173), byte 13 bit 2 (158), byte 13 bit 4 (158), byte 13 bit 1 (157), byte 13 bit 3 (156), byte 6 bit 7 (125), byte 13 bit 7 (125), byte 13 bit 0 (80), byte 13 bit 6 (77) |
+| 3060 | HappyTree | near | Tcl112AcDevice/TAC09CHSD-R | F | 241 | 241 | 0 | 2 | 0 | byte 8 bit 7 (239), temperature (238), byte 7 bit 4 (237), byte 7 bit 7 (237), byte 6 bit 6 (176), byte 6 bit 7 (95), fan (64), turbo (32), byte 20 bit 6 (32), swing_v (2), swing_h (2) |
+| 3080 | Voltas | near | VoltasDevice/122LZF | C | 722 | 683 | 0 | 11 | 0 | wifi (655), temperature (430), fan (214), swing_v (137), swing_h_change (125), byte 6 bit 2 (34), on_timer_mins (34), byte 2 bit 4 (34), byte 6 bit 6 (34), mode (34), byte 3 bit 5 (34), off_timer_hrs (34), on_timer_hrs (34), power (34), byte 4 bit 6 (34), byte 5 bit 6 (34), off_timer_mins (34), byte 6 bit 0 (34), byte 6 bit 3 (34), swing_h (30), byte 8 bit 0 (18), byte 1 bit 4 (4), byte 3 bit 4 (2) |
+| 3100 | Cecotec | near | Tcl112AcDevice/TAC09CHSD-R | C | 321 | 314 | 0 | 7 | 0 | fan (307), byte 8 bit 7 (307), byte 6 bit 6 (232), temperature (153), byte 6 bit 7 (135), turbo (46), byte 20 bit 6 (45) |
 | 3120 | Cooper & Hunter | near | GreeDevice/YAW1F-wifi | C | 601 | 584 | 577 | 5 | 0 | frames (2) |
-| 3140 | Argo | near | ArgoDevice/WREM2 | C | 181 | 171 | 0 | 1 | 0 | byte 7 bit 7 (170), byte 5 bit 7 (170), byte 5 bit 6 (170), byte 7 bit 1 (170), byte 7 bit 0 (170), byte 5 bit 5 (170), byte 8 bit 3 (170), byte 7 bit 2 (170), byte 7 bit 3 (137), byte 8 bit 0 (120), byte 8 bit 4 (110), room_temp (110), byte 7 bit 5 (110), byte 7 bit 4 (94), temperature (60), byte 8 bit 2 (60), byte 7 bit 6 (60), byte 8 bit 1 (60), ifeel (60), fan (45) |
+| 3140 | Argo | near | ArgoDevice/WREM2 | C | 181 | 171 | 0 | 1 | 0 | byte 8 bit 3 (170), byte 5 bit 5 (170), byte 7 bit 2 (170), byte 5 bit 7 (170), byte 7 bit 0 (170), byte 5 bit 6 (170), byte 7 bit 7 (170), byte 7 bit 1 (170), byte 7 bit 3 (137), byte 8 bit 0 (120), byte 8 bit 4 (110), room_temp (110), byte 7 bit 5 (110), byte 7 bit 4 (94), byte 8 bit 2 (60), temperature (60), byte 8 bit 1 (60), ifeel (60), byte 7 bit 6 (60), fan (45) |
 | 3160 | AquaThermal | near | AirtonDevice | C | 321 | 321 | 0 | 1 | 0 | byte 4 bit 4 (320), fan (64), turbo (48) |
-| 3180 | Devanti | near | AirspoolDevice | C | 257 | 251 | 0 | 0 | 0 | byte 6 bit 0 (251), byte 8 bit 6 (251), byte 3 bit 1 (251), byte 6 bit 1 (251), byte 3 bit 0 (251), byte 5 bit 2 (250), byte 13 bit 6 (219), byte 4 bit 5 (172), byte 4 bit 6 (172), byte 13 bit 5 (172), byte 13 bit 0 (140), byte 4 bit 1 (125), byte 13 bit 1 (125), byte 4 bit 0 (111), byte 13 bit 4 (111), byte 13 bit 2 (110), byte 13 bit 3 (110), byte 4 bit 2 (109), byte 4 bit 4 (93), byte 4 bit 7 (79), byte 13 bit 7 (32), byte 4 bit 3 (32) |
+| 3180 | Devanti | covered | Tcl112AcDevice/TAC09CHSD-R | C | 257 | 251 | 159 | 92 | 0 |  |
 | 3200 | Friedrich | near | Lg2Device/AKB74955603 | F | 325 | 325 | 136 | 45 | 0 | power (108), temperature (36), frames (36) |
 | 3220 | Mundoclima | covered | ElectraAcDevice/aux | C | 341 | 341 | 68 | 273 | 0 |  |
 | 3240 | Casper | covered | ElectraAcDevice | C | 749 | 712 | 577 | 135 | 0 |  |
@@ -364,10 +364,10 @@ Codes: read from the file, decoded by the candidate, verified (sent by pyhvac fo
 | 7260 | Toshiba | near | ToshibaAcDevice | C | 449 | 449 | 55 | 338 | 112 (!) | frames (56) |
 | 7285 | Fujitsu | unknown |  |  | 376 | 0 | 0 | 0 | 0 |  |
 | 7300 | SHARP | near | SharpAcDevice/A903 | C | 179 | 179 | 0 | 0 | 1 | byte 11 bit 1 (179), temp_flags (59), temperature (56), fan (45), mode (1) |
-| 7386 | Midea | unknown |  |  | 351 | 0 | 0 | 0 | 0 |  |
+| 7386 | Midea | near | Bosch144Device | C | 351 | 351 | 197 | 70 | 0 | fan_s1 (84) |
 | 7740 | Kelvinator | unknown |  |  | 351 | 0 | 0 | 0 | 0 |  |
 | 7741 | Family | unknown |  |  | 401 | 0 | 0 | 0 | 0 |  |
-| 8700 | Kolin | near | GreeDevice/YAW1F-wifi | C | 256 | 256 | 0 | 1 | 0 | byte 7 bit 0 (255), swing_auto (60), swing_h (60), swing_v (60), temp (1) |
+| 8700 | Kolin | near | GreeDevice/YAW1F-wifi | C | 256 | 256 | 0 | 1 | 0 | byte 7 bit 0 (255), swing_v (60), swing_h (60), swing_auto (60), temp (1) |
 | 8720 | Viomi | unknown |  |  | 161 | 0 | 0 | 0 | 0 |  |
 | 8800 | Sigma | covered | GreeDevice/YAW1F | C | 242 | 241 | 240 | 1 | 0 |  |
 
@@ -399,21 +399,6 @@ Protocol(
     {
         "s0": Section(PulseDistance(487, 305, 335), header=(3045, 1584), footer=(487,), gap=70195),
         "s1": Section(PulseDistance(487, 305, 335), header=(3045, 1584), footer=(487,), gap=101502),
-    },
-)
-```
-
-### 2 files, 727 codes, 656 keys
-
-files: 2740, 7386
-
-```
-Protocol(
-    "draft",
-    {
-        "s0": Section(PulseDistance(540, 540, 1614), header=(4400, 4385), footer=(540,), gap=5208),
-        "s1": Section(PulseDistance(540, 540, 1614), header=(4400, 4385), footer=(540,), gap=5208),
-        "s2": Section(PulseDistance(540, 540, 1614), header=(4400, 4385), footer=(540,), gap=0),
     },
 )
 ```
@@ -1171,5 +1156,5 @@ Protocol(
 - SmartIR 1293: Fujitsu / AR-REB1E: name taken by FujitsuAcDevice/ARREB1E
 - SmartIR 1540: Whirlpool / SPIS412L: name taken by WhirlpoolAcDevice/DG11J13A
 
-## Rows: 3 proposed (rows.py)
+## Rows: 15 proposed (rows.py)
 

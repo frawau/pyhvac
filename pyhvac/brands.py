@@ -918,6 +918,14 @@ MODELS = (
     ("ELGIN", "HVQI12B2FB", "unit", CoolixDevice, None),  # SmartIR 2801
     ("Senville", "SENA/12HF/IZ", "unit", MideaDevice, "RG57"),  # SmartIR 2860
     ("Casper", "SC-09FS32", "unit", ElectraAcDevice, None),  # SmartIR 3240
+    ("Panasonic", "CS-E18FKR", "unit", PanasonicAcDevice, "RKR-81"),  # SmartIR 1025
+    ("Hisense", "Hisense", "unit", FujitsuAcDevice, "ARRAH2E"),  # SmartIR 1520
+    ("HTW", "HTWS035IX21D2-R32-I", "unit", CoolixDevice, None),  # SmartIR 2840
+    ("Daikin", "FTXS25CVMB", "unit", Daikin216Device, None),  # SmartIR 4100
+    ("Daikin", "FTXS35CVMB", "unit", Daikin216Device, None),  # SmartIR 4100
+    ("Daikin", "FTXS60BVMB", "unit", Daikin216Device, None),  # SmartIR 4100
+    ("Daikin", "FVXS25BVMB", "unit", Daikin216Device, None),  # SmartIR 4100
+    ("Midea", "MCD-24HRN1-Q1", "unit", CoolixDevice, None),  # SmartIR 4380
 )
 
 # 0.1.x strings of the devices that were pure Python in 0.1.x.

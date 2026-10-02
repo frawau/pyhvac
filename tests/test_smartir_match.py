@@ -308,3 +308,64 @@ def test_captures_beyond_the_protocol_tolerance_still_decode():
     )
     m = match(dataclasses.replace(f, codes=stretched), CANDIDATES)
     assert m.verdict == "covered" and m.candidate.startswith("CoolixDevice")
+
+
+def test_a_capture_of_the_start_of_a_message_is_explained():
+    # pyhvac's Toshiba sends the state message (twice), then a short one; a
+    # remote may send the state alone.
+    from pyhvac.protocols.toshiba import ToshibaAcDevice
+
+    dev = ToshibaAcDevice("Toshiba", "unit")
+
+    def state_only(frames):
+        return frames[:2]
+
+    codes = []
+    for t in range(17, 30):
+        st = dev.normalise(HvacState(True, "cool", float(t)))
+        frames = state_only(dev.frames(None, st, ()))
+        codes.append(
+            Code(
+                Key("cool", "auto", None, float(t)),
+                ir_encode(dev.PROTOCOL, frames).pulses,
+            )
+        )
+    f = SmartIRFile(
+        4,
+        "Toshiba",
+        ("X",),
+        "Broadlink",
+        "Base64",
+        17,
+        29,
+        1,
+        ("cool",),
+        ("auto",),
+        (),
+        tuple(codes),
+        0,
+    )
+    m = match(f, CANDIDATES)
+    assert m.verdict == "covered" and m.candidate == "ToshibaAcDevice"
+
+
+def test_a_fifth_of_glitched_captures_does_not_block_covered():
+    f = coolix_file()
+    glitched = tuple(
+        dataclasses.replace(c, pulses=c.pulses[:9]) if i % 5 == 0 else c
+        for i, c in enumerate(f.codes)
+    )
+    m = match(dataclasses.replace(f, codes=glitched), CANDIDATES)
+    assert m.verdict == "covered"
+
+
+def test_short_gaps_between_frames_still_decode():
+    f = coolix_file()
+    short = tuple(
+        dataclasses.replace(
+            c, pulses=tuple(3000 if 5000 < d < 6000 else d for d in c.pulses)
+        )
+        for c in f.codes
+    )
+    m = match(dataclasses.replace(f, codes=short), CANDIDATES)
+    assert m.verdict == "covered" and m.candidate.startswith("CoolixDevice")

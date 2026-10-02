@@ -43,7 +43,8 @@ CUT_SPACE = 7000  # µs: a learned code may be cut after any space this long
 # Learned captures are jittery: decoding uses at least this tolerance (the
 # checksums and the encoding comparison decide whether a code is pyhvac's).
 LOOSE_TOLERANCE = 0.40
-DECODE_SHARE = 0.9  # a candidate must decode this share of the codes
+LOOSE_GAP = 0.5  # and accepts gaps down to this share of the protocol's
+DECODE_SHARE = 0.75  # a candidate must decode this share of the codes
 SAMPLE = 24  # codes the mapping is fitted on
 PASSES = 2  # coordinate descent rounds
 
@@ -54,6 +55,7 @@ class Candidate:
     device: object
     sequences: Tuple[Tuple[str, ...], ...]
     protocol: object = None  # the device's protocol, decoding loosely
+    shapes: frozenset = frozenset()  # the frame byte lengths pyhvac sends
 
 
 @dataclass
@@ -108,20 +110,64 @@ def candidates():
             continue
         if device.PROTOCOL is None:
             continue
-        sequences = set()
+        sequences, shapes = set(), set()
         for state in _probe_states(device):
             try:
                 frames = device.frames(None, device.normalise(state), ())
             except (TypeError, ValueError, KeyError):
                 continue
             sequences.add(tuple(f.section for f in frames))
+            shapes.add(tuple(len(f.data) for f in frames))
         name = cls.__name__ + (f"/{variant}" if variant else "")
-        loose = dataclasses.replace(
-            device.PROTOCOL,
-            tolerance=max(LOOSE_TOLERANCE, device.PROTOCOL.tolerance),
+        loose = _loose(device.PROTOCOL)
+
+        # A remote may send part of what pyhvac sends: a message's start (the
+        # state without the messages after it) or its tail (a toggle alone).
+        def parts(items):
+            return {
+                tuple(item[i:j])
+                for item in list(items)
+                for i in range(len(item))
+                for j in range(i + 1, len(item) + 1)
+                if i == 0 or j == len(item)
+            }
+
+        sequences |= parts(sequences)
+        shapes |= parts(shapes)
+        out.append(
+            Candidate(
+                name,
+                device,
+                tuple(sorted(sequences, key=len)),
+                loose,
+                frozenset(shapes),
+            )
         )
-        out.append(Candidate(name, device, tuple(sorted(sequences, key=len)), loose))
     return out
+
+
+def _loose(protocol):
+    """``protocol`` decoding learned captures: LOOSE_TOLERANCE, gaps down to
+    LOOSE_GAP of the protocol's, but above the longest bit space at that
+    tolerance (a shorter gap would end a section at a bit space)."""
+    tol = max(LOOSE_TOLERANCE, protocol.tolerance)
+
+    def gap(sec):
+        bits = sec.bits
+        longest = max(
+            (getattr(bits, "one_space", 0) or 0),
+            (getattr(bits, "zero_space", 0) or 0),
+            (getattr(bits, "space", 0) or 0),
+            2 * (getattr(bits, "half", 0) or 0),
+        )
+        floor = int(longest * (1 + tol) / (1 - tol)) + 1
+        return min(sec.gap, max(round(sec.gap * LOOSE_GAP), floor))
+
+    sections = {
+        name: dataclasses.replace(sec, gap=gap(sec)) if sec.gap else sec
+        for name, sec in protocol.sections.items()
+    }
+    return dataclasses.replace(protocol, sections=sections, tolerance=tol)
 
 
 def decode_code(candidate, pulses):
@@ -135,7 +181,9 @@ def decode_code(candidate, pulses):
                 frames = decode(candidate.protocol, pulses[:end], expected=seq)
             except (DecodeError, ValueError):
                 continue
-            return tuple(f.data for f in frames)
+            data = tuple(f.data for f in frames)
+            if tuple(len(d) for d in data) in candidate.shapes:
+                return data
     return None
 
 
@@ -424,8 +472,10 @@ def _reachable(device, decoded, units, features):
             frames = _frames(device, st)
             if frames is None:
                 continue
-            for i in range(len(frames)):
+            for i in range(len(frames)):  # the tails, then the starts
                 out.setdefault(_comparable(device, frames[i:]), st)
+            for i in range(1, len(frames)):
+                out.setdefault(_comparable(device, frames[:i]), st)
     return out
 
 

@@ -189,9 +189,16 @@ GREE_CAPABILITIES = {  # variant (gree_ac_remote_model_t)
     # from SmartIR captures: climate 1402 (Samsung), 3040 (Viessmann), 3120
     # (Cooper & Hunter) send it on every message.
     "YAW1F-wifi": _gree_capabilities("powerful", "light", "cleaning", "sleep"),
+    # YAW1F with byte 5's high bits 0b000: SmartIR climate 1183 (Gree), 1763
+    # (Daitsu), 1780 (Trotec).
+    "YAW1F-0": _gree_capabilities("powerful", "light", "cleaning", "sleep"),
     "YBOFB": _gree_capabilities("economy", "powerful", "light", "cleaning", "sleep"),
     "YX1FSF": _gree_capabilities("powerful", "light", "economy", "cleaning", "sleep"),
 }
+
+
+# Byte 5 bits 5-7 of the YAW1F remotes SmartIR captured (stateReset: 0b001).
+GREE_BYTE5_HIGH = {"YAW1F-wifi": 0b110, "YAW1F-0": 0b000}
 
 
 class GreeDevice(Device):
@@ -237,7 +244,10 @@ class GreeDevice(Device):
 
     PROTOCOL = GREE
     LAYOUTS = (Joined(GREE_LAYOUT, 2),)  # the two blocks, joined
-    VARIANTS = ("YAW1F-wifi",)  # beyond the 0.1.x models' (see GREE_CAPABILITIES)
+    VARIANTS = (
+        "YAW1F-wifi",
+        "YAW1F-0",
+    )  # beyond the 0.1.x models' (see GREE_CAPABILITIES)
     capabilities = GREE_CAPABILITIES["YAW1F"]
 
     def __init__(self, brand, model, variant=None):
@@ -276,8 +286,9 @@ class GreeDevice(Device):
             sleep=features.get("sleep", False),
             econo=econo,
         )
-        if self.variant == "YAW1F-wifi":
-            data[5] = data[5] & 0b00011111 | 0b11000000  # bits 5-7: 0b110
+        high = GREE_BYTE5_HIGH.get(self.variant)
+        if high is not None:  # byte 5 bits 5-7
+            data[5] = data[5] & 0b00011111 | high << 5
             GREE_LAYOUT.checksum.apply(data)
         return [Frame("block1", bytes(data[:4])), Frame("block2", bytes(data[4:]))]
 

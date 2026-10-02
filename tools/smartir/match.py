@@ -173,15 +173,15 @@ def _loose(protocol):
 
 def decode_code(candidate, pulses):
     """The frames a code decodes to (bytes per frame), or None: the longest
-    decode. It may start after a long space (a lead-in before the message)
-    and end at one (learned codes often repeat); longer spans and longer
-    sequences are tried first."""
+    decode from the start, ending at a long space if need be (learned codes
+    often repeat), else after an early long space (a lead-in before the
+    message); longer spans and longer sequences are tried first."""
     long_spaces = [i + 1 for i, d in enumerate(pulses) if i % 2 and d >= CUT_SPACE]
     starts = [0] + [i for i in long_spaces if i <= LEAD_IN]
     ends = sorted({len(pulses)} | set(long_spaces), reverse=True)
     spans = sorted(
         ((a, b) for a in starts for b in ends if b > a),
-        key=lambda span: (span[0] - span[1], span[0]),
+        key=lambda span: (span[0] > 0, span[0] - span[1], span[0]),
     )
     for start, end in spans:
         for seq in reversed(candidate.sequences):

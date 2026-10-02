@@ -607,3 +607,47 @@ def test_real_raw_captures_decode(raw, section, data):
 def test_unknown_model_needs_a_variant():
     with pytest.raises(ValueError, match="unknown model"):
         Tcl112AcDevice("tcl", "whatever")
+
+
+# ------------------------------------------------- "-R" (remote) variants
+# As the remotes SmartIR captured send it (16 files): TimerIndicator clear;
+# TAC09CHSD-R also sends the special message, carrying quiet, before every
+# normal one.
+
+
+def r_frames(variant, target, previous=None):
+    from pyhvac.protocols.tcl import Tcl112AcDevice
+
+    dev = Tcl112AcDevice("Test", "unit", variant=variant)
+    if previous is not None:
+        previous = dev.normalise(previous)
+    return [f.data.hex() for f in dev.frames(previous, dev.normalise(target), ())]
+
+
+def test_gz055be1_r_reproduces_a_capture():
+    # SmartIR climate 1441 (Akai TEM-26CHSAAK5): cool 19, fan 2, light on
+    target = HvacState(True, "cool", 19.0, fan="2", features={"light": True})
+    assert r_frames("GZ055BE1-R", target) == ["23cb26010024030c02000000004a"]
+
+
+def test_tac09chsd_r_reproduces_a_capture():
+    # SmartIR climate 2920 (Best BSTS18CNE2): the special message (quiet
+    # off), then dry 23, fan auto
+    target = HvacState(True, "dry", 23.0, fan="auto", features={"light": True})
+    assert r_frames("TAC09CHSD-R", target) == [
+        "23cb260200400000000000000065",
+        "23cb2601002402080000000080c3",
+    ]
+
+
+def test_tac09chsd_r_always_sends_the_special_message():
+    quiet = HvacState(True, "cool", 24.0, features={"quiet": True})
+    sent = r_frames("TAC09CHSD-R", quiet, previous=quiet)
+    assert len(sent) == 2
+    assert TCL112AC_QUIET_LAYOUT.read(bytes.fromhex(sent[0]))["quiet"] == 1
+
+
+@pytest.mark.parametrize("variant", ["GZ055BE1", "TAC09CHSD"])
+def test_the_documented_variants_keep_the_timer_indicator(variant):
+    (main,) = r_frames(variant, HvacState(True, "cool", 24.0))
+    assert TCL112AC_LAYOUT.read(bytes.fromhex(main))["timer_indicator"] == 1

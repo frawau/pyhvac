@@ -60,6 +60,10 @@ TCL112AC = Protocol(
 TCL112AC_MSG_TYPE = {"normal": 0b01, "special": 0b10}  # kTcl112AcNormal/Special
 # tcl_ac_remote_model_t -> isTcl, as IRTcl112Ac::setModel writes it.
 TCL112AC_MODEL = {"TAC09CHSD": 1, "GZ055BE1": 0}
+# The "-R" variants: the documented remote as the remotes SmartIR captured
+# send it (16 files): TimerIndicator clear, and TAC09CHSD-R sends the
+# special message, carrying quiet, before every normal one.
+TCL112AC_REMOTE_VARIANTS = ("GZ055BE1-R", "TAC09CHSD-R")
 
 # Skeleton: IRTcl112Ac::stateReset's known good state (on, cool, 24 C), with
 # the fields the device always writes cleared and the sum cleared; stateReset
@@ -174,6 +178,7 @@ class Tcl112AcDevice(Device):
         },
     )
     MODELS = {}  # model -> remote variant, filled below
+    VARIANTS = TCL112AC_REMOTE_VARIANTS
 
     def __init__(self, brand, model, variant=None):
         super().__init__(brand, model)
@@ -184,12 +189,16 @@ class Tcl112AcDevice(Device):
             raise ValueError(
                 f"unknown model {model!r}: pass variant= (see pyhvac.brands)"
             )
-        if self.variant not in TCL112AC_MODEL:
+        if self.variant not in (*TCL112AC_MODEL, *TCL112AC_REMOTE_VARIANTS):
             raise ValueError(f"unknown Tcl112Ac variant {self.variant!r}")
+        self.model_variant = self.variant.removesuffix("-R")
+        self.remote = self.variant in TCL112AC_REMOTE_VARIANTS
 
     def sends_quiet(self, previous, target):
         """Whether the special (quiet) message goes before the normal one."""
         quiet = target.features["quiet"]
+        if self.variant == "TAC09CHSD-R":
+            return True  # every message, as these remotes send it
         if previous is None:
             return quiet  # a fresh IRTcl112Ac: its last quiet sent is off
         return quiet != previous.features["quiet"]
@@ -210,8 +219,11 @@ class Tcl112AcDevice(Device):
             fan="4" if powerful else target.fan,
             swing_v="auto" if powerful else target.swing_v,
             swing_h=target.swing_h,
-            model=self.variant,
+            model=self.model_variant,
         )
+        if self.remote:
+            TCL112AC_LAYOUT.write_raw(main, "timer_indicator", 0)
+            TCL112AC_LAYOUT.checksum.apply(main)
         out = [Frame("main", bytes(main))]
         if self.sends_quiet(previous, target):
             quiet = TCL112AC_QUIET_LAYOUT.build(quiet=features["quiet"])

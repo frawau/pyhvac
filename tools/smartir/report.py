@@ -28,6 +28,10 @@ from smartir import fetch, match  # noqa: E402
 from smartir.codes import parse  # noqa: E402
 
 KIND = "unit"  # SmartIR lists the units a file was learned from
+# Manufacturer spellings corrected (author's decisions, 2026-10-02).
+BRANDS = {"ggeneralelectric": "General Electric", "fuji": "Fujitsu"}
+UNKNOWN_MODELS = {"unknown", ""}  # named after the brand instead
+REMOTE_SUFFIX = re.compile(r"\s*\(remote\)\s*$", re.IGNORECASE)
 SKIPPED_FLAG = 0.1  # a file with more unreadable codes than this is flagged
 
 
@@ -38,6 +42,7 @@ class Row:
     cls: str  # Device class name
     variant: Optional[str]
     source: int  # upstream file number
+    kind: str = KIND
 
 
 def _key(text):
@@ -55,22 +60,36 @@ def rows(results):
     """Proposed rows and conflicts from [(SmartIRFile, Match)]: only a
     covered file, whose codes pyhvac generates, becomes a row naming its
     candidate. A name already taken by the same device is skipped; taken by
-    another device, it is a conflict."""
+    another device, it is a conflict.
+
+    Names: BRANDS corrects manufacturer spellings; an unknown (or missing)
+    model is named after the brand, and skipped if the brand already has a
+    row on the same device; a model ending in "(Remote)" is a remote row."""
     taken, brand_names = _existing()
+    devices = {(b, d) for (b, _), d in taken.items()}  # (brand key, device)
     out, conflicts = [], []
     for f, m in sorted(results, key=lambda r: r[0].number):
         if m.verdict != "covered":
             continue
         cls, _, variant = m.candidate.partition("/")
         variant = variant or None
-        brand = brand_names.get(_key(f.manufacturer), f.manufacturer.strip())
-        for model in f.models or (f"SmartIR {f.number}",):
-            row = Row(brand, model.strip(), cls, variant, f.number)
+        spelled = BRANDS.get(_key(f.manufacturer), f.manufacturer.strip())
+        brand = brand_names.get(_key(spelled), spelled)
+        for model in f.models or ("",):
+            model, kind = model.strip(), KIND
+            if REMOTE_SUFFIX.search(model):
+                model, kind = REMOTE_SUFFIX.sub("", model), "remote"
+            if model.casefold() in UNKNOWN_MODELS:
+                if (_key(brand), (cls, variant)) in devices:
+                    continue
+                model = brand
+            row = Row(brand, model, cls, variant, f.number, kind)
             k = (_key(brand), _key(row.model))
             if not k[0] or not k[1]:
                 conflicts.append((row, "empty name"))
             elif k not in taken:
                 taken[k] = (cls, variant)
+                devices.add((k[0], (cls, variant)))
                 brand_names.setdefault(k[0], brand)
                 out.append(row)
             elif taken[k] != (cls, variant):
@@ -83,7 +102,7 @@ def python_rows(new_rows):
     lines = []
     for r in new_rows:
         lines.append(
-            f"    ({r.brand!r}, {r.model!r}, {KIND!r}, {r.cls}, {r.variant!r}),"
+            f"    ({r.brand!r}, {r.model!r}, {r.kind!r}, {r.cls}, {r.variant!r}),"
             f"  # SmartIR {r.source}"
         )
     return "\n".join(lines) + "\n"

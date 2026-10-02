@@ -571,6 +571,78 @@ MODELS = (
     ("LG", "W12TCM", "unit", LgAcDevice, "GE6711AR2853M"),  # SmartIR 1067
     ("Actron", "Actron", "unit", CoolixDevice, None),  # SmartIR 1140
     ("Electrolux", "EACS/I-HAT/N3", "unit", CoolixDevice, None),  # SmartIR 1700
+    (
+        "General Electric",
+        "ASHA09LCC",
+        "unit",
+        FujitsuAcDevice,
+        "ARRAH2E",
+    ),  # SmartIR 1042
+    ("LG", "R09AWN", "unit", LgAcDevice, "GE6711AR2853M"),  # SmartIR 1060
+    ("LG", "R24AWN", "unit", LgAcDevice, "GE6711AR2853M"),  # SmartIR 1060
+    ("LG", "E09EK", "unit", LgAcDevice, "GE6711AR2853M"),  # SmartIR 1060
+    ("LG", "P12EP1", "unit", Lg2Device, "AKB74955603"),  # SmartIR 1063
+    ("LG", "LA090HYV", "unit", Lg2Device, "AKB74955603"),  # SmartIR 1066
+    ("LG", "LA120HYV", "unit", Lg2Device, "AKB74955603"),  # SmartIR 1066
+    ("LG", "LAN090HYV", "unit", Lg2Device, "AKB74955603"),  # SmartIR 1066
+    ("LG", "LAN120HYV", "unit", Lg2Device, "AKB74955603"),  # SmartIR 1066
+    ("LG", "AKB74295304", "unit", Lg2Device, "AKB74955603"),  # SmartIR 1069
+    ("LG", "PC09SQ NSJ", "unit", Lg2Device, "AKB74955603"),  # SmartIR 1070
+    ("Carrier", "Carrier", "unit", CoolixDevice, None),  # SmartIR 1160
+    ("Carrier", "42LUVH025N-1", "unit", CoolixDevice, None),  # SmartIR 1164
+    ("Fujitsu", "AR-JE5", "unit", FujitsuAcDevice, "ARDB1"),  # SmartIR 1286
+    ("Fujitsu", "ASYG-LMCE", "unit", FujitsuAcDevice, "ARRAH2E"),  # SmartIR 1287
+    ("Fujitsu", "AR-REM7E", "unit", FujitsuAcDevice, "ARRAH2E"),  # SmartIR 1287
+    ("Fujitsu", "AR-REW2E", "unit", FujitsuAcDevice, "ARRAH2E"),  # SmartIR 1287
+    ("Fujitsu", "ASYG07LM", "unit", FujitsuAcDevice, "ARRAH2E"),  # SmartIR 1293
+    ("Fujitsu", "ASYG09LM", "unit", FujitsuAcDevice, "ARRAH2E"),  # SmartIR 1293
+    ("Springer", "Split Hi Wall Maxiflex", "unit", CoolixDevice, None),  # SmartIR 1360
+    ("Midea", "MSY-12HRDN1", "unit", CoolixDevice, None),  # SmartIR 1382
+    ("Midea", "KFR-35G", "unit", CoolixDevice, None),  # SmartIR 1383
+    ("Midea", "MSMACU-18HRFN1-QRD0GW", "unit", CoolixDevice, None),  # SmartIR 1384
+    ("Midea", "RG70E/BGEF", "remote", CoolixDevice, None),  # SmartIR 1387
+    ("Midea", "MAP05R1WWT", "unit", CoolixDevice, None),  # SmartIR 1389
+    ("Midea", "RG52C1/BGE", "remote", CoolixDevice, None),  # SmartIR 1390
+    ("Midea", "RG58E3/BGEF", "unit", CoolixDevice, None),  # SmartIR 1391
+    ("Midea", "RG70C/BGEF", "remote", CoolixDevice, None),  # SmartIR 1394
+    ("Samsung", "AR**TSHQBURN", "unit", CoolixDevice, None),  # SmartIR 1405
+    ("Alliance", "Alliance", "unit", CoolixDevice, None),  # SmartIR 1460
+    ("Beko", "BPEU 120", "unit", CoolixDevice, None),  # SmartIR 1604
+    ("Tornado", "Super - Inverter A, i", "unit", CoolixDevice, None),  # SmartIR 1620
+    ("Tornado", "Inverter", "unit", CoolixDevice, None),  # SmartIR 1620
+    ("Tornado", "Inverter A", "unit", CoolixDevice, None),  # SmartIR 1620
+    ("Tornado", "Super Design", "unit", CoolixDevice, None),  # SmartIR 1620
+    ("Tornado", "Super Plasma", "unit", CoolixDevice, None),  # SmartIR 1620
+    ("Tornado", "Gold i", "unit", CoolixDevice, None),  # SmartIR 1620
+    ("Tornado", "Multi ON-OFF", "unit", CoolixDevice, None),  # SmartIR 1620
+    ("Tornado", "Multi Inverter", "unit", CoolixDevice, None),  # SmartIR 1620
+    ("Tornado", "Super Gold i", "unit", CoolixDevice, None),  # SmartIR 1620
+    ("Tornado", "Plasma Gold", "unit", CoolixDevice, None),  # SmartIR 1620
+    ("Tornado", "Super Legend 40", "unit", KelonDevice, None),  # SmartIR 1621
+    ("Electrolux", "EPI12LEIWI", "unit", CoolixDevice, None),  # SmartIR 1704
+    ("Kelvinator", "KSV25HRG", "unit", CoolixDevice, "quiet"),  # SmartIR 1740
+    ("Daitsu", "DS12U-RV", "unit", CoolixDevice, None),  # SmartIR 1760
+    ("Ballu", "BSD/in-09HN1_20Y", "unit", CoolixDevice, None),  # SmartIR 1801
+    ("Electra", "Electra", "unit", CoolixDevice, "16C"),  # SmartIR 1941
+    (
+        "Electra",
+        "Electra Platinum Plus Inverter",
+        "unit",
+        CoolixDevice,
+        None,
+    ),  # SmartIR 1944
+    ("Ariston", "A-IFWHxx-IGX", "unit", CoolixDevice, None),  # SmartIR 2020
+    ("Lennox", "LNMTE026V2", "unit", CoolixDevice, None),  # SmartIR 2161
+    ("Rotenso", "Ukura", "unit", CoolixDevice, None),  # SmartIR 2480
+    ("Rotenso", "Maze", "remote", CoolixDevice, None),  # SmartIR 2480
+    ("Komeco", "Komeco", "unit", CoolixDevice, None),  # SmartIR 2620
+    ("Fisher", "FSOAI-SU-90AE2", "unit", CoolixDevice, None),  # SmartIR 2641
+    ("Kaden", "KS09", "unit", CoolixDevice, None),  # SmartIR 3360
+    ("Kaden", "KS12", "unit", CoolixDevice, None),  # SmartIR 3360
+    ("Kaden", "KS18", "unit", CoolixDevice, None),  # SmartIR 3360
+    ("Kaden", "KS24", "unit", CoolixDevice, None),  # SmartIR 3360
+    ("Kaden", "KS28", "unit", CoolixDevice, None),  # SmartIR 3360
+    ("LG", "P12RK", "unit", LgAcDevice, "GE6711AR2853M"),  # SmartIR 7062
 )
 
 # 0.1.x strings of the devices that were pure Python in 0.1.x.

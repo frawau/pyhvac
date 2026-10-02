@@ -124,6 +124,8 @@ COOLIX_CLEAN = 0xB5F5AA  # kCoolixClean: a clean toggle
 # Not in ir_Coolix.h: SmartIR climate 1740 (Kelvinator KSV25HRG) sends this
 # word alone under its "silent" fan label; read as a quiet toggle.
 COOLIX_QUIET = 0xB5F5B6
+# model -> variant, for the rows of pyhvac.brands on a variant.
+COOLIX_VARIANT = {"KSV25HRG": "quiet", "Electra": "16C"}
 # The toggle words IRac::coolix sends after the state word, in its order
 # (IRac::coolix's kCoolixSleep word is not sent: sleep is deferred, it needs
 # its own word).
@@ -234,6 +236,9 @@ class CoolixDevice(Device):
 
     def __init__(self, brand, model, variant=None):
         super().__init__(brand, model)
+        # The registry always passes the variant; the table serves models
+        # constructed directly (the plain protocol otherwise).
+        variant = variant or COOLIX_VARIANT.get(model)
         if variant is not None and variant not in self.VARIANTS:
             raise ValueError(f"unknown Coolix variant {variant!r}")
         self.variant = variant

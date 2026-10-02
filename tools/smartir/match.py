@@ -321,6 +321,15 @@ def _off_comparable(device, frames):
     return lengths, bytes(p & m for p, m in zip(b"".join(frames), mask))
 
 
+def _powered_off(device, frames):
+    """Whether ``frames`` carry a power field (named "power") and it is
+    clear: whatever else an off message carries, it turns the unit off."""
+    owners = _owners(device, tuple(len(f) for f in frames))
+    bits = [b for b, name in owners.items() if name == "power"]
+    joined = b"".join(frames)
+    return bool(bits) and not any(joined[b // 8] >> (b % 8) & 1 for b in bits)
+
+
 def _valid(device, frames):
     """Whether every checksum of the layouts placed over ``frames`` holds: a
     protocol sharing the timing but not the checksums is another one."""
@@ -522,7 +531,9 @@ def _verify(device, decoded, units, fan_map, swing_map, features, smartir_modes)
             ok = _comparable(device, frames) in off
             carried = {_off_comparable(device, o) for o in off.values()}
             if not ok and _valid(device, frames):
-                if _off_comparable(device, frames) in carried:
+                if _off_comparable(device, frames) in carried or _powered_off(
+                    device, frames
+                ):
                     relabels.append((key, "off, carrying another state"))
                     continue
             want = (

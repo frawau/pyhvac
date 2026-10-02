@@ -182,7 +182,9 @@ def test_a_field_pyhvac_never_sets_is_named_as_the_gap():
     f = synthetic("Electra", registry.models("Electra")[0], tamper=sensor)
     m = match(f, CANDIDATES)
     assert m.verdict == "near" and m.candidate == "ElectraAcDevice"
-    assert m.gaps == {"sensor_temp": len(f.codes)}
+    assert m.gaps == {
+        "sensor_temp": len(f.codes) - 1
+    }  # the off code turns the unit off
 
 
 def test_declared_variants_without_rows_are_candidates():
@@ -250,7 +252,9 @@ def test_key_pressed_fields_are_not_named_as_gaps():
     dev = ElectraAcDevice("AUX", "unit", variant="aux")
     f = synthetic("AUX", "unit", tamper=pressed_with_sensor, dev=dev)
     m = match(f, CANDIDATES)
-    assert m.verdict == "near" and m.gaps == {"sensor_temp": len(f.codes)}
+    assert m.verdict == "near" and m.gaps == {
+        "sensor_temp": len(f.codes) - 1
+    }  # the off code turns the unit off
 
 
 def test_an_off_code_carrying_another_state_is_explained():
@@ -422,3 +426,36 @@ def test_a_clock_field_is_not_compared():
     )
     m = match(synthetic(brand, model, tamper=clocked), CANDIDATES)
     assert m.verdict == "covered" and m.candidate == "MitsubishiAcDevice"
+
+
+def test_an_off_code_with_its_power_bit_clear_is_explained():
+    # Gree remotes keep ModelA (and the last light, display...) in their
+    # off message; pyhvac's off clears ModelA. The power bit is clear: the
+    # unit turns off.
+    from pyhvac.protocols.gree import GREE_LAYOUT
+
+    def model_a_kept(frames):
+        data = bytearray(b"".join(f.data for f in frames))
+        if not GREE_LAYOUT.read(data)["power"]:
+            GREE_LAYOUT.write_raw(data, "model_a", 1)
+            GREE_LAYOUT.write_raw(data, "display_temp", 2)
+            GREE_LAYOUT.checksum.apply(data)
+        return [
+            dataclasses.replace(frames[0], data=bytes(data[:4])),
+            dataclasses.replace(frames[1], data=bytes(data[4:])),
+        ]
+
+    brand, model = next(
+        (b, m)
+        for b, m, k, c, v in brands.MODELS
+        if c.__name__ == "GreeDevice" and v == "YAW1F"
+    )
+    dev = registry.get_device(brand, model)
+    f = synthetic(brand, model)
+    off = f.codes[-1]
+    frames = model_a_kept(
+        dev.frames(None, dev.normalise(HvacState(False, "cool", 24.0)), ())
+    )
+    kept = dataclasses.replace(off, pulses=ir_encode(dev.PROTOCOL, frames).pulses)
+    m = match(dataclasses.replace(f, codes=f.codes[:-1] + (kept,)), CANDIDATES)
+    assert m.verdict == "covered" and m.candidate.startswith("GreeDevice")

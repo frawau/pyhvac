@@ -473,13 +473,12 @@ def _temperatures(device, decoded, units):
 
 
 def _file_states(device, decoded, units):
-    """The file's own modes and setpoints (the device's when it lists none):
-    the narrower space the feature changes are tried over."""
+    """The file's own modes (the device's when it lists none) and every
+    setpoint: the narrower space the feature changes are tried over."""
     caps = device.capabilities
     keyed = {MODE.get(k.mode) for k, _ in decoded}
     modes = [m for m in caps.modes if m in keyed] or list(caps.modes)
-    temps = {_celsius(k, units) for k, _ in decoded if k.temperature is not None}
-    return modes, sorted(temps) or _temperatures(device, decoded, units)
+    return modes, _temperatures(device, decoded, units)
 
 
 def _reachable(device, decoded, units, features):
@@ -623,7 +622,7 @@ CARRIED = re.compile(
 VERIFIED_SHARE = 0.15
 VALID_SHARE = 0.5  # codes whose checksums hold: below this, another protocol
 SHAPE_SHARE = 0.5  # a candidate whose frames differ in shape this often is wrong
-REACH_LIMIT = 60000  # states enumerated per file and candidate, at most
+REACH_LIMIT = 250000  # feature-changed states per file and candidate, at most
 
 
 def match(smartir_file, cands):

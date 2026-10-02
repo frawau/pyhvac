@@ -62,6 +62,8 @@ class Match:
     verified: int = 0
     usable: int = 0
     unexplained: Tuple[object, ...] = ()  # the first keys not reproduced
+    relabelled: int = 0  # codes pyhvac produces, but for another state
+    relabels: Tuple[object, ...] = ()  # the first (key, state as text) of those
     gaps: Dict[str, int] = field(default_factory=dict)  # field -> codes
 
 
@@ -205,6 +207,21 @@ def _mask(device, lengths):
     return bytes(mask)
 
 
+def _valid(device, frames):
+    """Whether every checksum of the layouts placed over ``frames`` holds: a
+    protocol sharing the timing but not the checksums is another one."""
+    joined = bytearray(b"".join(frames))
+    for offset, layout in _place(
+        getattr(device, "LAYOUTS", ()), tuple(len(f) for f in frames)
+    ):
+        if layout.checksum is None:
+            continue
+        data = joined[offset : offset + len(layout.skeleton)]
+        if not layout.checksum.check(data):
+            return False
+    return True
+
+
 def _distance(device, a, b):
     """Differing non-checksum bits between two frame tuples (BIG if their
     shapes differ)."""
@@ -306,9 +323,65 @@ def _off_frames(device, decoded, units, fan_map, swing_map, features, modes):
     return out
 
 
+def _temperatures(device, decoded, units):
+    """The setpoints worth trying: the file's keys and the device's whole
+    degrees (and its half degrees, if it has them)."""
+    caps = device.capabilities.temperature
+    out = {_celsius(k, units) for k, _ in decoded if k.temperature is not None}
+    step = 5 if 5 in caps.decimals else 10
+    out |= {t / 10 for t in range(round(caps.min * 10), round(caps.max * 10) + 1, step)}
+    return sorted(t for t in out if t is not None)
+
+
+def _reachable(device, decoded, units, features):
+    """Frame tuple -> a state that sends it, over power on and off and every
+    mode, setpoint, fan and swing with the file's features, and with each feature changed alone.
+    The tail of a multi-frame message counts too (a remote may send a
+    toggle word alone, pyhvac sends it after the state word)."""
+    caps = device.capabilities
+    fans = caps.fan.values if caps.fan else ("auto",)
+    swings = caps.swing_v.values if caps.swing_v else ("off",)
+    temps = _temperatures(device, decoded, units)
+    variants = [dict(features)]
+    for name, choice in caps.features.items():
+        for value in choice.values:
+            if value != features.get(name):
+                variants.append({**features, name: value})
+    size = 2 * len(caps.modes) * len(temps) * len(fans) * len(swings)
+    if size * len(variants) > REACH_LIMIT:
+        variants = variants[: max(1, REACH_LIMIT // max(size, 1))]
+    out = {}
+    for feats in variants:
+        product = itertools.product((True, False), caps.modes, temps, fans, swings)
+        for power, mode, t, fan, swing in product:
+            try:
+                st = HvacState(power, mode, t, fan=fan, swing_v=swing, features=feats)
+            except ValueError:
+                continue
+            frames = _frames(device, st)
+            if frames is None:
+                continue
+            for i in range(len(frames)):
+                out.setdefault(frames[i:], st)
+    return out
+
+
+def _describe(state):
+    """A state as text (the report shows it; worker processes return it)."""
+    if not state.power:
+        return "off"
+    on = sorted(n for n, v in state.features.items() if v)
+    text = f"{state.mode} {state.temperature:g} fan {state.fan} swing {state.swing_v}"
+    return text + "".join(f" +{n}" for n in on)
+
+
 def _verify(device, decoded, units, fan_map, swing_map, features, smartir_modes):
-    """(verified count, unexplained keys, Counter of differing fields)."""
+    """(verified count, relabels [(key, state)], unexplained keys, Counter of
+    differing fields). A code pyhvac sends for its labelled state is
+    verified; one it sends for another state is relabelled (SmartIR's labels
+    are crowd-sourced: indicative, not definitive)."""
     verified, unexplained, off, gaps = 0, [], None, collections.Counter()
+    relabels, reach = [], None
     for key, frames in decoded:
         if key.mode == "off":
             if off is None:
@@ -330,17 +403,29 @@ def _verify(device, decoded, units, fan_map, swing_map, features, smartir_modes)
             ok = want == frames
         if ok:
             verified += 1
+            continue
+        if reach is None:
+            reach = _reachable(device, decoded, units, features)
+        if frames in reach:
+            relabels.append((key, _describe(reach[frames])))
         else:
             unexplained.append(key)
             gaps.update(_gaps(device, frames, want))
-    return verified, unexplained, gaps
+    return verified, relabels, unexplained, gaps
 
 
 def _rank(m):
-    return (m.verdict != "unknown", m.verified, -sum(m.gaps.values()))
+    return (
+        m.verdict != "unknown",
+        m.verified + m.relabelled,
+        m.verified,
+        -sum(m.gaps.values()),
+    )
 
 
+VALID_SHARE = 0.5  # codes whose checksums hold: below this, another protocol
 SHAPE_SHARE = 0.5  # a candidate whose frames differ in shape this often is wrong
+REACH_LIMIT = 60000  # states enumerated per file and candidate, at most
 
 
 def match(smartir_file, cands):
@@ -368,7 +453,7 @@ def match(smartir_file, cands):
             if fit is None:
                 continue
             fan_map, swing_map, features = fit
-            verified, unexplained, gaps = _verify(
+            verified, relabels, unexplained, gaps = _verify(
                 cand.device,
                 decoded,
                 units,
@@ -377,10 +462,14 @@ def match(smartir_file, cands):
                 features,
                 smartir_file.modes,
             )
+            explained = verified + len(relabels)
+            valid = sum(_valid(cand.device, f) for _, f in decoded)
+            if valid < VALID_SHARE * len(decoded):
+                continue
             if gaps["frames"] > SHAPE_SHARE * len(decoded):
                 continue
             result = Match(
-                "covered" if verified == usable else "near",
+                "covered" if explained == len(decoded) else "near",
                 cand.name,
                 units,
                 fan_map,
@@ -390,6 +479,8 @@ def match(smartir_file, cands):
                 verified,
                 usable,
                 tuple(unexplained[:10]),
+                len(relabels),
+                tuple(relabels[:10]),
                 dict(gaps.most_common()),
             )
             if _rank(result) > _rank(best):

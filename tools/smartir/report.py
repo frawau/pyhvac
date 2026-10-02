@@ -102,8 +102,13 @@ def markdown(results, clusters, new_rows, conflicts, unreadable=()):
         "Skipped: codes that could not be read; flagged (!) when they are "
         f"over {SKIPPED_FLAG:.0%} of the file.",
         "",
-        "| file | brand | verdict | candidate | units | verified | skipped | gaps |",
-        "|---|---|---|---|---|---|---|---|",
+        "Codes: read from the file, decoded by the candidate, verified (sent "
+        "by pyhvac for their labelled state), relabelled (sent by pyhvac for "
+        "another state: the file's label is wrong).",
+        "",
+        "| file | brand | verdict | candidate | units | codes | decoded "
+        "| verified | relabelled | skipped | gaps |",
+        "|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for f, m in sorted(results, key=lambda r: r[0].number):
         gaps = ", ".join(f"{k} ({n})" for k, n in m.gaps.items())
@@ -111,7 +116,8 @@ def markdown(results, clusters, new_rows, conflicts, unreadable=()):
         flag = " (!)" if total and f.skipped > SKIPPED_FLAG * total else ""
         out.append(
             f"| {f.number} | {f.manufacturer} | {m.verdict} | {m.candidate or ''} "
-            f"| {m.units or ''} | {m.verified}/{m.usable} | {f.skipped}{flag} "
+            f"| {m.units or ''} | {m.usable} | {m.decoded} | {m.verified} "
+            f"| {m.relabelled} | {f.skipped}{flag} "
             f"| {gaps} |"
         )
     out += ["", "## Clusters of unknown files", ""]

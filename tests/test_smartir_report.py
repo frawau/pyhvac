@@ -96,3 +96,10 @@ def test_the_report_lists_files_that_are_not_json(tmp_path):
     (cache / "2680.json").write_text("{not json")
     main([str(tmp_path / "out"), "--cache", str(cache), "--no-fetch", "--jobs", "1"])
     assert "- not JSON: 2680" in (tmp_path / "out" / "report.md").read_text()
+
+
+def test_markdown_shows_codes_filed_under_another_state():
+    results = [
+        (file(1, "Acme", "A-1"), Match("covered", "X", verified=5, relabelled=2))
+    ]
+    assert "| 5 | 2 |" in markdown(results, [], [], [])

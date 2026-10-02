@@ -5,6 +5,7 @@ import pytest
 
 from pyhvac import brands, registry
 from pyhvac.ir.codec import encode as ir_encode
+from pyhvac.protocols.coolix import COOLIX, COOLIX_TURBO, coolix_message
 from pyhvac.protocols.electra import ELECTRA_AC_LAYOUT
 from pyhvac.state import HvacState
 from smartir.codes import Code, Key, SmartIRFile
@@ -111,12 +112,62 @@ def test_the_remote_variant_is_identified():
     assert m.verdict == "covered" and m.candidate == "Haier176Device/B"
 
 
-def test_one_code_no_mapping_explains_is_near():
-    f = synthetic("Electra", registry.models("Electra")[0])
-    swapped = dataclasses.replace(f.codes[0], pulses=f.codes[5].pulses)
-    f = dataclasses.replace(f, codes=(swapped,) + f.codes[1:])
+def coolix_file(**kw):
+    brand, model = next(
+        (b, m) for b, m, k, c, v in brands.MODELS if c.__name__ == "CoolixDevice"
+    )
+    return synthetic(brand, model, **kw)
+
+
+def test_a_mislabelled_code_is_explained_by_another_state():
+    f = coolix_file()
+    first, second = f.codes[0], f.codes[1]  # cool, low, 17 and 18
+    swapped = (
+        dataclasses.replace(first, pulses=second.pulses),
+        dataclasses.replace(second, pulses=first.pulses),
+    )
+    f = dataclasses.replace(f, codes=swapped + f.codes[2:])
     m = match(f, CANDIDATES)
-    assert m.verdict == "near" and m.unexplained == (f.codes[0].key,)
+    assert m.verdict == "covered" and m.candidate == "CoolixDevice"
+    assert (m.verified, m.relabelled) == (len(f.codes) - 2, 2)
+    assert [k for k, _ in m.relabels] == [first.key, second.key]
+
+
+def test_the_off_code_filed_under_an_on_state_is_explained():
+    f = coolix_file()
+    off = f.codes[-1]
+    misfiled = dataclasses.replace(f.codes[0], pulses=off.pulses)
+    f = dataclasses.replace(f, codes=(misfiled,) + f.codes[1:])
+    m = match(f, CANDIDATES)
+    assert m.verdict == "covered" and m.relabelled == 1
+    assert m.relabels[0][1] == "off"
+
+
+def test_codes_that_do_not_decode_do_not_block_covered():
+    f = coolix_file()
+    cut = dataclasses.replace(f.codes[3], pulses=f.codes[3].pulses[:9])
+    f = dataclasses.replace(f, codes=f.codes[:3] + (cut,) + f.codes[4:])
+    m = match(f, CANDIDATES)
+    assert m.verdict == "covered"
+    assert (m.decoded, m.usable) == (len(f.codes) - 1, len(f.codes))
+
+
+def test_a_toggle_word_alone_is_explained():
+    f = coolix_file()
+    word = ir_encode(COOLIX, coolix_message(COOLIX_TURBO)).pulses
+    f = dataclasses.replace(
+        f, codes=f.codes + (Code(Key("fan_only", "silent", None, 24.0), word),)
+    )
+    m = match(f, CANDIDATES)
+    assert m.verdict == "covered" and m.relabelled == 1
+
+
+def test_another_protocol_with_the_same_timing_is_not_matched():
+    def no_complements(data):
+        return bytes(data[i - i % 2] for i in range(len(data)))
+
+    m = match(coolix_file(tamper=no_complements), CANDIDATES)
+    assert m.verdict == "unknown"
 
 
 def test_a_field_pyhvac_never_sets_is_named_as_the_gap():

@@ -376,6 +376,16 @@ def with_key(capture, key):
             HvacState(False, "cool", 20.0, fan="3"),
             HvacState(True, "cool", 20.0, fan="3"),
         ),
+        (  # 1961 (AUX): dry 20.5, quiet, after 20: the half-degree bit
+            "c367e080a0804000002000000a",
+            HvacState(True, "dry", 20.5, features={"quiet": True}),
+            HvacState(True, "dry", 20.0, features={"quiet": True}),
+        ),
+        (  # 2080 (Sendo): off from heat 26: no heat flag, power key
+            "c397e000a0008000000000055f",
+            HvacState(False, "heat", 26.0),
+            HvacState(True, "heat", 26.0),
+        ),
         (  # 1800: heat 22 fan 1, after 21: heat flag, temperature up
             "c377e00060008000003000002a",
             HvacState(True, "heat", 22.0, fan="1"),
@@ -413,3 +423,8 @@ def test_aux_variant_has_no_light_and_heat_flag_only_in_heat():
 def test_unknown_variant_is_refused():
     with pytest.raises(ValueError):
         ElectraAcDevice("Test", "unit", variant="nope")
+
+
+def test_aux_variant_offers_half_degrees():
+    assert aux().capabilities.temperature.decimals == (0, 5)
+    assert ElectraAcDevice("Test", "unit").capabilities.temperature.decimals == (0,)

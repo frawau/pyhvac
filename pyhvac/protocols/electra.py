@@ -90,9 +90,10 @@ ELECTRA_AC_LAYOUT = Layout(
 )
 
 # The "aux" variant: AUX-family remotes, from SmartIR captures (climate 1703
-# Electrolux, 1622 Tornado, 1800 Ballu, ...). Byte 11 holds the key just
-# pressed (ELECTRA_AUX_KEY, the values the captures confirm), byte 9 bit 4
-# is set in heat mode, and fan mode sends setpoint 0 (the raw field).
+# Electrolux, 1622 Tornado, 1800 Ballu, 1961 AUX, ...). Byte 11 holds the
+# key just pressed (ELECTRA_AUX_KEY, the values the captures confirm), byte
+# 9 bit 4 is set in heat mode while on, byte 3 bit 7 adds half a degree,
+# and fan mode sends setpoint 0 (the raw field).
 ELECTRA_AUX_LAYOUT = Layout(
     bytes.fromhex("c3000000000000000000000000"),
     {
@@ -101,6 +102,7 @@ ELECTRA_AUX_LAYOUT = Layout(
             for name, field in ELECTRA_AC_LAYOUT.fields.items()
             if name != "light_toggle"
         },
+        "half_degree": Field.at(3, 7, 1),  # setpoint + 0.5 °C
         "heat_flag": Field.at(9, 4, 1),
         "button": Field.at(11, 0, 8),
     },
@@ -160,7 +162,11 @@ class ElectraAcDevice(Device):
             self.LAYOUTS = (ELECTRA_AUX_LAYOUT,)
             features = dict(self.capabilities.features)
             del features["light"]  # byte 11 is the key code
-            self.capabilities = replace(self.capabilities, features=features)
+            self.capabilities = replace(
+                self.capabilities,
+                features=features,
+                temperature=TemperatureRange(16.0, 32.0, (0, 5)),
+            )
 
     def frames(self, previous, target, actions):
         if self.variant == "aux":
@@ -213,12 +219,14 @@ class ElectraAcDevice(Device):
             quiet=feat["quiet"],
             turbo=feat["powerful"],
             clean=feat["cleaning"],
-            heat_flag=target.mode == "heat",
+            heat_flag=target.power and target.mode == "heat",
             button=self._aux_key(previous, target),
         )
         if fan_mode:
             layout.write_raw(data, "temperature", 0)
         else:
+            half = round(target.temperature * 10) % 10 == 5
+            layout.write_raw(data, "half_degree", int(half))
             layout.write_raw(
                 data,
                 "temperature",

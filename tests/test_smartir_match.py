@@ -203,3 +203,50 @@ def test_a_key_pressed_field_is_not_compared():
     dev = ElectraAcDevice("AUX", "unit", variant="aux")
     m = match(synthetic("AUX", "unit", tamper=pressed, dev=dev), CANDIDATES)
     assert m.verdict == "covered" and m.candidate == "ElectraAcDevice/aux"
+
+
+def test_a_swing_label_may_mean_horizontal_swing():
+    dev = registry.get_device("Electra", registry.models("Electra")[0])
+    labels = {"stop": ("off", "off"), "hSwing": ("off", "swing")}
+    codes = []
+    for label, (v, h) in labels.items():
+        for t in range(17, 30):
+            st = HvacState(True, "cool", float(t), swing_v=v, swing_h=h)
+            pulses = dev.encode(None, st).signal.pulses
+            codes.append(Code(Key("cool", "auto", label, float(t)), tuple(pulses)))
+    f = SmartIRFile(
+        3,
+        "Electra",
+        ("X",),
+        "Broadlink",
+        "Base64",
+        17,
+        29,
+        1,
+        ("cool",),
+        ("auto",),
+        tuple(labels),
+        tuple(codes),
+        0,
+    )
+    m = match(f, CANDIDATES)
+    assert m.verdict == "covered" and m.candidate.startswith("ElectraAcDevice")
+    assert m.verified == len(codes)
+
+
+def test_key_pressed_fields_are_not_named_as_gaps():
+    from pyhvac.protocols.electra import ELECTRA_AUX_LAYOUT, ElectraAcDevice
+
+    keys = iter([0x00, 0x04, 0x05, 0x08] * 80)
+
+    def pressed_with_sensor(data):
+        data = bytearray(data)
+        data[11] = next(keys)
+        ELECTRA_AUX_LAYOUT.write_raw(data, "sensor_temp", 0x19)
+        ELECTRA_AUX_LAYOUT.checksum.apply(data)
+        return bytes(data)
+
+    dev = ElectraAcDevice("AUX", "unit", variant="aux")
+    f = synthetic("AUX", "unit", tamper=pressed_with_sensor, dev=dev)
+    m = match(f, CANDIDATES)
+    assert m.verdict == "near" and m.gaps == {"sensor_temp": len(f.codes)}

@@ -144,6 +144,16 @@ def _celsius(key, units):
     return round((key.temperature - 32) * 5 / 9, 1)
 
 
+def _swings(caps):
+    """(swing_v, swing_h) pairs: a file's swing label may mean either axis
+    or both; None when the device has no swing."""
+    if caps.swing_v is None and caps.swing_h is None:
+        return (None,)
+    vs = caps.swing_v.values if caps.swing_v else ("off",)
+    hs = caps.swing_h.values if caps.swing_h else ("off",)
+    return tuple(itertools.product(vs, hs))
+
+
 def _state(device, key, units, fan, swing, features, power=True, mode=None):
     caps = device.capabilities
     mode = mode or MODE.get(key.mode)
@@ -153,8 +163,8 @@ def _state(device, key, units, fan, swing, features, power=True, mode=None):
     kw = {"features": dict(features)}
     if fan is not None:
         kw["fan"] = fan
-    if swing is not None:
-        kw["swing_v"] = swing
+    if swing is not None:  # (swing_v, swing_h)
+        kw["swing_v"], kw["swing_h"] = swing
     try:
         return HvacState(power, mode, caps.temperature.min if t is None else t, **kw)
     except ValueError:
@@ -278,7 +288,7 @@ def _fit(device, decoded, units):
         return None
     sample = _sample(on)
     fans = caps.fan.values if caps.fan else (None,)
-    swings = caps.swing_v.values if caps.swing_v else (None,)
+    swings = _swings(caps)
     features = {n: c.values[0] for n, c in caps.features.items()}
     fan_map = {k.fan: fans[0] for k, _ in on}
     swing_map = {k.swing: swings[0] for k, _ in on}
@@ -319,6 +329,7 @@ def _gaps(device, frames, expected):
         for bit in range(8):
             if (p ^ q) >> bit & 1:
                 out.add(owners.get(8 * i + bit, f"byte {i} bit {bit}"))
+    out -= set(KEY_FIELDS)  # the key pressed is not a gap
     if len(out) > 1:
         out.discard("checksum")  # it follows the other fields
     return out
@@ -354,12 +365,13 @@ def _temperatures(device, decoded, units):
 
 def _reachable(device, decoded, units, features):
     """Frame tuple -> a state that sends it, over power on and off and every
-    mode, setpoint, fan and swing with the file's features, and with each feature changed alone.
+    mode, setpoint, fan and swing (both axes) with the file's features, and
+    with each feature changed alone.
     The tail of a multi-frame message counts too (a remote may send a
     toggle word alone, pyhvac sends it after the state word)."""
     caps = device.capabilities
     fans = caps.fan.values if caps.fan else ("auto",)
-    swings = caps.swing_v.values if caps.swing_v else ("off",)
+    swings = _swings(caps)
     temps = _temperatures(device, decoded, units)
     variants = [dict(features)]
     for name, choice in caps.features.items():
@@ -374,7 +386,10 @@ def _reachable(device, decoded, units, features):
         product = itertools.product((True, False), caps.modes, temps, fans, swings)
         for power, mode, t, fan, swing in product:
             try:
-                st = HvacState(power, mode, t, fan=fan, swing_v=swing, features=feats)
+                v, h = swing or ("off", "off")
+                st = HvacState(
+                    power, mode, t, fan=fan, swing_v=v, swing_h=h, features=feats
+                )
             except ValueError:
                 continue
             frames = _frames(device, st)
@@ -390,7 +405,10 @@ def _describe(state):
     if not state.power:
         return "off"
     on = sorted(n for n, v in state.features.items() if v)
-    text = f"{state.mode} {state.temperature:g} fan {state.fan} swing {state.swing_v}"
+    text = (
+        f"{state.mode} {state.temperature:g} fan {state.fan} "
+        f"swing {state.swing_v}/{state.swing_h}"
+    )
     return text + "".join(f" +{n}" for n in on)
 
 

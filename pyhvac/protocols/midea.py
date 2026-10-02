@@ -124,6 +124,16 @@ MIDEA_LAYOUT = Layout(
     MIDEA_CHECKSUM,
 )
 
+# The RG57 variants' layout: data[1] bit 5 is the fan-auto bit there.
+MIDEA_RG57_LAYOUT = Layout(
+    MIDEA_LAYOUT.skeleton,
+    {
+        ("fan_auto" if name == "unknown" else name): field
+        for name, field in MIDEA_LAYOUT.fields.items()
+    },
+    MIDEA_CHECKSUM,
+)
+
 # The special messages: byte 4 of each documented code (kMideaACToggleSwingV,
 # kMideaACToggleEcono, kMideaACToggleTurbo, kMideaACToggleLight,
 # kMideaACToggleSelfClean, kMideaACToggle8CHeat, kMideaACQuietOn/Off), whose
@@ -212,6 +222,8 @@ class MideaDevice(Device):
         if variant is not None and variant not in self.VARIANTS:
             raise ValueError(f"unknown Midea variant {variant!r}")
         self.variant = variant
+        if variant is not None:
+            self.LAYOUTS = (Joined(MIDEA_RG57_LAYOUT, 2),)
         if variant == "RG57-F":  # every whole °F from 62 to 86
             self.capabilities = replace(
                 self.capabilities, temperature=TemperatureRange(16.5, 30.0, (0, 5))
@@ -266,14 +278,15 @@ class MideaDevice(Device):
             if mode in ("dry", "auto"):  # fan forced to auto, bit 5 clear
                 values["fan"] = "auto"
             else:
-                raw["unknown"] = int(target.fan == "auto")
+                raw["fan_auto"] = int(target.fan == "auto")
             if self.variant == "RG57-F":
                 f = round(target.temperature * 9 / 5 + 32)
                 values["fahrenheit"] = 1
                 raw["temperature"] = min(max(f, MIDEA_MIN_F), MIDEA_MAX_F) - MIDEA_MIN_F
             if mode == "fan":
                 raw["temperature"] = MIDEA_FAN_MODE_TEMP_CODE
-        out = _midea_pair("state", MIDEA_LAYOUT, raw=raw, **values)
+        layout = MIDEA_RG57_LAYOUT if self.variant else MIDEA_LAYOUT
+        out = _midea_pair("state", layout, raw=raw, **values)
         for command in self.specials(previous, target):
             out += _midea_pair(
                 "special", MIDEA_SPECIAL_LAYOUT, type="special", command=command

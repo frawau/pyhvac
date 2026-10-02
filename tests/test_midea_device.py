@@ -556,3 +556,12 @@ def test_rg57_dry_and_auto_force_fan_auto_without_the_bit(variant, mode, fan):
     data = dev.frames(None, dev.normalise(HvacState(True, mode, 24.0, fan=fan)), ())
     values = MIDEA_LAYOUT.read(data[0].data)
     assert (values["fan"], values["unknown"]) == ("auto", 0)
+
+
+def test_rg57_layout_names_the_fan_auto_bit():
+    from pyhvac.protocols.midea import MIDEA_RG57_LAYOUT
+
+    dev = MideaDevice("Test", "unit", variant="RG57")
+    assert dev.LAYOUTS[0].layout is MIDEA_RG57_LAYOUT
+    data = dev.frames(None, dev.normalise(HvacState(True, "cool", 24.0)), ())
+    assert MIDEA_RG57_LAYOUT.read(data[0].data + data[1].data)["fan_auto"] == 1

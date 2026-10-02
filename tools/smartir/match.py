@@ -83,9 +83,14 @@ def _probe_states(device):
 
 
 def candidates():
-    """One Candidate per distinct (Device class, variant) in pyhvac.brands."""
-    out, seen = [], set()
+    """One Candidate per distinct (Device class, variant) in pyhvac.brands,
+    and per variant a class declares in ``VARIANTS`` (one may have no row
+    yet: the import is how it gets one)."""
+    rows = list(brands.MODELS)
     for brand, model, kind, cls, variant in brands.MODELS:
+        rows += [(brand, model, kind, cls, v) for v in getattr(cls, "VARIANTS", ())]
+    out, seen = [], set()
+    for brand, model, kind, cls, variant in rows:
         if (cls, variant) in seen:
             continue
         seen.add((cls, variant))

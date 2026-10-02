@@ -673,3 +673,73 @@ def test_other_records_need_no_defect():
 # kCoolixExtraTolerance (30 %) and no mark excess.
 def test_decode_tolerance_is_the_c_decoders():
     assert (COOLIX.tolerance, COOLIX.mark_excess) == (0.30, 0)
+
+
+# ---------------------------------------------------------------- variants
+# Variants beyond IRremoteESP8266, from SmartIR captures (crowd-sourced:
+# the labels are indicative, the words are what the remotes sent).
+
+
+def variant_words(variant, target, previous=None):
+    dev = CoolixDevice("Test", "unit", variant=variant)
+    sent = dev.frames(previous, dev.normalise(target), ())
+    return [f.data for f in sent[::2]]
+
+
+def raw(word):
+    return int.from_bytes(bytes(word[0::2]), "big")
+
+
+@pytest.mark.parametrize(
+    "mode, fan, captured",
+    [  # SmartIR climate 1941/1943 (Electra), 16 °C
+        ("heat", "auto", 0xB2BFEC),
+        ("heat", "1", 0xB29FEC),
+        ("heat", "2", 0xB25FEC),
+        ("heat", "3", 0xB23FEC),
+        ("cool", "auto", 0xB2BFE8),
+        ("cool", "1", 0xB29FE8),
+        ("cool", "2", 0xB25FE8),
+        ("cool", "3", 0xB23FE8),
+    ],
+)
+def test_16c_variant_sends_16_degrees_as_captured(mode, fan, captured):
+    (word,) = variant_words("16C", HvacState(True, mode, 16.0, fan=fan))
+    assert raw(word) == captured
+
+
+def test_16c_variant_offers_16_to_30():
+    caps = CoolixDevice("Test", "unit", variant="16C").capabilities
+    assert (caps.temperature.min, caps.temperature.max) == (16.0, 30.0)
+
+
+@pytest.mark.parametrize("mode", ["dry", "auto"])
+def test_16c_variant_sends_17_where_no_capture_shows_16(mode):
+    assert variant_words("16C", HvacState(True, mode, 16.0)) == variant_words(
+        "16C", HvacState(True, mode, 17.0)
+    )
+
+
+@pytest.mark.parametrize("t", range(17, 31))
+def test_16c_variant_sends_the_documented_words_from_17(t):
+    for mode in ("cool", "heat", "dry", "auto", "fan"):
+        target = HvacState(True, mode, float(t), fan="2")
+        assert variant_words("16C", target) == variant_words(None, target)
+
+
+def test_quiet_variant_offers_quiet_and_sends_its_word():
+    # SmartIR climate 1740 (Kelvinator KSV25HRG): 0xB5F5B6 alone under the
+    # "silent" fan label, read as the quiet toggle word.
+    dev = CoolixDevice("Test", "unit", variant="quiet")
+    assert "quiet" in dev.capabilities.features
+    quiet = HvacState(True, "cool", 22.0, features={"quiet": True})
+    sent = variant_words("quiet", quiet)
+    assert sent == variant_words("quiet", HvacState(True, "cool", 22.0)) + [
+        coolix_word(0xB5F5B6)
+    ]
+    assert variant_words("quiet", quiet, previous=dev.normalise(quiet)) == sent[:1]
+
+
+def test_unknown_variant_is_refused():
+    with pytest.raises(ValueError):
+        CoolixDevice("Test", "unit", variant="nope")

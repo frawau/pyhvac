@@ -181,3 +181,8 @@ def test_a_field_pyhvac_never_sets_is_named_as_the_gap():
     m = match(f, CANDIDATES)
     assert m.verdict == "near" and m.candidate == "ElectraAcDevice"
     assert m.gaps == {"sensor_temp": len(f.codes)}
+
+
+def test_declared_variants_without_rows_are_candidates():
+    names = {c.name for c in CANDIDATES}
+    assert {"CoolixDevice", "CoolixDevice/16C", "CoolixDevice/quiet"} <= names

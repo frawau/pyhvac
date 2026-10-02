@@ -24,6 +24,8 @@
 ##
 # Description of the various ": Greev1, devices supported. Can be a remote control name
 
+from dataclasses import replace
+
 from ..device import Device
 from ..fields import Field, InvertedPairs, Layout
 from ..ir.model import Frame, Protocol, PulseDistance, Section
@@ -119,6 +121,9 @@ COOLIX_SWING = 0xB26BE0  # kCoolixSwing: a swing toggle
 COOLIX_TURBO = 0xB5F5A2  # kCoolixTurbo: a turbo toggle
 COOLIX_LED = 0xB5F5A5  # kCoolixLed: a light toggle
 COOLIX_CLEAN = 0xB5F5AA  # kCoolixClean: a clean toggle
+# Not in ir_Coolix.h: SmartIR climate 1740 (Kelvinator KSV25HRG) sends this
+# word alone under its "silent" fan label; read as a quiet toggle.
+COOLIX_QUIET = 0xB5F5B6
 # The toggle words IRac::coolix sends after the state word, in its order
 # (IRac::coolix's kCoolixSleep word is not sent: sleep is deferred, it needs
 # its own word).
@@ -219,6 +224,31 @@ class CoolixDevice(Device):
     def _swinging(state):
         return state.swing_v != "off" or state.swing_h != "off"
 
+    # Variants beyond IRremoteESP8266, each from SmartIR captures:
+    # - "16C" (climate 1941/1943, Electra): 16 °C in heat and cool, sent
+    #   with kCoolixFanTempCode as the setpoint; cool at 16 °C carries the
+    #   auto mode bits, as captured. Other modes send 17 °C at 16 °C.
+    # - "quiet" (climate 1740, Kelvinator KSV25HRG): a quiet feature, the
+    #   COOLIX_QUIET toggle word after the other toggles.
+    VARIANTS = ("16C", "quiet")
+
+    def __init__(self, brand, model, variant=None):
+        super().__init__(brand, model)
+        if variant is not None and variant not in self.VARIANTS:
+            raise ValueError(f"unknown Coolix variant {variant!r}")
+        self.variant = variant
+        self.toggles = COOLIX_TOGGLES
+        if variant == "16C":
+            self.capabilities = replace(
+                self.capabilities, temperature=TemperatureRange(16.0, 30.0)
+            )
+        elif variant == "quiet":
+            self.capabilities = replace(
+                self.capabilities,
+                features={**self.capabilities.features, "quiet": ON_OFF},
+            )
+            self.toggles = COOLIX_TOGGLES + (("quiet", COOLIX_QUIET),)
+
     def frames(self, previous, target, actions):
         if not target.power:
             return coolix_message(COOLIX_OFF)
@@ -228,6 +258,12 @@ class CoolixDevice(Device):
             fan = "auto0"
         if mode == "fan":
             mode, temp = "dry", "fan"
+        elif self.variant == "16C" and int(target.temperature) < COOLIX_MIN_TEMP:
+            if mode in ("heat", "cool"):
+                mode = "heat" if mode == "heat" else "auto"
+                temp = "fan"  # the code SmartIR 1941/1943 send for 16 °C
+            else:
+                temp = COOLIX_MIN_TEMP
         else:
             temp = min(max(int(target.temperature), COOLIX_MIN_TEMP), COOLIX_MAX_TEMP)
         state = COOLIX_LAYOUT.build(
@@ -242,7 +278,7 @@ class CoolixDevice(Device):
         was_swinging = previous is not None and self._swinging(previous)
         if self._swinging(target) != was_swinging:
             frames += coolix_message(COOLIX_SWING)
-        for feature, word in COOLIX_TOGGLES:
+        for feature, word in self.toggles:
             was_on = previous is not None and previous.features[feature]
             if target.features[feature] != was_on:
                 frames += coolix_message(word)

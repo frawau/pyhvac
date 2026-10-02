@@ -643,3 +643,33 @@ def test_records_without_swing_are_swing_off():
         values = GREE_LAYOUT.read(message(record["pulses"]))
         assert (values["swing_v"], values["swing_auto"]) == ("off", 0)
         assert_matches_oracle(dev, record, dev.LAYOUTS, DEFECTS)
+
+
+# ------------------------------------------------------- "YAW1F-wifi" variant
+# YAW1F with byte 5's high bits 0b110 (WiFi set, bit 7 set, bit 5 clear) on
+# every message: SmartIR climate 1402 (Samsung), 3040 (Viessmann), 3120
+# (Cooper & Hunter).
+
+
+@pytest.mark.parametrize(
+    "capture, target",
+    [  # SmartIR climate 3040 (Viessmann Vitoclima 300-S)
+        (
+            "1904605000c00030",
+            HvacState(True, "cool", 20.0, fan="1", features={"light": True}),
+        ),
+        (
+            "2c09605000c000b0",
+            HvacState(True, "heat", 25.0, fan="2", features={"light": True}),
+        ),
+    ],
+)
+def test_yaw1f_wifi_variant_reproduces_the_captures(capture, target):
+    dev = GreeDevice("Test", "unit", variant="YAW1F-wifi")
+    sent = dev.frames(None, dev.normalise(target), ())
+    assert b"".join(f.data for f in sent).hex() == capture
+
+
+def test_yaw1f_wifi_variant_has_the_yaw1f_capabilities():
+    dev = GreeDevice("Test", "unit", variant="YAW1F-wifi")
+    assert dev.capabilities == GreeDevice("Test", "unit", variant="YAW1F").capabilities

@@ -16,6 +16,7 @@ counted per code), unknown (no candidate decodes the file).
 """
 
 import collections
+import dataclasses
 import re
 import functools
 import itertools
@@ -39,6 +40,9 @@ MODE = {
     "heat_cool": "auto",
 }
 CUT_SPACE = 7000  # µs: a learned code may be cut after any space this long
+# Learned captures are jittery: decoding uses at least this tolerance (the
+# checksums and the encoding comparison decide whether a code is pyhvac's).
+LOOSE_TOLERANCE = 0.40
 DECODE_SHARE = 0.9  # a candidate must decode this share of the codes
 SAMPLE = 24  # codes the mapping is fitted on
 PASSES = 2  # coordinate descent rounds
@@ -49,6 +53,7 @@ class Candidate:
     name: str  # "Device class/variant"
     device: object
     sequences: Tuple[Tuple[str, ...], ...]
+    protocol: object = None  # the device's protocol, decoding loosely
 
 
 @dataclass
@@ -111,7 +116,11 @@ def candidates():
                 continue
             sequences.add(tuple(f.section for f in frames))
         name = cls.__name__ + (f"/{variant}" if variant else "")
-        out.append(Candidate(name, device, tuple(sorted(sequences, key=len))))
+        loose = dataclasses.replace(
+            device.PROTOCOL,
+            tolerance=max(LOOSE_TOLERANCE, device.PROTOCOL.tolerance),
+        )
+        out.append(Candidate(name, device, tuple(sorted(sequences, key=len)), loose))
     return out
 
 
@@ -123,7 +132,7 @@ def decode_code(candidate, pulses):
     for end in cuts:
         for seq in candidate.sequences:
             try:
-                frames = decode(candidate.device.PROTOCOL, pulses[:end], expected=seq)
+                frames = decode(candidate.protocol, pulses[:end], expected=seq)
             except (DecodeError, ValueError):
                 continue
             return tuple(f.data for f in frames)

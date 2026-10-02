@@ -289,3 +289,22 @@ def kelon():
     from pyhvac.protocols.kelon import KelonDevice
 
     return KelonDevice("Hisense", "unit")
+
+
+def test_captures_beyond_the_protocol_tolerance_still_decode():
+    # Broadlink learns with jitter: spaces 30 % long are past Coolix's 30 %
+    # decoder tolerance once compensated; the checksum and the encoding
+    # comparison still decide whether the code is pyhvac's.
+    f = coolix_file()
+    stretched = tuple(
+        dataclasses.replace(
+            c,
+            pulses=tuple(
+                round(d * 1.32) if i % 2 and d < 2000 else d
+                for i, d in enumerate(c.pulses)
+            ),
+        )
+        for c in f.codes
+    )
+    m = match(dataclasses.replace(f, codes=stretched), CANDIDATES)
+    assert m.verdict == "covered" and m.candidate.startswith("CoolixDevice")

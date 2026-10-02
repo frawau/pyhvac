@@ -504,3 +504,43 @@ def test_capabilities_are_the_documented_ones():
 # decodeMidea matches with kMideaTolerance (30 %) and kMarkExcess.
 def test_decode_tolerance_is_the_c_decoders():
     assert (MIDEA.tolerance, MIDEA.mark_excess) == (0.30, 50)
+
+
+# ---------------------------------------------------- RG57-family variants
+# SmartIR captures (climate 1392, 1393, 1395, 1782, 2900 in °C; 1163, 1220,
+# 2040, 2220, 2960 in °F): fan auto also sets data[1] bit 5 (the "unknown"
+# bit), fan mode sends setpoint code 30, and RG57-F sends whole °F - 62 with
+# useFahrenheit.
+
+
+def rg57_state(variant, target):
+    dev = MideaDevice("Test", "unit", variant=variant)
+    return dev.frames(None, dev.normalise(target), ())[0].data[:6].hex()
+
+
+@pytest.mark.parametrize(
+    "variant, target, capture",
+    [
+        ("RG57", HvacState(True, "cool", 24.0, fan="auto"), "a1a047ffff69"),
+        ("RG57", HvacState(True, "cool", 24.0, fan="1"), "a18847ffff51"),
+        ("RG57", HvacState(True, "fan", 24.0, fan="1"), "a18c5effff4b"),
+        ("RG57-F", HvacState(True, "cool", 22.0, fan="auto"), "a1a06affff44"),
+        ("RG57-F", HvacState(True, "heat", 21.0, fan="1"), "a18b68ffff69"),
+        ("RG57-F", HvacState(True, "fan", 22.0, fan="3"), "a19c7effff63"),
+    ],
+)
+def test_rg57_variants_reproduce_the_captures(variant, target, capture):
+    # 2900 (Goodman MSH123E21AXAA) and 2220 (Blueridge RG57A4)
+    assert rg57_state(variant, target) == capture
+
+
+def test_rg57_f_reaches_every_whole_fahrenheit_from_62_to_86():
+    dev = MideaDevice("Test", "unit", variant="RG57-F")
+    caps = dev.capabilities.temperature
+    sent = set()
+    t = caps.min
+    while t <= caps.max:
+        data = dev.frames(None, dev.normalise(HvacState(True, "cool", t)), ())[0].data
+        sent.add(MIDEA_LAYOUT.read_raw(data, "temperature") + 62)
+        t = round(t + 0.5, 1)
+    assert sent == set(range(62, 87))

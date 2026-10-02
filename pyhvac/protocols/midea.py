@@ -23,7 +23,7 @@
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
 #
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from ..device import Device
 from ..fields import Checksum, Checksums, Copy, Field, Joined, Layout, bit_reverse
@@ -86,6 +86,12 @@ MIDEA_CHECKSUM = Checksums(MideaChecksum(0, 5, 5, reverse=True), Copy(0, 6, 6, T
 MIDEA_TYPE = {"command": 0b001, "special": 0b010, "follow": 0b100}  # kMideaACType*
 MIDEA_MIN = 17  # kMideaACMinTempC
 MIDEA_MAX = 30  # kMideaACMaxTempC
+MIDEA_MIN_F, MIDEA_MAX_F = 62, 86  # kMideaACMinTempF / kMideaACMaxTempF
+# The RG57-family variants, from SmartIR captures (climate 1392, 1393, 1395,
+# 1782, 2900 in °C; 1163, 1220, 2040, 2220, 2960 in °F): fan auto also sets
+# data[1] bit 5 ("unknown"), fan mode sends setpoint code 30, and RG57-F
+# sends the setpoint as whole °F with useFahrenheit (the state stays °C).
+MIDEA_FAN_MODE_TEMP_CODE = 30
 
 # Skeleton: IRMideaAC::stateReset's 0xA1826FFFFF62 as IRac::midea leaves it
 # (setUseCelsius(true), setEnableSensorTemp(false)), with the fields the device
@@ -141,8 +147,14 @@ MIDEA_SPECIAL_LAYOUT = Layout(
 )
 
 
-def _midea_pair(name, layout, **values):
-    data = bytes(layout.build(**values))
+def _midea_pair(name, layout, raw=None, **values):
+    """A message and its inverted copy; ``raw`` writes field codes directly
+    (codes the value tables do not name), before the checksum."""
+    data = layout.build(checksum=False, **values)
+    for field, code in (raw or {}).items():
+        layout.write_raw(data, field, code)
+    layout.checksum.apply(data)
+    data = bytes(data)
     return [Frame(name, data[:6]), Frame(f"{name}_inverted", data[6:])]
 
 
@@ -174,6 +186,7 @@ class MideaDevice(Device):
 
     PROTOCOL = MIDEA
     LAYOUTS = (Joined(MIDEA_LAYOUT, 2),)
+    VARIANTS = ("RG57", "RG57-F")
     capabilities = Capabilities(
         modes=("auto", "cool", "fan", "dry", "heat"),
         temperature=TemperatureRange(float(MIDEA_MIN), float(MIDEA_MAX)),
@@ -188,6 +201,20 @@ class MideaDevice(Device):
             "sleep": ON_OFF,
         },
     )
+
+    def __init__(self, brand, model, variant=None):
+        super().__init__(brand, model)
+        if variant is None:  # built directly: the brands table's variant
+            from ..registry import variant_of
+
+            variant = variant_of(type(self), brand, model)
+        if variant is not None and variant not in self.VARIANTS:
+            raise ValueError(f"unknown Midea variant {variant!r}")
+        self.variant = variant
+        if variant == "RG57-F":  # every whole °F from 62 to 86
+            self.capabilities = replace(
+                self.capabilities, temperature=TemperatureRange(16.5, 30.0, (0, 5))
+            )
 
     @staticmethod
     def layouts(frames):
@@ -224,16 +251,25 @@ class MideaDevice(Device):
         return out
 
     def frames(self, previous, target, actions):
-        out = _midea_pair(
-            "state",
-            MIDEA_LAYOUT,
+        mode = target.mode if target.power else "auto"
+        values = dict(
             type="command",
             power=target.power,
-            mode=target.mode if target.power else "auto",
+            mode=mode,
             fan=target.fan,
             sleep=target.features["sleep"],
             temperature=min(max(int(target.temperature), MIDEA_MIN), MIDEA_MAX),
         )
+        raw = {}
+        if self.variant in ("RG57", "RG57-F"):
+            raw["unknown"] = int(target.fan == "auto")
+            if self.variant == "RG57-F":
+                f = round(target.temperature * 9 / 5 + 32)
+                values["fahrenheit"] = 1
+                raw["temperature"] = min(max(f, MIDEA_MIN_F), MIDEA_MAX_F) - MIDEA_MIN_F
+            if mode == "fan":
+                raw["temperature"] = MIDEA_FAN_MODE_TEMP_CODE
+        out = _midea_pair("state", MIDEA_LAYOUT, raw=raw, **values)
         for command in self.specials(previous, target):
             out += _midea_pair(
                 "special", MIDEA_SPECIAL_LAYOUT, type="special", command=command

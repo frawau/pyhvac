@@ -250,3 +250,21 @@ def test_key_pressed_fields_are_not_named_as_gaps():
     f = synthetic("AUX", "unit", tamper=pressed_with_sensor, dev=dev)
     m = match(f, CANDIDATES)
     assert m.verdict == "near" and m.gaps == {"sensor_temp": len(f.codes)}
+
+
+def test_an_off_code_carrying_another_state_is_explained():
+    # A remote's off message carries the last mode; pyhvac's Electra off
+    # carries auto (as IRac sends it). The unit turns off either way.
+    f = synthetic("Electra", registry.models("Electra")[0])
+    off = f.codes[-1]
+    assert off.key.mode == "off"
+    dev = registry.get_device("Electra", registry.models("Electra")[0])
+    (frame,) = dev.frames(None, dev.normalise(HvacState(False, "cool", 24.0)), ())
+    data = bytearray(frame.data)
+    ELECTRA_AC_LAYOUT.write_raw(data, "mode", 1)  # kElectraAcCool
+    ELECTRA_AC_LAYOUT.checksum.apply(data)
+    frames = [dataclasses.replace(frame, data=bytes(data))]
+    carried = dataclasses.replace(off, pulses=ir_encode(dev.PROTOCOL, frames).pulses)
+    f = dataclasses.replace(f, codes=f.codes[:-1] + (carried,))
+    m = match(f, CANDIDATES)
+    assert m.verdict == "covered" and m.relabelled == 1

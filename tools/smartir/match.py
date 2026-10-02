@@ -16,6 +16,7 @@ counted per code), unknown (no candidate decodes the file).
 """
 
 import collections
+import re
 import functools
 import itertools
 from dataclasses import dataclass, field
@@ -235,6 +236,25 @@ def _comparable(device, frames):
     return lengths, bytes(p & m for p, m in zip(b"".join(frames), mask))
 
 
+@functools.lru_cache(maxsize=None)
+def _off_mask(device, lengths):
+    """``_mask`` also clearing the CARRIED fields."""
+    mask = bytearray(_mask(device, lengths))
+    for bit, name in _owners(device, lengths).items():
+        if CARRIED.match(name) and name not in KEY_FIELDS:
+            mask[bit // 8] &= ~(1 << bit % 8) & 0xFF
+    return bytes(mask)
+
+
+def _off_comparable(device, frames):
+    """``_comparable`` for an off code: the carried state is not compared."""
+    if frames is None:
+        return None
+    lengths = tuple(len(f) for f in frames)
+    mask = _off_mask(device, lengths)
+    return lengths, bytes(p & m for p, m in zip(b"".join(frames), mask))
+
+
 def _valid(device, frames):
     """Whether every checksum of the layouts placed over ``frames`` holds: a
     protocol sharing the timing but not the checksums is another one."""
@@ -426,6 +446,11 @@ def _verify(device, decoded, units, fan_map, swing_map, features, smartir_modes)
                     device, decoded, units, fan_map, swing_map, features, smartir_modes
                 )
             ok = _comparable(device, frames) in off
+            carried = {_off_comparable(device, o) for o in off.values()}
+            if not ok and _valid(device, frames):
+                if _off_comparable(device, frames) in carried:
+                    relabels.append((key, "off, carrying another state"))
+                    continue
             want = (
                 min(off.values(), key=lambda o: _distance(device, frames, o))
                 if off
@@ -466,6 +491,12 @@ def _rank(m):
 
 
 KEY_FIELDS = ("button", "mode_button")  # layout fields holding the key pressed
+# Fields an off message carries from the last state (mode, setpoint, fan,
+# swing): remotes send the last state, IRac-style ports a normalised one; the
+# unit turns off either way, so an off code is not compared on them.
+CARRIED = re.compile(
+    r"^(mode|temp|temperature|fan|swing)(_.*)?$|^(half_degrees?|heat_flag)$"
+)
 VALID_SHARE = 0.5  # codes whose checksums hold: below this, another protocol
 SHAPE_SHARE = 0.5  # a candidate whose frames differ in shape this often is wrong
 REACH_LIMIT = 60000  # states enumerated per file and candidate, at most

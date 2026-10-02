@@ -569,9 +569,8 @@ MODELS = (
     ),
     # SmartIR climate files (tools/smartir; docs/smartir/report.md)
     ("LG", "W12TCM", "unit", LgAcDevice, "GE6711AR2853M"),  # SmartIR 1067
-    ("Actron", "Unknown", "unit", CoolixDevice, None),  # SmartIR 1140
+    ("Actron", "Actron", "unit", CoolixDevice, None),  # SmartIR 1140
     ("Electrolux", "EACS/I-HAT/N3", "unit", CoolixDevice, None),  # SmartIR 1700
-    ("Fuji", "Unknown", "unit", FujitsuAcDevice, "ARDB1"),  # SmartIR 1980
 )
 
 # 0.1.x strings of the devices that were pure Python in 0.1.x.

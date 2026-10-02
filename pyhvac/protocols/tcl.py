@@ -24,10 +24,12 @@
 #
 
 
+from dataclasses import replace
+
 from ..device import Device
 from ..fields import Field, Layout, Sum8
 from ..ir.model import Frame, Protocol, PulseDistance, Section
-from ..choices import FAN_4, ON_OFF, SWING, SWING_V_ANGLES
+from ..choices import FAN_4, FAN_5, ON_OFF, SWING, SWING_V_ANGLES
 from ..state import Capabilities, TemperatureRange
 
 # ---------------------------------------------------------------- Tcl112Ac
@@ -66,6 +68,28 @@ TCL112AC_MODEL = {"TAC09CHSD": 1, "GZ055BE1": 0}
 # TAC09CHSD-RH is TAC09CHSD-R with the model bit (isTcl) cleared in heat:
 # SmartIR climate 1900 (TCL), 2920 (Best), 2980 (Agratto).
 TCL112AC_REMOTE_VARIANTS = ("GZ055BE1-R", "TAC09CHSD-R", "TAC09CHSD-RH")
+# The "-X.." variants: TAC09CHSD-R whose special message carries settings
+# too (SmartIR climate 1661, 1901, 2041, 3060, 3100): byte 6 bits 5-7 the
+# fine fan speed (1 auto, 2-6), byte 7 the swings, byte 8 a per-remote
+# constant (the suffix: 0x83 in 1901 and 3100, 0x03 in 1661, 0x80 in 3060,
+# 0xC0 in 2041). They offer five fan levels; the main frame's fan is the
+# coarse code each level was captured with.
+TCL112AC_EXTENDED = {
+    "TAC09CHSD-X03": 0x03,
+    "TAC09CHSD-X80": 0x80,
+    "TAC09CHSD-X83": 0x83,
+    "TAC09CHSD-XC0": 0xC0,
+}
+TCL112AC_EXTENDED_MAIN_FAN = {
+    "auto": "auto",
+    "1": "2",
+    "2": "3",
+    "3": "3",
+    "4": "4",
+    "5": "4",
+}
+TCL112AC_SPECIAL_SWING_V, TCL112AC_SPECIAL_SWING_H = 0x08, 0x10
+TCL112AC_SPECIAL_SWING = 0x80  # either swings
 
 # Skeleton: IRTcl112Ac::stateReset's known good state (on, cool, 24 C), with
 # the fields the device always writes cleared and the sum cleared; stateReset
@@ -180,7 +204,7 @@ class Tcl112AcDevice(Device):
         },
     )
     MODELS = {}  # model -> remote variant, filled below
-    VARIANTS = TCL112AC_REMOTE_VARIANTS
+    VARIANTS = TCL112AC_REMOTE_VARIANTS + tuple(TCL112AC_EXTENDED)
 
     def __init__(self, brand, model, variant=None):
         super().__init__(brand, model)
@@ -191,17 +215,44 @@ class Tcl112AcDevice(Device):
             raise ValueError(
                 f"unknown model {model!r}: pass variant= (see pyhvac.brands)"
             )
-        if self.variant not in (*TCL112AC_MODEL, *TCL112AC_REMOTE_VARIANTS):
+        if self.variant not in (*TCL112AC_MODEL, *self.VARIANTS):
             raise ValueError(f"unknown Tcl112Ac variant {self.variant!r}")
         self.model_variant = self.variant.split("-")[0]
-        self.remote = self.variant in TCL112AC_REMOTE_VARIANTS
-        if self.variant.startswith("TAC09CHSD-R"):  # every message: special, normal
+        self.remote = self.variant in self.VARIANTS
+        self.extended = TCL112AC_EXTENDED.get(self.variant)
+        self.always_special = self.variant.startswith(("TAC09CHSD-R", "TAC09CHSD-X"))
+        if self.extended is not None:
+            self.capabilities = replace(self.capabilities, fan=FAN_5)
+        if self.always_special:  # every message: special, normal
             self.LAYOUTS = (TCL112AC_LAYOUT, TCL112AC_QUIET_LAYOUT)
+
+    def _main_fan(self, fan):
+        if self.extended is None:
+            return fan
+        return TCL112AC_EXTENDED_MAIN_FAN[fan]
+
+    def _extend(self, special, target):
+        """The settings an -X.. remote's special message carries."""
+        if target.features["powerful"]:
+            fine = 6
+        else:
+            fine = 1 if target.fan == "auto" else int(target.fan) + 1
+        swing = 0
+        if target.swing_v != "off":
+            swing |= TCL112AC_SPECIAL_SWING_V
+        if target.swing_h != "off":
+            swing |= TCL112AC_SPECIAL_SWING_H
+        if swing:
+            swing |= TCL112AC_SPECIAL_SWING
+        special[6] |= fine << 5
+        special[7] = swing
+        special[8] = self.extended
+        TCL112AC_QUIET_LAYOUT.checksum.apply(special)
 
     def sends_quiet(self, previous, target):
         """Whether the special (quiet) message goes before the normal one."""
         quiet = target.features["quiet"]
-        if self.variant.startswith("TAC09CHSD-R"):
+        if self.always_special:
             return True  # every message, as these remotes send it
         if previous is None:
             return quiet  # a fresh IRTcl112Ac: its last quiet sent is off
@@ -220,7 +271,7 @@ class Tcl112AcDevice(Device):
             temperature=min(max(int(target.temperature), TCL112AC_MIN), TCL112AC_MAX),
             half_degree=target.temperature % 1 == 0.5,
             # setTurbo(true) forces kTcl112AcFanHigh and kTcl112AcSwingVOn.
-            fan="4" if powerful else target.fan,
+            fan="4" if powerful else self._main_fan(target.fan),
             swing_v="auto" if powerful else target.swing_v,
             swing_h=target.swing_h,
             model=(
@@ -235,6 +286,8 @@ class Tcl112AcDevice(Device):
         out = [Frame("main", bytes(main))]
         if self.sends_quiet(previous, target):
             quiet = TCL112AC_QUIET_LAYOUT.build(quiet=features["quiet"])
+            if self.extended is not None:
+                self._extend(quiet, target)
             out.insert(0, Frame("quiet", bytes(quiet)))
         return out
 

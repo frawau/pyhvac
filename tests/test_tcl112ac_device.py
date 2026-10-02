@@ -666,3 +666,62 @@ def test_tac09chsd_rh_clears_the_model_bit_in_heat():
 def test_tac09chsd_rh_is_tac09chsd_r_outside_heat(mode):
     target = HvacState(True, mode, 22.0)
     assert r_frames("TAC09CHSD-RH", target) == r_frames("TAC09CHSD-R", target)
+
+
+# ------------------------------------------------- "-X.." (extended) variants
+# TAC09CHSD-R whose special message carries settings too (SmartIR 1661,
+# 1901, 2041, 3060, 3100): byte 6 bits 5-7 the fine fan speed (1 auto,
+# 2-6), byte 7 the swings (bit 3 vertical, bit 4 horizontal, bit 7 either),
+# byte 8 a per-remote constant (the variant's suffix). Five fan levels:
+# the main frame's fan is the coarse 2, 3, 3, 4, 4 (kTcl112AcFan codes
+# 2, 3, 3, 5, 5).
+
+
+@pytest.mark.parametrize(
+    "variant, target, capture",
+    [
+        (  # 3100 (Cecotec): cool 16, mid
+            "TAC09CHSD-X83",
+            HvacState(True, "cool", 16.0, fan="3", features={"light": True}),
+            ["23cb260200408000830000000068", "23cb26010024030f0300000080ce"],
+        ),
+        (  # 1901 (TCL): cool 16, auto, swinging
+            "TAC09CHSD-X83",
+            HvacState(
+                True,
+                "cool",
+                16.0,
+                swing_v="auto",
+                swing_h="swing",
+                features={"light": True},
+            ),
+            ["23cb2602004020988300000000a0", "23cb26010024030f38000000880b"],
+        ),
+        (  # 2041 (Pioneer): cool 16, level 1, horizontal swing, light off
+            "TAC09CHSD-XC0",
+            HvacState(True, "cool", 16.0, fan="1", swing_h="swing"),
+            ["23cb260200404090c000000000f5", "23cb26010064030f020000008815"],
+        ),
+        (  # 2041 (Pioneer): level 4
+            "TAC09CHSD-XC0",
+            HvacState(True, "cool", 16.0, fan="4", swing_h="swing"),
+            ["23cb26020040a090c00000000055", "23cb26010064030f050000008818"],
+        ),
+        (  # 1661 (ROYAL): cool 16, silent: level 1 with quiet
+            "TAC09CHSD-X03",
+            HvacState(
+                True, "cool", 16.0, fan="1", features={"light": True, "quiet": True}
+            ),
+            ["23cb2602006040000300000000c8", "23cb26010024030f0200000080cd"],
+        ),
+    ],
+)
+def test_extended_variants_reproduce_the_captures(variant, target, capture):
+    assert r_frames(variant, target) == capture
+
+
+def test_extended_variants_offer_five_fan_levels():
+    from pyhvac.protocols.tcl import Tcl112AcDevice
+
+    caps = Tcl112AcDevice("T", "u", variant="TAC09CHSD-X80").capabilities
+    assert caps.fan.values == ("auto", "1", "2", "3", "4", "5")

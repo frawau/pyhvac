@@ -81,3 +81,13 @@ def test_files_that_are_not_json_are_listed():
 def test_a_file_with_many_unreadable_codes_is_flagged():
     f = dataclasses.replace(file(9, "Acme", "A"), skipped=1)
     assert "| 1 (!) |" in markdown([(f, Match("unknown"))], [], [], [])
+
+
+def test_the_report_lists_files_that_are_not_json(tmp_path):
+    from smartir.report import main
+
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    (cache / "2680.json").write_text("{not json")
+    main([str(tmp_path / "out"), "--cache", str(cache), "--no-fetch", "--jobs", "1"])
+    assert "- not JSON: 2680" in (tmp_path / "out" / "report.md").read_text()

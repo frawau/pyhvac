@@ -40,7 +40,7 @@ def parse(number, data):
     controller = data.get("supportedController", "")
     encoding = data.get("commandsEncoding", "")
     codes, skipped, unsupported = [], 0, None
-    for key, stored in walk(data.get("commands", {})):
+    for key, stored in walk(data.get("commands", {}), data.get("swingModes", ())):
         try:
             codes.append(Code(key, tuple(to_pulses(stored, controller, encoding))))
         except UnsupportedFormat as exc:

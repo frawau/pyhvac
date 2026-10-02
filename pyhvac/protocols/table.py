@@ -18,6 +18,8 @@ import binascii
 import json
 import os
 import struct
+import threading
+import time
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
@@ -48,7 +50,10 @@ MODES = {
     "dry": "dry",
     "fan_only": "fan",
     "fan": "fan",
+    "cold": "cool",
+    "humidity": "dry",
 }
+RETRY = 60  # s: a failed fetch is not retried before this
 
 
 class UnsupportedFormat(ValueError):
@@ -115,8 +120,10 @@ def _temperature(text):
         return None
 
 
-def walk(commands):
-    """(Key, stored code) for every leaf of a commands tree."""
+def walk(commands, swings=()):
+    """(Key, stored code) for every leaf of a commands tree. Under a fan,
+    a key in ``swings`` is a swing level even when it holds a code (no
+    temperature level)."""
     for mode, sub in commands.items():
         if not isinstance(sub, dict):
             yield Key(mode, None, None, None), sub
@@ -129,6 +136,8 @@ def walk(commands):
                 if isinstance(sub3, dict):  # a swing level
                     for t, code in sub3.items():
                         yield Key(mode, fan, k, _temperature(t)), code
+                elif k in swings and _temperature(k) is None:
+                    yield Key(mode, fan, k, None), sub3
                 else:
                     yield Key(mode, fan, None, _temperature(k)), sub3
 
@@ -151,6 +160,28 @@ def fetch(url):
         return response.read()
 
 
+def _fetch_by(url, deadline):
+    """``fetch(url)``, given up at ``deadline``: urlopen's timeout bounds
+    each socket operation, not name resolution or a trickling server. The
+    abandoned daemon thread ends with its own socket timeout."""
+    box = {}
+
+    def run():
+        try:
+            box["raw"] = fetch(url)
+        except BaseException as exc:  # handed to the caller
+            box["error"] = exc
+
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    worker.join(max(0.0, deadline - time.monotonic()))
+    if worker.is_alive():
+        raise OSError(f"no answer within {TIMEOUT} s")
+    if "error" in box:
+        raise box["error"]
+    return box["raw"]
+
+
 def load(number, path=None):
     """A SmartIR climate file as parsed JSON: ``path`` if given, else
     upstream master (cached), else the cached copy."""
@@ -159,7 +190,7 @@ def load(number, path=None):
     url = URL.format(number)
     cached = cache_dir() / "smartir" / "climate" / f"{number}.json"
     try:
-        raw = fetch(url)
+        raw = _fetch_by(url, time.monotonic() + TIMEOUT)
         data = json.loads(raw)
     except (OSError, ValueError) as exc:
         if cached.exists():
@@ -199,19 +230,27 @@ class TableDevice(Device):
         self.variant = str(variant)
         self._path = path
         self._data = None
+        self._failed = None  # (monotonic time, error) of the last failed load
 
     def _load(self):
         if self._data is None:
-            data = load(self.variant, self._path)
+            if self._failed and time.monotonic() - self._failed[0] < RETRY:
+                raise self._failed[1]
+            try:
+                data = load(self.variant, self._path)
+            except OSError as exc:
+                self._failed = (time.monotonic(), exc)
+                raise
             self._fahrenheit = fahrenheit_keyed(data)
             codes = {}
-            for key, stored in walk(data.get("commands", {})):
+            swings = data.get("swingModes", ())
+            for key, stored in walk(data.get("commands", {}), swings):
                 codes[key] = stored
             self._codes = codes
             self._controller = data.get("supportedController", "")
             self._encoding = data.get("commandsEncoding", "")
-            self._modes = {}
-            for name in data.get("operationModes", ()):
+            self._modes = {}  # from the commands: operationModes may differ
+            for name in data.get("commands", {}):
                 if name in MODES and MODES[name] not in self._modes:
                     self._modes[MODES[name]] = name
             self._fans = _levels(data.get("fanModes", ()), ("auto",), {})
@@ -265,9 +304,29 @@ class TableDevice(Device):
                 self._swings.get(target.swing_v),
                 float(fahrenheit(t)) if self._fahrenheit else t,
             )
+            # a mode stored without setpoints or without swing levels
+            for swing, temp in (
+                (key.swing, None),
+                (None, key.temperature),
+                (None, None),
+            ):
+                if key in self._codes:
+                    break
+                key = Key(key.mode, key.fan, swing, temp)
         if key not in self._codes:
             raise KeyError(f"SmartIR climate file {self.variant} has no code for {key}")
+        pulses = []
+        turning_on = target.power and (previous is None or not previous.power)
+        on = Key("on", None, None, None)
+        if turning_on and on in self._codes:  # SmartIR sends "on" first
+            pulses = self._pulses(on)
+            pulses[-1] = max(pulses[-1], FINAL_SPACE)
+        pulses += self._pulses(key)
+        return Command(Signal(CARRIER, tuple(pulses)), target)
+
+    def _pulses(self, key):
+        """The code's pulses, ending on a space."""
         pulses = to_pulses(self._codes[key], self._controller, self._encoding)
         if len(pulses) % 2:
             pulses.append(FINAL_SPACE)
-        return Command(Signal(CARRIER, tuple(pulses)), target)
+        return pulses

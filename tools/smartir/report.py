@@ -182,7 +182,7 @@ def main(argv=None):
     new_rows, conflicts = rows(results)
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "report.md").write_text(
-        markdown(results, clusters, new_rows, conflicts)
+        markdown(results, clusters, new_rows, conflicts, unreadable)
     )
     (args.out / "rows.py").write_text(python_rows(new_rows))
     (args.out / "results.json").write_text(

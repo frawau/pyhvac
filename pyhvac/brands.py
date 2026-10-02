@@ -618,7 +618,7 @@ MODELS = (
     ("Tornado", "Multi Inverter", "unit", CoolixDevice, None),  # SmartIR 1620
     ("Tornado", "Super Gold i", "unit", CoolixDevice, None),  # SmartIR 1620
     ("Tornado", "Plasma Gold", "unit", CoolixDevice, None),  # SmartIR 1620
-    ("Tornado", "Super Legend 40", "unit", KelonDevice, None),  # SmartIR 1621
+    ("Tornado", "Super Legend 40", "unit", KelonDevice, "16C"),  # SmartIR 1621
     ("Electrolux", "EPI12LEIWI", "unit", CoolixDevice, None),  # SmartIR 1704
     ("Kelvinator", "KSV25HRG", "unit", CoolixDevice, "quiet"),  # SmartIR 1740
     ("Daitsu", "DS12U-RV", "unit", CoolixDevice, None),  # SmartIR 1760
@@ -728,6 +728,196 @@ MODELS = (
     ),  # SmartIR 2960
     ("Viessmann", "Vitoclima 300-S", "unit", GreeDevice, "YAW1F-wifi"),  # SmartIR 3040
     ("Hisense", "AS-07UR4SYDD815G", "unit", KelonDevice, "dry-grade"),  # SmartIR 5520
+    ("Panasonic", "CS-SA9CKP", "unit", PanasonicAc32Device, None),  # SmartIR 1027
+    ("General Electric", "AE1PH09IWF", "unit", KelvinatorDevice, None),  # SmartIR 1041
+    ("General Electric", "AE0PH09IWO", "unit", KelvinatorDevice, None),  # SmartIR 1041
+    ("General Electric", "AE1PH12IWF", "unit", KelvinatorDevice, None),  # SmartIR 1041
+    ("General Electric", "AE0PH12IWO", "unit", KelvinatorDevice, None),  # SmartIR 1041
+    ("General Electric", "AE4PH18IWF", "unit", KelvinatorDevice, None),  # SmartIR 1041
+    ("General Electric", "AE5PH18IWO", "unit", KelvinatorDevice, None),  # SmartIR 1041
+    ("Daikin", "FTXS20LVMA", "unit", Daikin312Device, None),  # SmartIR 1101
+    ("Daikin", "FTXS25LVMA", "unit", Daikin312Device, None),  # SmartIR 1101
+    ("Daikin", "FTXS35LVMA", "unit", Daikin312Device, None),  # SmartIR 1101
+    ("Daikin", "FTXS46LVMA", "unit", Daikin312Device, None),  # SmartIR 1101
+    ("Daikin", "FTXS50LVMA", "unit", Daikin312Device, None),  # SmartIR 1101
+    ("Daikin", "FTXS60LVMA", "unit", Daikin312Device, None),  # SmartIR 1101
+    ("Daikin", "FTXS71LVMA", "unit", Daikin312Device, None),  # SmartIR 1101
+    ("Daikin", "FTXS85LVMA", "unit", Daikin312Device, None),  # SmartIR 1101
+    ("Daikin", "FTXS95LVMA", "unit", Daikin312Device, None),  # SmartIR 1101
+    ("Daikin", "FVXS50FV1B", "unit", Daikin312Device, None),  # SmartIR 1101
+    ("Daikin", "FTXL35J2V1B", "unit", Daikin312Device, None),  # SmartIR 1101
+    ("Daikin", "FTXM25UVMA", "unit", Daikin312Device, None),  # SmartIR 1101
+    ("Daikin", "FTXM35UVMA", "unit", Daikin312Device, None),  # SmartIR 1101
+    ("Daikin", "FTXD25DVMA", "unit", Daikin312Device, None),  # SmartIR 1101
+    ("Daikin", "FTXS35G2V1B", "unit", Daikin312Device, None),  # SmartIR 1101
+    ("Daikin", "FTXM71UVMA", "unit", Daikin312Device, None),  # SmartIR 1101
+    ("Daikin", "FTM09PV2S", "unit", Daikin312Device, None),  # SmartIR 1101
+    ("Daikin", "ATX20KV1B", "unit", Daikin312Device, None),  # SmartIR 1106
+    ("Daikin", "ATX25KV1B", "unit", Daikin312Device, None),  # SmartIR 1106
+    ("Daikin", "ATX35KV1B", "unit", Daikin312Device, None),  # SmartIR 1106
+    ("Daikin", "FTXG25EV1BS", "unit", Daikin312Device, None),  # SmartIR 1108
+    ("Daikin", "FTXG35EV1BS", "unit", Daikin312Device, None),  # SmartIR 1108
+    ("Daikin", "FTXG35EV1BW", "unit", Daikin312Device, None),  # SmartIR 1108
+    ("Daikin", "FTC15NV14", "unit", DaikinArcDevice, None),  # SmartIR 1110
+    ("Daikin", "FTC20NV14", "unit", DaikinArcDevice, None),  # SmartIR 1110
+    ("Daikin", "FTC25NV14", "unit", DaikinArcDevice, None),  # SmartIR 1110
+    ("Daikin", "FTC35NV14", "unit", DaikinArcDevice, None),  # SmartIR 1110
+    ("Daikin", "ATKC09TV2S", "unit", DaikinArcDevice, None),  # SmartIR 1112
+    ("Daikin", "FTKQ12TV2S", "unit", DaikinArcDevice, None),  # SmartIR 1112
+    ("Daikin", "FTXM35UVMZ", "unit", Daikin312Device, None),  # SmartIR 1114
+    ("Daikin", "DTXF35TVMA", "unit", Daikin312Device, None),  # SmartIR 1117
+    ("Daikin", "ARC452A21", "unit", Daikin312Device, None),  # SmartIR 1118
+    ("Daikin", "FTXS09LVJU", "unit", Daikin312Device, None),  # SmartIR 1118
+    ("Daikin", "FTXS12LVJU", "unit", Daikin312Device, None),  # SmartIR 1118
+    ("Daikin", "FTXS15LVJU", "unit", Daikin312Device, None),  # SmartIR 1118
+    ("Daikin", "FTXS18LVJU", "unit", Daikin312Device, None),  # SmartIR 1118
+    ("Daikin", "FTXS24LVJU", "unit", Daikin312Device, None),  # SmartIR 1118
+    ("Daikin", "FTXS60FVMA", "unit", Daikin216Device, None),  # SmartIR 1119
+    ("Gree", "GWH18ACD-D3DNA 1M", "unit", GreeDevice, "YAW1F-wifi"),  # SmartIR 1186
+    (
+        "Toshiba",
+        "RAS-13NKV-E / RAS-13NAV-E",
+        "unit",
+        ToshibaAcDevice,
+        None,
+    ),  # SmartIR 1260
+    (
+        "Toshiba",
+        "RAS-13NKV-A / RAS-13NAV-A",
+        "unit",
+        ToshibaAcDevice,
+        None,
+    ),  # SmartIR 1260
+    (
+        "Toshiba",
+        "RAS-16NKV-E / RAS-16NAV-E",
+        "unit",
+        ToshibaAcDevice,
+        None,
+    ),  # SmartIR 1260
+    (
+        "Toshiba",
+        "RAS-16NKV-A / RAS-16NAV-A",
+        "unit",
+        ToshibaAcDevice,
+        None,
+    ),  # SmartIR 1260
+    ("Toshiba", "RAS-M10SKV-E", "unit", ToshibaAcDevice, None),  # SmartIR 1260
+    ("Toshiba", "WH-TA05NE", "unit", ToshibaAcDevice, None),  # SmartIR 1261
+    ("Toshiba", "WH-TA11EJ", "unit", ToshibaAcDevice, None),  # SmartIR 1261
+    ("Toshiba", "RAC-PD0812CRRU", "unit", MideaDevice, "RG57-F"),  # SmartIR 1262
+    ("Toshiba", "RAC-PD1013CWRU", "unit", MideaDevice, "RG57-F"),  # SmartIR 1262
+    ("Toshiba", "RAC-PD1213CWRU", "unit", MideaDevice, "RG57-F"),  # SmartIR 1262
+    ("Toshiba", "RAC-PD1414CWRU", "unit", MideaDevice, "RG57-F"),  # SmartIR 1262
+    ("Toshiba", "RAS-13SKVR-A", "unit", ToshibaAcDevice, None),  # SmartIR 1264
+    ("Haier", "HSU-09HPL03/R03", "unit", Haier176Device, "A"),  # SmartIR 1322
+    ("Tadiran", "TAC 297H V3.2", "unit", AmcorDevice, None),  # SmartIR 1346
+    ("Midea", "42MAQA09S5", "unit", CoolixDevice, None),  # SmartIR 1388
+    (
+        "Mitsubishi Heavy",
+        "SRK25ZJ-S1",
+        "unit",
+        MitsubishiHeavy88Device,
+        None,
+    ),  # SmartIR 1680
+    (
+        "Mitsubishi Heavy",
+        "SRK13CRV-S1",
+        "unit",
+        MitsubishiHeavy88Device,
+        None,
+    ),  # SmartIR 1680
+    (
+        "Mitsubishi Heavy",
+        "SRK20ZSA-W",
+        "unit",
+        MitsubishiHeavy152Device,
+        None,
+    ),  # SmartIR 1686
+    (
+        "Mitsubishi Heavy",
+        "SRK25ZSA-W",
+        "unit",
+        MitsubishiHeavy152Device,
+        None,
+    ),  # SmartIR 1686
+    (
+        "Mitsubishi Heavy",
+        "SRK35ZSA-W",
+        "unit",
+        MitsubishiHeavy152Device,
+        None,
+    ),  # SmartIR 1686
+    (
+        "Mitsubishi Heavy",
+        "SRK50ZSA-W",
+        "unit",
+        MitsubishiHeavy152Device,
+        None,
+    ),  # SmartIR 1686
+    (
+        "Mitsubishi Heavy",
+        "SRK35ZJX-S",
+        "unit",
+        MitsubishiHeavy88Device,
+        None,
+    ),  # SmartIR 1687
+    (
+        "Mitsubishi Heavy",
+        "SRK20ZJX-S",
+        "unit",
+        MitsubishiHeavy88Device,
+        None,
+    ),  # SmartIR 1687
+    (
+        "Mitsubishi Heavy",
+        "SRK25ZSP-W",
+        "unit",
+        MitsubishiHeavy88Device,
+        None,
+    ),  # SmartIR 1688
+    (
+        "Mitsubishi Heavy",
+        "SRK35ZSP-W",
+        "unit",
+        MitsubishiHeavy88Device,
+        None,
+    ),  # SmartIR 1688
+    (
+        "Mitsubishi Heavy",
+        "SRK45ZSP-W",
+        "unit",
+        MitsubishiHeavy88Device,
+        None,
+    ),  # SmartIR 1688
+    (
+        "Mitsubishi Heavy",
+        "DXK12Z3-S",
+        "unit",
+        MitsubishiHeavy88Device,
+        None,
+    ),  # SmartIR 1692
+    (
+        "Mitsubishi Heavy",
+        "DXK09Z5-S",
+        "unit",
+        MitsubishiHeavy88Device,
+        None,
+    ),  # SmartIR 1692
+    (
+        "Mitsubishi Heavy",
+        "DXK15Z5-S",
+        "unit",
+        MitsubishiHeavy88Device,
+        None,
+    ),  # SmartIR 1692
+    ("Kelvinator", "KCV70HRC", "unit", KelvinatorDevice, None),  # SmartIR 1741
+    ("Electra", "RC-3", "unit", AirwellDevice, None),  # SmartIR 1946
+    ("Mirage", "Magnum Inverter 19", "unit", CoolixDevice, None),  # SmartIR 2100
+    ("Hyndai", "H-ARI22-09H", "unit", ElectraAcDevice, "aux"),  # SmartIR 2662
+    ("ELGIN", "HVQI12B2FB", "unit", CoolixDevice, None),  # SmartIR 2801
+    ("Senville", "SENA/12HF/IZ", "unit", MideaDevice, "RG57"),  # SmartIR 2860
+    ("Casper", "SC-09FS32", "unit", ElectraAcDevice, None),  # SmartIR 3240
 )
 
 # 0.1.x strings of the devices that were pure Python in 0.1.x.

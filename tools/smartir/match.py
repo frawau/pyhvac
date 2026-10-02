@@ -186,7 +186,8 @@ def decode_code(candidate, pulses):
             except (DecodeError, ValueError):
                 continue
             data = tuple(f.data for f in frames)
-            if tuple(len(d) for d in data) in candidate.shapes:
+            lengths = tuple(len(d) for d in data)
+            if any(lengths) and lengths in candidate.shapes:  # data, as sent
                 return data
     return None
 
@@ -476,10 +477,8 @@ def _reachable(device, decoded, units, features):
             frames = _frames(device, st)
             if frames is None:
                 continue
-            for i in range(len(frames)):  # the tails, then the starts
-                out.setdefault(_comparable(device, frames[i:]), st)
-            for i in range(1, len(frames)):
-                out.setdefault(_comparable(device, frames[:i]), st)
+            for part in _parts(frames):
+                out.setdefault(_comparable(device, part), st)
     return out
 
 
@@ -498,11 +497,9 @@ def _describe(state):
 def _parts(frames):
     """The whole message, its starts and its tails: what a remote may send
     of it."""
-    return (
-        {frames}
-        | {frames[:i] for i in range(1, len(frames))}
-        | {frames[i:] for i in range(1, len(frames))}
-    )
+    parts = {frames} | {frames[:i] for i in range(1, len(frames))}
+    parts |= {frames[i:] for i in range(1, len(frames))}
+    return {p for p in parts if any(p)}  # a bitless part alone is no code
 
 
 def _verify(device, decoded, units, fan_map, swing_map, features, smartir_modes):
@@ -578,7 +575,7 @@ CARRIED = re.compile(
 # A covered file has this share of its decoded codes verified under their
 # own labels: a candidate explaining them only through other states (one
 # without a checksum can explain much) is guessing.
-VERIFIED_SHARE = 0.25
+VERIFIED_SHARE = 0.15
 VALID_SHARE = 0.5  # codes whose checksums hold: below this, another protocol
 SHAPE_SHARE = 0.5  # a candidate whose frames differ in shape this often is wrong
 REACH_LIMIT = 60000  # states enumerated per file and candidate, at most

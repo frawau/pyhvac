@@ -9,7 +9,7 @@ from pyhvac.protocols.coolix import COOLIX, COOLIX_TURBO, coolix_message
 from pyhvac.protocols.electra import ELECTRA_AC_LAYOUT
 from pyhvac.state import HvacState
 from smartir.codes import Code, Key, SmartIRFile
-from smartir.match import candidates, match
+from smartir.match import candidates, decode_code, match
 
 CANDIDATES = candidates()
 FANS = {"low": "1", "mid": "2", "high": "3", "auto": "auto"}
@@ -381,3 +381,14 @@ def test_codes_explained_only_under_other_labels_are_not_covered():
     )
     m = match(dataclasses.replace(f, codes=shifted), CANDIDATES)
     assert m.verdict == "near"
+
+
+def test_a_decode_without_data_is_no_decode():
+    # Airwell's message ends with a bitless section: alone, it would
+    # "decode" any capture as an empty frame.
+    airwell = next(c for c in CANDIDATES if c.name == "AirwellDevice")
+    brand, model = next(
+        (b, m) for b, m, k, c, v in brands.MODELS if c.__name__ == "Lg2Device"
+    )
+    f = synthetic(brand, model)
+    assert all(decode_code(airwell, list(c.pulses)) is None for c in f.codes)

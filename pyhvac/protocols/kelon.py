@@ -23,6 +23,8 @@
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
 #
 
+from dataclasses import replace
+
 from ..device import Device
 from ..fields import Field, Layout
 from ..ir.model import Frame, Protocol, PulseDistance, Section
@@ -89,6 +91,9 @@ KELON_MIN_TEMP = 18  # kKelonMinTemp
 # sends, as SmartIR climate 1522, 2200, 2500 and 5520 step it with the
 # temperature keys. IRac::kelon passes grade 0.
 KELON_DRY_GRADE = {-2: 0b110, -1: 0b101, 0: 0, 1: 0b001, 2: 0b010}
+# The "16C" variant: 16-30 °C, the setpoint field holding degrees - 16, as
+# SmartIR climate 1621 and 1624 (Tornado) send it.
+KELON_16C_OFFSET = KELON_MIN_TEMP - 16
 
 
 class KelonDevice(Device):
@@ -142,7 +147,7 @@ class KelonDevice(Device):
 
     PROTOCOL = KELON
     LAYOUTS = (KELON_LAYOUT,)
-    VARIANTS = ("dry-grade",)
+    VARIANTS = ("dry-grade", "16C")
     capabilities = Capabilities(
         modes=("auto", "cool", "fan", "dry", "heat"),
         temperature=TemperatureRange(18.0, 32.0),
@@ -160,10 +165,16 @@ class KelonDevice(Device):
         if variant is not None and variant not in self.VARIANTS:
             raise ValueError(f"unknown Kelon variant {variant!r}")
         self.variant = variant
+        if variant == "16C":
+            self.capabilities = replace(
+                self.capabilities, temperature=TemperatureRange(16.0, 30.0)
+            )
 
     def frames(self, previous, target, actions):
         mode, fan = target.mode, target.fan
         temperature = KELON_FIXED_TEMPERATURE.get(mode, int(target.temperature))
+        if self.variant == "16C" and mode not in KELON_FIXED_TEMPERATURE:
+            temperature += KELON_16C_OFFSET  # the field's degrees - 18
         swing = target.swing_v != "off"
         if previous is None:
             toggle, swing_toggle = target.power, swing

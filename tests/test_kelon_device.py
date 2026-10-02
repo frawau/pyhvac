@@ -329,3 +329,26 @@ def test_dry_grade_variant_leaves_other_modes_alone():
         assert plain.frames(None, plain.normalise(st), ()) == graded.frames(
             None, graded.normalise(st), ()
         )
+
+
+# ------------------------------------------------------------ "16C" variant
+# 16-30 °C, the setpoint field holding degrees - 16 (kKelonMinTemp is 18):
+# SmartIR climate 1621 and 1624 (Tornado) send for each setpoint what the
+# default sends for two degrees more.
+
+
+@pytest.mark.parametrize("t", range(16, 31))
+@pytest.mark.parametrize("mode", ["cool", "heat"])
+def test_16c_variant_offsets_the_setpoint_by_two(mode, t):
+    plain = KelonDevice("T", "u")
+    low = KelonDevice("T", "u", variant="16C")
+    target = HvacState(True, mode, float(t), fan="1")
+    shifted = HvacState(True, mode, float(t + 2), fan="1")
+    assert low.frames(None, low.normalise(target), ()) == plain.frames(
+        None, plain.normalise(shifted), ()
+    )
+
+
+def test_16c_variant_offers_16_to_30():
+    caps = KelonDevice("T", "u", variant="16C").capabilities.temperature
+    assert (caps.min, caps.max) == (16.0, 30.0)

@@ -203,13 +203,26 @@ def _owners(device, lengths):
 
 @functools.lru_cache(maxsize=None)
 def _mask(device, lengths):
-    """Joined-message mask clearing the checksum bits: a checksum follows
-    the other fields, so it is not counted as a difference."""
+    """Joined-message mask clearing the checksum bits (a checksum follows
+    the other fields) and the key-pressed fields (KEY_FIELDS: a capture's
+    value there is the key the person pressed, which the file does not
+    record): neither counts as a difference."""
     mask = bytearray(b"\xff" * sum(lengths))
     for bit, name in _owners(device, lengths).items():
-        if name == "checksum":
+        if name == "checksum" or name in KEY_FIELDS:
             mask[bit // 8] &= ~(1 << bit % 8) & 0xFF
     return bytes(mask)
+
+
+def _comparable(device, frames):
+    """``frames`` with the bits ``_mask`` clears zeroed (None stays None).
+    Codes compare equal when their comparables do and both checksums hold:
+    the checksum is a function of the other bits."""
+    if frames is None:
+        return None
+    lengths = tuple(len(f) for f in frames)
+    mask = _mask(device, lengths)
+    return lengths, bytes(p & m for p, m in zip(b"".join(frames), mask))
 
 
 def _valid(device, frames):
@@ -319,12 +332,13 @@ def _off_frames(device, decoded, units, fan_map, swing_map, features, modes):
     modes = [MODE[m] for m in modes if m in MODE] or ["cool"]
     fans = set(fan_map.values()) | {None}
     swings = set(swing_map.values()) | {None}
-    out = set()
+    out = {}  # comparable -> frames
     for mode, t, fan, swing in itertools.product(modes, temps, fans, swings):
         key = Key(mode, None, None, t)
         st = _state(device, key, units, fan, swing, features, False, mode)
         if st is not None:
-            out.add(_frames(device, st))
+            frames = _frames(device, st)
+            out.setdefault(_comparable(device, frames), frames)
     return out
 
 
@@ -367,7 +381,7 @@ def _reachable(device, decoded, units, features):
             if frames is None:
                 continue
             for i in range(len(frames)):
-                out.setdefault(frames[i:], st)
+                out.setdefault(_comparable(device, frames[i:]), st)
     return out
 
 
@@ -393,8 +407,12 @@ def _verify(device, decoded, units, fan_map, swing_map, features, smartir_modes)
                 off = _off_frames(
                     device, decoded, units, fan_map, swing_map, features, smartir_modes
                 )
-            ok = frames in off
-            want = min(off, key=lambda o: _distance(device, frames, o)) if off else None
+            ok = _comparable(device, frames) in off
+            want = (
+                min(off.values(), key=lambda o: _distance(device, frames, o))
+                if off
+                else None
+            )
         else:
             st = _state(
                 device,
@@ -405,14 +423,15 @@ def _verify(device, decoded, units, fan_map, swing_map, features, smartir_modes)
                 features,
             )
             want = None if st is None else _frames(device, st)
-            ok = want == frames
+            ok = _comparable(device, want) == _comparable(device, frames)
         if ok:
             verified += 1
             continue
         if reach is None:
             reach = _reachable(device, decoded, units, features)
-        if frames in reach:
-            relabels.append((key, _describe(reach[frames])))
+        seen = _comparable(device, frames)
+        if seen in reach and _valid(device, frames):
+            relabels.append((key, _describe(reach[seen])))
         else:
             unexplained.append(key)
             gaps.update(_gaps(device, frames, want))
@@ -428,6 +447,7 @@ def _rank(m):
     )
 
 
+KEY_FIELDS = ("button", "mode_button")  # layout fields holding the key pressed
 VALID_SHARE = 0.5  # codes whose checksums hold: below this, another protocol
 SHAPE_SHARE = 0.5  # a candidate whose frames differ in shape this often is wrong
 REACH_LIMIT = 60000  # states enumerated per file and candidate, at most

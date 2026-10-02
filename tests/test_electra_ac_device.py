@@ -331,3 +331,85 @@ def test_capabilities_are_the_headers():
     assert caps.fan.values == ("auto", "1", "2", "3")
     assert caps.swing_v.values == caps.swing_h.values == ("off", "swing")
     assert set(caps.features) == {"light", "cleaning", "powerful", "quiet"}
+
+
+# ------------------------------------------------------------ "aux" variant
+# AUX-family remotes (SmartIR climate 1703 Electrolux, 1622 Tornado, 1800
+# Ballu, ...): byte 11 is the key just pressed, fan mode sends setpoint 0,
+# byte 9 bit 4 is set in heat mode.
+
+
+def aux():
+    return ElectraAcDevice("Test", "unit", variant="aux")
+
+
+def aux_frame(target, previous=None):
+    dev = aux()
+    previous = None if previous is None else dev.normalise(previous)
+    (main,) = dev.frames(previous, dev.normalise(target), ())
+    return main.data.hex()
+
+
+def with_key(capture, key):
+    """``capture`` with byte 11 set to ``key`` and the checksum redone."""
+    data = bytearray(bytes.fromhex(capture))
+    data[11] = key
+    data[12] = sum(data[:12]) & 0xFF
+    return data.hex()
+
+
+@pytest.mark.parametrize(
+    "capture, target, previous",
+    [
+        (  # 1703: cool 17, swing, after 16: temperature up (0x00)
+            "c348e000a000200000200000cb",
+            HvacState(True, "cool", 17.0, swing_v="swing"),
+            HvacState(True, "cool", 16.0, swing_v="swing"),
+        ),
+        (  # 1703: cool 16, swing, after 17: temperature down (0x01)
+            "c340e000a000200000200001c4",
+            HvacState(True, "cool", 16.0, swing_v="swing"),
+            HvacState(True, "cool", 17.0, swing_v="swing"),
+        ),
+        (  # 1703: off, carrying cool 20 fan 3: power (0x05)
+            "c367e00020002000000000054f",
+            HvacState(False, "cool", 20.0, fan="3"),
+            HvacState(True, "cool", 20.0, fan="3"),
+        ),
+        (  # 1800: heat 22 fan 1, after 21: heat flag, temperature up
+            "c377e00060008000003000002a",
+            HvacState(True, "heat", 22.0, fan="1"),
+            HvacState(True, "heat", 21.0, fan="1"),
+        ),
+    ],
+)
+def test_aux_variant_reproduces_the_captures(capture, target, previous):
+    assert aux_frame(target, previous) == capture
+
+
+def test_aux_variant_sends_setpoint_0_in_fan_mode():
+    # 1703: fan_only high, any setpoint key; captured after the fan key (0x04)
+    target = HvacState(True, "fan", 29.0, fan="3")
+    expected = with_key("c307e0002000c00000200004ae", 0x00)
+    assert aux_frame(target, target) == expected
+
+
+def test_aux_variant_power_key_on_turning_on_and_without_previous_when_off():
+    on = HvacState(True, "cool", 20.0, fan="3")
+    off = HvacState(False, "cool", 20.0, fan="3")
+    assert bytes.fromhex(aux_frame(on, off))[11] == 0x05
+    assert bytes.fromhex(aux_frame(on))[11] == 0x00
+    assert bytes.fromhex(aux_frame(off))[11] == 0x05
+
+
+def test_aux_variant_has_no_light_and_heat_flag_only_in_heat():
+    dev = aux()
+    assert "light" not in dev.capabilities.features
+    for mode in MODES:
+        data = bytes.fromhex(aux_frame(HvacState(True, mode, 24.0)))
+        assert (data[9] >> 4) & 1 == (mode == "heat")
+
+
+def test_unknown_variant_is_refused():
+    with pytest.raises(ValueError):
+        ElectraAcDevice("Test", "unit", variant="nope")

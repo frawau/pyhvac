@@ -15,10 +15,11 @@ CANDIDATES = candidates()
 FANS = {"low": "1", "mid": "2", "high": "3", "auto": "auto"}
 
 
-def synthetic(brand, model, keys_in_f=False, features=None, tamper=None):
-    """A SmartIR file the way someone would learn it from this device;
-    ``tamper`` may rewrite each frame's bytes first."""
-    dev = registry.get_device(brand, model)
+def synthetic(brand, model, keys_in_f=False, features=None, tamper=None, dev=None):
+    """A SmartIR file the way someone would learn it from this device
+    (``dev``, else the registry's); ``tamper`` may rewrite each frame's
+    bytes first."""
+    dev = dev or registry.get_device(brand, model)
 
     def pulses(state):
         if tamper is None:
@@ -186,3 +187,19 @@ def test_a_field_pyhvac_never_sets_is_named_as_the_gap():
 def test_declared_variants_without_rows_are_candidates():
     names = {c.name for c in CANDIDATES}
     assert {"CoolixDevice", "CoolixDevice/16C", "CoolixDevice/quiet"} <= names
+
+
+def test_a_key_pressed_field_is_not_compared():
+    from pyhvac.protocols.electra import ElectraAcDevice
+
+    keys = iter([0x00, 0x01, 0x04, 0x05, 0x02, 0x08] * 50)
+
+    def pressed(data):
+        data = bytearray(data)
+        data[11] = next(keys)
+        data[12] = sum(data[:12]) & 0xFF
+        return bytes(data)
+
+    dev = ElectraAcDevice("AUX", "unit", variant="aux")
+    m = match(synthetic("AUX", "unit", tamper=pressed, dev=dev), CANDIDATES)
+    assert m.verdict == "covered" and m.candidate == "ElectraAcDevice/aux"

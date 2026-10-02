@@ -23,6 +23,8 @@
 # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
 #
 
+from dataclasses import replace
+
 from ..device import Device
 from ..fields import Field, Layout, Sum8
 from ..ir.model import Frame, Protocol, PulseDistance, Section
@@ -87,6 +89,25 @@ ELECTRA_AC_LAYOUT = Layout(
     Sum8(0, 12, 12),
 )
 
+# The "aux" variant: AUX-family remotes, from SmartIR captures (climate 1703
+# Electrolux, 1622 Tornado, 1800 Ballu, ...). Byte 11 holds the key just
+# pressed (ELECTRA_AUX_KEY, the values the captures confirm), byte 9 bit 4
+# is set in heat mode, and fan mode sends setpoint 0 (the raw field).
+ELECTRA_AUX_LAYOUT = Layout(
+    bytes.fromhex("c3000000000000000000000000"),
+    {
+        **{
+            name: field
+            for name, field in ELECTRA_AC_LAYOUT.fields.items()
+            if name != "light_toggle"
+        },
+        "heat_flag": Field.at(9, 4, 1),
+        "button": Field.at(11, 0, 8),
+    },
+    Sum8(0, 12, 12),
+)
+ELECTRA_AUX_KEY = {"temp_up": 0x00, "temp_down": 0x01, "power": 0x05}
+
 
 class ElectraAcDevice(Device):
     """Electra A/C (ELECTRA_AC, IRElectraAc): the power, mode, setpoint, fan,
@@ -115,6 +136,7 @@ class ElectraAcDevice(Device):
 
     PROTOCOL = ELECTRA_AC
     LAYOUTS = (ELECTRA_AC_LAYOUT,)
+    VARIANTS = ("aux",)
     capabilities = Capabilities(
         modes=("auto", "cool", "fan", "dry", "heat"),
         temperature=TemperatureRange(16.0, 32.0),
@@ -129,7 +151,20 @@ class ElectraAcDevice(Device):
         },
     )
 
+    def __init__(self, brand, model, variant=None):
+        super().__init__(brand, model)
+        if variant is not None and variant not in self.VARIANTS:
+            raise ValueError(f"unknown Electra A/C variant {variant!r}")
+        self.variant = variant
+        if variant == "aux":
+            self.LAYOUTS = (ELECTRA_AUX_LAYOUT,)
+            features = dict(self.capabilities.features)
+            del features["light"]  # byte 11 is the key code
+            self.capabilities = replace(self.capabilities, features=features)
+
     def frames(self, previous, target, actions):
+        if self.variant == "aux":
+            return [Frame("main", bytes(self._aux(previous, target)))]
         feat = target.features
         if previous is None:
             light = feat["light"]
@@ -150,6 +185,49 @@ class ElectraAcDevice(Device):
             ),
         )
         return [Frame("main", bytes(data))]
+
+    @staticmethod
+    def _aux_key(previous, target):
+        """The key an AUX remote reports for previous -> target: power when
+        the power changes (or for an off without previous), the setpoint
+        keys when it moves, else temp_up (the commonest captured value)."""
+        if previous is None:
+            return ELECTRA_AUX_KEY["temp_up" if target.power else "power"]
+        if previous.power != target.power:
+            return ELECTRA_AUX_KEY["power"]
+        if target.temperature < previous.temperature:
+            return ELECTRA_AUX_KEY["temp_down"]
+        return ELECTRA_AUX_KEY["temp_up"]
+
+    def _aux(self, previous, target):
+        feat = target.features
+        layout = ELECTRA_AUX_LAYOUT
+        fan_mode = target.mode == "fan"
+        data = layout.build(
+            checksum=False,
+            power=target.power,
+            mode=target.mode,  # an off carries the last mode, as captured
+            fan=target.fan,
+            swing_v=target.swing_v,
+            swing_h=target.swing_h,
+            quiet=feat["quiet"],
+            turbo=feat["powerful"],
+            clean=feat["cleaning"],
+            heat_flag=target.mode == "heat",
+            button=self._aux_key(previous, target),
+        )
+        if fan_mode:
+            layout.write_raw(data, "temperature", 0)
+        else:
+            layout.write_raw(
+                data,
+                "temperature",
+                layout.fields["temperature"].to_int(
+                    "temperature", int(target.temperature)
+                ),
+            )
+        layout.checksum.apply(data)
+        return data
 
 
 ELECTRA_AC_MODELS = (  # electra plugin

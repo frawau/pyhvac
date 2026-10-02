@@ -697,3 +697,25 @@ def test_yaw1f_0_variant_reproduces_the_captures(capture, target):
     dev = GreeDevice("Test", "unit", variant="YAW1F-0")
     sent = dev.frames(None, dev.normalise(target), ())
     assert b"".join(f.data for f in sent).hex() == capture
+
+
+# ------------------------------------------------------ "YX1FSF-H" variant
+# YX1FSF with byte 7 bit 3 set in heat mode: SmartIR climate 1184, 1185
+# (Gree), 2360 (Flouu).
+
+
+def test_yx1fsf_h_variant_reproduces_a_heat_capture():
+    dev = GreeDevice("Test", "unit", variant="YX1FSF-H")
+    target = HvacState(True, "heat", 24.0, fan="1", features={"light": True})
+    sent = dev.frames(None, dev.normalise(target), ())
+    assert b"".join(f.data for f in sent).hex() == "1c08205000200008"  # 1185
+
+
+@pytest.mark.parametrize("mode", ["auto", "cool", "dry", "fan"])
+def test_yx1fsf_h_variant_matches_yx1fsf_outside_heat(mode):
+    plain = GreeDevice("Test", "unit", variant="YX1FSF")
+    heat = GreeDevice("Test", "unit", variant="YX1FSF-H")
+    st = HvacState(True, mode, 24.0)
+    assert plain.frames(None, plain.normalise(st), ()) == heat.frames(
+        None, heat.normalise(st), ()
+    )

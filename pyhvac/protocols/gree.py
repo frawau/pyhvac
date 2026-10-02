@@ -194,11 +194,15 @@ GREE_CAPABILITIES = {  # variant (gree_ac_remote_model_t)
     "YAW1F-0": _gree_capabilities("powerful", "light", "cleaning", "sleep"),
     "YBOFB": _gree_capabilities("economy", "powerful", "light", "cleaning", "sleep"),
     "YX1FSF": _gree_capabilities("powerful", "light", "economy", "cleaning", "sleep"),
+    # YX1FSF with byte 7 bit 3 set in heat mode: SmartIR climate 1184, 1185
+    # (Gree), 2360 (Flouu).
+    "YX1FSF-H": _gree_capabilities("powerful", "light", "economy", "cleaning", "sleep"),
 }
 
 
 # Byte 5 bits 5-7 of the YAW1F remotes SmartIR captured (stateReset: 0b001).
 GREE_BYTE5_HIGH = {"YAW1F-wifi": 0b110, "YAW1F-0": 0b000}
+GREE_HEAT_BIT = 0b1000  # byte 7 bit 3, set in heat by the YX1FSF-H remotes
 
 
 class GreeDevice(Device):
@@ -247,6 +251,7 @@ class GreeDevice(Device):
     VARIANTS = (
         "YAW1F-wifi",
         "YAW1F-0",
+        "YX1FSF-H",
     )  # beyond the 0.1.x models' (see GREE_CAPABILITIES)
     capabilities = GREE_CAPABILITIES["YAW1F"]
 
@@ -266,7 +271,7 @@ class GreeDevice(Device):
     def frames(self, previous, target, actions):
         mode = target.mode if target.power else "auto"
         econo = target.features.get("economy", False)
-        if econo and self.variant == "YX1FSF":
+        if econo and self.variant.startswith("YX1FSF"):
             mode_code = "econo"
         else:
             mode_code = mode
@@ -286,6 +291,9 @@ class GreeDevice(Device):
             sleep=features.get("sleep", False),
             econo=econo,
         )
+        if self.variant == "YX1FSF-H" and target.power and mode == "heat":
+            data[7] |= GREE_HEAT_BIT
+            GREE_LAYOUT.checksum.apply(data)
         high = GREE_BYTE5_HIGH.get(self.variant)
         if high is not None:  # byte 5 bits 5-7
             data[5] = data[5] & 0b00011111 | high << 5

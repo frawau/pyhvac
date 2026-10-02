@@ -93,7 +93,7 @@ ELECTRA_AC_LAYOUT = Layout(
 # Electrolux, 1622 Tornado, 1800 Ballu, 1961 AUX, ...). Byte 11 holds the
 # key just pressed (ELECTRA_AUX_KEY, the values the captures confirm), byte
 # 9 bit 4 is set in heat mode while on, byte 3 bit 7 adds half a degree,
-# and fan mode sends setpoint 0 (the raw field).
+# and fan and auto modes send setpoint 0 (the raw field).
 ELECTRA_AUX_LAYOUT = Layout(
     bytes.fromhex("c3000000000000000000000000"),
     {
@@ -208,7 +208,7 @@ class ElectraAcDevice(Device):
     def _aux(self, previous, target):
         feat = target.features
         layout = ELECTRA_AUX_LAYOUT
-        fan_mode = target.mode == "fan"
+        no_setpoint = target.mode in ("fan", "auto")  # setpoint 0, as captured
         data = layout.build(
             checksum=False,
             power=target.power,
@@ -222,7 +222,7 @@ class ElectraAcDevice(Device):
             heat_flag=target.power and target.mode == "heat",
             button=self._aux_key(previous, target),
         )
-        if fan_mode:
+        if no_setpoint:
             layout.write_raw(data, "temperature", 0)
         else:
             half = round(target.temperature * 10) % 10 == 5

@@ -428,3 +428,11 @@ def test_unknown_variant_is_refused():
 def test_aux_variant_offers_half_degrees():
     assert aux().capabilities.temperature.decimals == (0, 5)
     assert ElectraAcDevice("Test", "unit").capabilities.temperature.decimals == (0,)
+
+
+def test_aux_variant_sends_setpoint_0_in_auto_mode():
+    # 3380 (Zephir), auto: setpoint 0, as in fan mode (1963, 2380, 2420 and
+    # 3220 agree); captured after the mode key, compared with key 0x00.
+    target = HvacState(True, "auto", 24.0)
+    expected = with_key("c307e000a00000000020000670", 0x00)
+    assert aux_frame(target) == expected

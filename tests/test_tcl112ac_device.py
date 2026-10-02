@@ -725,3 +725,13 @@ def test_extended_variants_offer_five_fan_levels():
 
     caps = Tcl112AcDevice("T", "u", variant="TAC09CHSD-X80").capabilities
     assert caps.fan.values == ("auto", "1", "2", "3", "4", "5")
+
+
+def test_extended_variants_turbo_is_byte_6_bit_6():
+    # 3100 (Cecotec): cool 16, turbo: the high fan with byte 6 bit 6, the
+    # documented Turbo bit and swing left alone (SmartIR 1661 and 3060 agree)
+    target = HvacState(True, "cool", 16.0, features={"light": True, "powerful": True})
+    assert r_frames("TAC09CHSD-X83", target) == [
+        "23cb26020040c0008300000000a8",
+        "23cb26010024430f050000008010",
+    ]

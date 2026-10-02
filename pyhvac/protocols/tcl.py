@@ -90,6 +90,9 @@ TCL112AC_EXTENDED_MAIN_FAN = {
 }
 TCL112AC_SPECIAL_SWING_V, TCL112AC_SPECIAL_SWING_H = 0x08, 0x10
 TCL112AC_SPECIAL_SWING = 0x80  # either swings
+# Their turbo: byte 6 bit 6 with the high fan, not the documented Turbo bit
+# (which also forces the swing): SmartIR 1661, 3060, 3100.
+TCL112AC_EXTENDED_TURBO = 0x40
 
 # Skeleton: IRTcl112Ac::stateReset's known good state (on, cool, 24 C), with
 # the fields the device always writes cleared and the sum cleared; stateReset
@@ -267,12 +270,12 @@ class Tcl112AcDevice(Device):
             econo=features["economy"],
             mode=target.mode if target.power else "auto",
             health=features["purifier"],
-            turbo=powerful,
+            turbo=powerful and self.extended is None,
             temperature=min(max(int(target.temperature), TCL112AC_MIN), TCL112AC_MAX),
             half_degree=target.temperature % 1 == 0.5,
             # setTurbo(true) forces kTcl112AcFanHigh and kTcl112AcSwingVOn.
             fan="4" if powerful else self._main_fan(target.fan),
-            swing_v="auto" if powerful else target.swing_v,
+            swing_v=("auto" if powerful and self.extended is None else target.swing_v),
             swing_h=target.swing_h,
             model=(
                 "GZ055BE1"
@@ -280,6 +283,8 @@ class Tcl112AcDevice(Device):
                 else self.model_variant
             ),
         )
+        if self.extended is not None and powerful:  # these remotes' turbo
+            main[6] |= TCL112AC_EXTENDED_TURBO
         if self.remote:
             TCL112AC_LAYOUT.write_raw(main, "timer_indicator", 0)
             TCL112AC_LAYOUT.checksum.apply(main)

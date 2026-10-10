@@ -6,6 +6,7 @@ import socket
 from dataclasses import dataclass
 
 BROADCAST = "255.255.255.255"
+SCOUT_MAC = "00:00:00:00:00:00"  # aiobroadlink's discovery scouts
 
 
 @dataclass
@@ -43,21 +44,34 @@ class Link:
         self._endpoint = endpoint
         self.protocol = None
         self.bind_ip = None
+        self.last_error = None  # the last UDP send error
 
     async def start(self, target=BROADCAST):
-        self.protocol = self.abl.BroadlinkProtocol()
-        self.bind_ip = local_ip(target)
+        """Open the endpoint; on failure the link stays unstarted."""
+        protocol = self.abl.BroadlinkProtocol()
+        # asyncio reports a failed UDP send (no route...) by calling the
+        # protocol's error_received, which aiobroadlink's lacks.
+        protocol.error_received = self._error_received
+        bind_ip = local_ip(target)
         if self._endpoint is not None:
-            await self._endpoint(self.protocol, self.bind_ip)
+            await self._endpoint(protocol, bind_ip)
         else:
             loop = asyncio.get_running_loop()
             await loop.create_datagram_endpoint(
-                lambda: self.protocol, local_addr=(self.bind_ip, 0)
+                lambda: protocol, local_addr=(bind_ip, 0)
             )
+        self.protocol, self.bind_ip = protocol, bind_ip
+
+    def _error_received(self, exc):
+        self.last_error = exc
 
     async def discover(self, target=BROADCAST, timeout=5.0):
         """The IR-capable devices answering a Hello (broadcast, or unicast
         to ``target``) within ``timeout`` seconds."""
+        # aiobroadlink keeps a scout's Hello waiter (only its own discovery
+        # loop cleans it up): an old scout would take the new replies.
+        for waiting in [d for d in self.protocol.waiting if d.mac == SCOUT_MAC]:
+            del self.protocol.waiting[waiting]
         scout = self.abl.BroadlinkDevice(0x1234, "Scout")
         scout.controller = self.protocol
         scout.ip = target
@@ -74,17 +88,28 @@ class Link:
             if not isinstance(dev, self.abl.rm):
                 continue  # plugs, sensors: no IR
             self.protocol.register(dev)
+            dev = self.protocol.devices.get(dev.mac, dev)  # the attached one
             found[dev.mac] = Remote(dev.mac, dev.ip, type(dev).__name__, dev.name, dev)
         return sorted(found.values(), key=lambda r: r.ip)
 
+    @staticmethod
+    def _drain(device):
+        """Drop answers that came after their waiter gave up: aiobroadlink
+        hands every answer to the next reader of one queue."""
+        queue = getattr(device, "result", None)
+        while queue is not None and not queue.empty():
+            queue.get_nowait()
+
     async def send(self, remote, packet, timeout=5):
         """Whether ``remote`` acknowledged sending the IR ``packet``."""
+        self._drain(remote.device)
         return bool(await remote.device.send_code(bytes(packet), timeout=timeout))
 
     async def learn(self, remote, timeout=10):
         """The packet ``remote`` learned within ``timeout`` seconds, or None."""
+        self._drain(remote.device)
         code = await remote.device.learn_ir_code(timeout=timeout)
-        return bytes(code) if code else None
+        return bytes(code) if isinstance(code, (bytes, bytearray)) and code else None
 
     def close(self):
         if self.protocol is not None and self.protocol.transport is not None:

@@ -19,11 +19,13 @@ MAC = "11:22:33:44:55:66"
 
 
 class FakeLink:
-    def __init__(self, learned=None, remotes=True):
+    def __init__(self, learned=None, remotes=True, gate=None, error=None):
         self.protocol = None
         self.sent = []
         self.learned = learned
         self.remotes = remotes
+        self.gate = gate  # an asyncio.Event send waits for
+        self.error = error  # raised by send
 
     async def start(self, target):
         self.protocol = object()
@@ -34,6 +36,10 @@ class FakeLink:
         return [Remote(MAC, "192.168.1.20", "rm4", "RM4 mini", None)]
 
     async def send(self, remote, packet, timeout=5):
+        if self.error is not None:
+            raise self.error
+        if self.gate is not None:
+            await self.gate.wait()
         self.sent.append(packet)
         return True
 
@@ -207,5 +213,94 @@ def test_match_says_when_no_model_decodes(tmp_path):
         await app.workers.wait_for_complete()
         await pilot.pause()
         assert "no pyhvac model decodes" in text(app)
+
+    run(case, link=None, names_path=tmp_path / "rc")
+
+
+def test_a_second_link_action_while_one_runs_is_refused(tmp_path):
+    link = FakeLink(gate=asyncio.Event())
+
+    async def case(app, pilot):
+        await app.use("Electra", "AXW12DCS")
+        await pilot.click("#send")
+        await pilot.pause(0.5)  # past the button's press animation
+        await pilot.click("#send")
+        await pilot.pause()
+        assert "busy" in text(app)
+        link.gate.set()
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        assert len(link.sent) == 1 and app.previous is not None
+
+    run(case, link=link, names_path=tmp_path / "rc")
+
+
+def test_a_link_error_is_reported_and_the_app_keeps_running(tmp_path):
+    async def case(app, pilot):
+        await app.use("Electra", "AXW12DCS")
+        await pilot.click("#send")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        assert "send failed: network is down" in text(app)
+        assert app.is_running
+
+    run(
+        case,
+        link=FakeLink(error=OSError("network is down")),
+        names_path=tmp_path / "rc",
+    )
+
+
+def test_a_learned_non_ir_packet_is_reported(tmp_path):
+    async def case(app, pilot):
+        await app.use("Electra", "AXW12DCS")
+        await pilot.click("#learn")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        assert "not a Broadlink IR packet" in text(app)
+        assert app.is_running
+
+    run(case, link=FakeLink(learned=b"\x00"), names_path=tmp_path / "rc")
+
+
+def test_non_bool_features_are_described_by_value(tmp_path):
+    async def case(app, pilot):
+        await app.use("LG", "Dual Inverter")
+        st = app.state()
+        assert st.features["auto_bias"] == "default"
+        assert "auto_bias=default" in app.describe(st)
+        assert "+auto_bias" not in app.describe(st)
+
+    run(case, link=None, names_path=tmp_path / "rc")
+
+
+def test_file_write_errors_are_reported(tmp_path):
+    rc = tmp_path / "missing-dir" / ".pyhvacrc"
+    log = SessionLog(tmp_path / "missing-dir" / "log.jsonl")
+
+    async def case(app, pilot):
+        assert "cannot write the log" in text(app)
+        assert not app.log_.enabled
+        app.query_one("#name").value = "Living room"
+        await pilot.click("#rename")
+        await pilot.pause()
+        assert "cannot save the name" in text(app)
+        assert app.is_running
+
+    run(case, link=FakeLink(), log=log, names_path=rc)
+
+
+def test_changing_brand_drops_the_model(tmp_path):
+    async def case(app, pilot):
+        app.query_one("#brand", Select).value = "Electra"
+        await pilot.pause()
+        app.query_one("#model", Select).value = "AXW12DCS"
+        await pilot.pause()
+        assert app.device is not None
+        app.query_one("#brand", Select).value = "Gree"
+        await pilot.pause()
+        await pilot.pause()
+        assert app.device is None and app.model is None
+        assert len(app.query_one("#controls").children) == 0
 
     run(case, link=None, names_path=tmp_path / "rc")

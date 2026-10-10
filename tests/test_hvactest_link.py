@@ -20,9 +20,12 @@ class FakeProtocol:
     def __init__(self):
         self.transport = None
         self.registered = []
+        self.waiting = {}  # as aiobroadlink's: device -> pending answer
+        self.devices = {}  # mac -> device
 
     def register(self, dev):
         self.registered.append(dev)
+        self.devices.setdefault(dev.mac, dev)
 
 
 class FakeRm:
@@ -30,6 +33,7 @@ class FakeRm:
         self.mac, self.ip, self.name = mac, ip, name
         self.sent = []
         self.learned = b"\x26\x00\x02\x00\x10\x20"
+        self.result = asyncio.Queue()
 
     async def send_code(self, code, timeout=5):
         self.sent.append(code)
@@ -111,3 +115,23 @@ async def _test_send_and_learn_go_to_the_device():
     assert await link.learn(remote) is None
     link.close()
     assert link.protocol.transport.closed
+
+
+def test_stale_answers_are_dropped_and_only_packets_are_learned():
+    asyncio.run(_test_stale_answers_are_dropped_and_only_packets_are_learned())
+
+
+async def _test_stale_answers_are_dropped_and_only_packets_are_learned():
+    # aiobroadlink answers through one queue: an answer that came after its
+    # waiter gave up must not be read as the next operation's.
+    rm = FakeRm("11:22:33:44:55:66", "192.168.1.20")
+    link = await started([rm])
+    (remote,) = await link.discover(timeout=0.2)
+    rm.result.put_nowait(True)
+    await link.send(remote, b"\x26\x00")
+    assert rm.result.empty()
+    rm.result.put_nowait(True)
+    await link.learn(remote)
+    assert rm.result.empty()
+    rm.learned = True  # an acknowledgement, not a packet
+    assert await link.learn(remote) is None

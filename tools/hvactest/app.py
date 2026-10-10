@@ -90,6 +90,7 @@ class HvacTestApp(App):
         self.previous = None  # the last state sent to this model
         self.learned = None  # the last learned or pasted packet
         self.candidates = None  # hvacir candidates, built for Match
+        self.busy = None  # the Broadlink action running, if any
 
     # ------------------------------------------------------------- layout
     def compose(self) -> ComposeResult:
@@ -129,11 +130,40 @@ class HvacTestApp(App):
             self.say(f"[red]{error}[/] (names not loaded)")
         self.names = found
         if self.log_.enabled:
-            self.say(f"logging to {self.log_.path}")
+            try:
+                self.log_.path.open("a").close()
+                self.say(f"logging to {self.log_.path}")
+            except OSError as exc:
+                self.say(
+                    f"[red]cannot write the log {self.log_.path}: {exc}[/] (logging off)"
+                )
+                self.log_ = SessionLog(None)
         if self.link is None:
             self.say("offline: paste codes to compare and match")
-        else:
+        elif self.begin("discovering"):
             self.discover()
+
+    def record(self, event, **data):
+        """Log ``event`` if logging is on; a write error turns logging off."""
+        try:
+            return self.log_.write(event, **data)
+        except OSError as exc:
+            self.say(f"[red]cannot write the log: {exc}[/] (logging off)")
+            self.log_ = SessionLog(None)
+            return None
+
+    def begin(self, what):
+        """Start the Broadlink action ``what`` unless another one runs: the
+        device answers through one queue, so actions must not overlap."""
+        if self.busy is not None:
+            self.say(f"[yellow]busy: {self.busy}…[/]")
+            return False
+        self.busy = what
+        return True
+
+    def failed(self, what, exc):
+        self.say(f"[red]{what} failed: {exc}[/]")
+        self.record("error", action=what, error=str(exc))
 
     # ------------------------------------------------------------ Broadlink
     def label(self, remote):
@@ -150,15 +180,17 @@ class HvacTestApp(App):
         elif len(self.remotes) == 1:
             select.value = next(iter(self.remotes))
 
-    @work(exclusive=True, group="link")
+    @work(group="link")
     async def discover(self):
         try:
             if self.link.protocol is None:
                 await self.link.start(self.target)
             found = await self.link.discover(self.target)
-        except OSError as exc:
-            self.say(f"[red]discovery failed: {exc}[/]")
+        except Exception as exc:  # the network: report, never crash
+            self.failed("discovery", exc)
             return
+        finally:
+            self.busy = None
         self.remotes.update({r.mac: r for r in found})
         self.refresh_remotes()
         self.say(
@@ -169,13 +201,13 @@ class HvacTestApp(App):
 
     def remote(self):
         mac = self.query_one("#remote", Select).value
-        return self.remotes.get(mac) if mac is not Select.BLANK else None
+        return self.remotes.get(mac) if mac is not Select.NULL else None
 
     @on(Button.Pressed, "#discover")
     def on_discover(self):
         if self.link is None:
             self.say("offline: no Broadlink link")
-        else:
+        elif self.begin("discovering"):
             self.discover()
 
     @on(Button.Pressed, "#rename")
@@ -185,15 +217,20 @@ class HvacTestApp(App):
             self.say("[yellow]choose a Broadlink first[/]")
             return
         name = self.query_one("#name", Input).value
-        self.names = names.rename(remote.mac, name, self.names_path)
+        try:
+            self.names = names.rename(remote.mac, name, self.names_path)
+        except OSError as exc:
+            self.say(f"[red]cannot save the name: {exc}[/]")
+            return
         self.refresh_remotes()
         self.say(f"{remote.mac} is now {name.strip() or '(unnamed)'}")
 
     # ------------------------------------------------------- brand / model
     @on(Select.Changed, "#brand")
-    def on_brand(self, event):
+    async def on_brand(self, event):
+        await self.drop_model()
         model = self.query_one("#model", Select)
-        if event.value is Select.BLANK:
+        if event.value is Select.NULL:
             model.set_options([])
             return
         model.set_options([(m, m) for m in registry.models(event.value)])
@@ -201,9 +238,15 @@ class HvacTestApp(App):
     @on(Select.Changed, "#model")
     async def on_model(self, event):
         brand = self.query_one("#brand", Select).value
-        if event.value is Select.BLANK or brand is Select.BLANK:
+        if event.value is Select.NULL or brand is Select.NULL:
+            await self.drop_model()
             return
         await self.use(brand, event.value)
+
+    async def drop_model(self):
+        """No model chosen: no device, no controls."""
+        self.device = self.model = self.previous = None
+        await self.query_one("#controls", VerticalScroll).remove_children()
 
     async def use(self, brand, model):
         """Select ``brand``/``model`` and build its controls."""
@@ -270,12 +313,16 @@ class HvacTestApp(App):
         )
 
     def describe(self, state):
-        on = [n for n, v in state.features.items() if v]
         text = (
             f"{'on' if state.power else 'off'} {state.mode} {state.temperature:g}°C "
             f"fan {state.fan} swing {state.swing_v}/{state.swing_h}"
         )
-        return text + "".join(f" +{n}" for n in on)
+        for name, value in state.features.items():
+            if value is True:
+                text += f" +{name}"
+            elif value is not False:  # a choice: say which
+                text += f" {name}={value}"
+        return text
 
     # ------------------------------------------------------------- actions
     def ready(self, need_remote=True):
@@ -289,11 +336,19 @@ class HvacTestApp(App):
 
     @on(Button.Pressed, "#send")
     def on_send(self):
-        if self.ready():
+        if self.ready() and self.begin("sending"):
             self.send()
 
-    @work(exclusive=True, group="link")
+    @work(group="link")
     async def send(self):
+        try:
+            await self._send()
+        except Exception as exc:  # the network: report, never crash
+            self.failed("send", exc)
+        finally:
+            self.busy = None
+
+    async def _send(self):
         state = self.state()
         try:
             command = self.device.encode(self.previous, state)
@@ -313,7 +368,7 @@ class HvacTestApp(App):
                 else f"[red]no answer from {self.label(remote)}[/]"
             )
         )
-        self.log_.write(
+        self.record(
             "send",
             model=list(self.model),
             state=self.describe(command.state),
@@ -323,19 +378,27 @@ class HvacTestApp(App):
 
     @on(Button.Pressed, "#learn")
     def on_learn(self):
-        if self.ready(need_remote=True):
+        if self.ready(need_remote=True) and self.begin("learning"):
             self.learn()
 
-    @work(exclusive=True, group="link")
+    @work(group="link")
     async def learn(self):
+        try:
+            await self._learn()
+        except Exception as exc:  # the network, a bad packet: report
+            self.failed("learn", exc)
+        finally:
+            self.busy = None
+
+    async def _learn(self):
         self.say("press the button on the real remote (10 s)…")
         packet = await self.link.learn(self.remote())
         if packet is None:
             self.say("[yellow]nothing learned within 10 s[/]")
-            self.log_.write("learn", model=list(self.model), code=None)
+            self.record("learn", model=list(self.model), code=None)
             return
         self.learned = packet
-        self.log_.write("learn", model=list(self.model), code=b64(packet))
+        self.record("learn", model=list(self.model), code=b64(packet))
         self.show_compare()
 
     @on(Input.Submitted, "#paste")
@@ -345,7 +408,7 @@ class HvacTestApp(App):
         except ValueError as exc:
             self.say(f"[red]{exc}[/]")
             return
-        self.log_.write("paste", code=b64(self.learned))
+        self.record("paste", code=b64(self.learned))
         if self.device is not None:
             self.show_compare()
         else:
@@ -369,7 +432,7 @@ class HvacTestApp(App):
             self.say(table)
         elif result.verdict == "not this protocol":
             self.say("try Match to find the model that sends it")
-        self.log_.write(
+        self.record(
             "compare",
             model=list(self.model),
             state=self.describe(state),
@@ -400,16 +463,16 @@ class HvacTestApp(App):
             for row in rows[:15]:
                 table.add_row(row.name, row.state or "(decodes; no state matches)")
             self.say(table)
-        self.log_.write("match", rows=[[r.name, r.state] for r in rows])
+        self.record("match", rows=[[r.name, r.state] for r in rows])
 
     @on(Button.Pressed, "#log")
     def on_log(self):
         verdict = self.query_one("#verdict", Select).value
-        if verdict is Select.BLANK:
+        if verdict is Select.NULL:
             self.say("[yellow]choose a verdict[/]")
             return
         note = self.query_one("#note", Input).value
-        record = self.log_.write(
+        record = self.record(
             "verdict",
             model=list(self.model) if self.model else None,
             state=self.describe(self.previous) if self.previous else None,

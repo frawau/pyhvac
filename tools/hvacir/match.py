@@ -91,6 +91,42 @@ def _probe_states(device):
             yield HvacState(True, caps.modes[0], t, swing_v=v)
 
 
+def candidate(device, name):
+    """The Candidate for one Device instance (None if it has no protocol):
+    the section sequences and frame lengths it sends, and its parts."""
+    if device.PROTOCOL is None:
+        return None
+    sequences, shapes = set(), set()
+    for state in _probe_states(device):
+        try:
+            frames = device.frames(None, device.normalise(state), ())
+        except (TypeError, ValueError, KeyError):
+            continue
+        sequences.add(tuple(f.section for f in frames))
+        shapes.add(tuple(len(f.data) for f in frames))
+
+    # A remote may send part of what pyhvac sends: a message's start (the
+    # state without the messages after it) or its tail (a toggle alone).
+    def parts(items):
+        return {
+            tuple(item[i:j])
+            for item in list(items)
+            for i in range(len(item))
+            for j in range(i + 1, len(item) + 1)
+            if i == 0 or j == len(item)
+        }
+
+    sequences |= parts(sequences)
+    shapes |= parts(shapes)
+    return Candidate(
+        name,
+        device,
+        tuple(sorted(sequences, key=len)),
+        _loose(device.PROTOCOL),
+        frozenset(shapes),
+    )
+
+
 def candidates():
     """One Candidate per distinct (Device class, variant) in pyhvac.brands,
     and per variant a class declares in ``VARIANTS`` (one may have no row
@@ -109,41 +145,9 @@ def candidates():
             )
         except (TypeError, ValueError):
             continue
-        if device.PROTOCOL is None:
-            continue
-        sequences, shapes = set(), set()
-        for state in _probe_states(device):
-            try:
-                frames = device.frames(None, device.normalise(state), ())
-            except (TypeError, ValueError, KeyError):
-                continue
-            sequences.add(tuple(f.section for f in frames))
-            shapes.add(tuple(len(f.data) for f in frames))
-        name = cls.__name__ + (f"/{variant}" if variant else "")
-        loose = _loose(device.PROTOCOL)
-
-        # A remote may send part of what pyhvac sends: a message's start (the
-        # state without the messages after it) or its tail (a toggle alone).
-        def parts(items):
-            return {
-                tuple(item[i:j])
-                for item in list(items)
-                for i in range(len(item))
-                for j in range(i + 1, len(item) + 1)
-                if i == 0 or j == len(item)
-            }
-
-        sequences |= parts(sequences)
-        shapes |= parts(shapes)
-        out.append(
-            Candidate(
-                name,
-                device,
-                tuple(sorted(sequences, key=len)),
-                loose,
-                frozenset(shapes),
-            )
-        )
+        found = candidate(device, cls.__name__ + (f"/{variant}" if variant else ""))
+        if found is not None:
+            out.append(found)
     return out
 
 

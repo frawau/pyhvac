@@ -520,3 +520,13 @@ def test_a_feature_used_under_one_label_is_explained_on_a_large_device():
     )
     m = match(f, CANDIDATES)
     assert m.verdict == "covered" and m.candidate == "Tcl112AcDevice/TAC09CHSD-X83"
+
+
+def test_candidate_builds_one_devices_candidate():
+    from hvacir.match import candidate
+
+    dev = registry.get_device("Electra", registry.models("Electra")[0])
+    built = candidate(dev, "Mine")
+    listed = next(c for c in CANDIDATES if c.name == "ElectraAcDevice")
+    assert built.name == "Mine" and built.device is dev
+    assert (built.sequences, built.shapes) == (listed.sequences, listed.shapes)

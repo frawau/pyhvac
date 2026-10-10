@@ -15,6 +15,8 @@ What the author said:
 - It is a tool (not shipped in the pyhvac package).
 - Textual user interface (works over SSH).
 - A session log, as a startup option, off by default.
+- Discovered Broadlink devices can be named, and the names persist (in
+  `~/.pyhvacrc`).
 
 Assumptions (not stated by the author, open to correction):
 - The tool lives in `tools/hvactest/`, beside `tools/hvacir/`, and reuses
@@ -43,10 +45,19 @@ tools/hvactest/
                 and toggle fields)? else the differing fields; match():
                 every pyhvac model/variant ranked against a learned code
   log.py        optional session log: JSON lines, UTC timestamps
+  names.py      Broadlink device names, persisted in ~/.pyhvacrc
   app.py        the Textual app (entry point)
   requirements.txt   textual, aiobroadlink
 ```
 
+- Device names: `~/.pyhvacrc` is a JSON object; the tool keeps its names
+  under the key `"broadlink_names"`, a map from the device's MAC address
+  (lower case, colon separated) to the name the author gave it. Discovered
+  devices show their name when they have one, else their type, IP and MAC; a
+  Rename action names the selected device and writes the file at once
+  (other keys in the file are preserved; written atomically). An unreadable
+  or malformed file is reported and treated as empty, never overwritten
+  without the author renaming something.
 - `link.py` is the only module touching the network. `compare.py` is pure
   (no I/O) and reuses `tools/hvacir` (the Broadlink reader, candidate
   decoding, the comparable/difference logic, the candidate list).
@@ -92,6 +103,8 @@ Testing (no hardware):
   device first.
 - `link`: a fake RM recording sends and returning canned learned packets.
 - `log`: round trip; nothing written unless enabled.
+- `names`: round trip; other keys preserved; a malformed file is reported
+  and not clobbered until a rename.
 - `app`: Textual's Pilot drives a model choice (controls appear), Send (the
   fake link receives pyhvac's packet), Learn (difference table shown).
 

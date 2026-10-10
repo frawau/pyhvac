@@ -3,7 +3,8 @@ remote's codes and compare them.
 
     python tools/hvactest/app.py [--ip ADDR] [--log FILE]
 
---ip is the Broadlink's address (else devices are discovered by broadcast);
+--ip is the Broadlink's address (else devices are discovered by broadcast
+on every active physical interface: Ethernet, Wi-Fi, bridges over them);
 --log appends a JSON line per action to FILE (off by default).
 """
 
@@ -168,8 +169,9 @@ class HvacTestApp(App):
     # ------------------------------------------------------------ Broadlink
     def label(self, remote):
         name = self.names.get(remote.mac.lower())
-        detail = f"{remote.kind} {remote.ip} {remote.mac}"
-        return f"{name} ({remote.ip})" if name else detail
+        via = f" via {remote.interface}" if remote.interface else ""
+        detail = f"{remote.kind} {remote.ip} {remote.mac}{via}"
+        return f"{name} ({remote.ip}{via})" if name else detail
 
     def refresh_remotes(self):
         select = self.query_one("#remote", Select)
@@ -183,7 +185,7 @@ class HvacTestApp(App):
     @work(group="link")
     async def discover(self):
         try:
-            if self.link.protocol is None:
+            if not self.link.started:
                 await self.link.start(self.target)
             found = await self.link.discover(self.target)
         except Exception as exc:  # the network: report, never crash

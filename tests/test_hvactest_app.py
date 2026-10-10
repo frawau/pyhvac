@@ -27,13 +27,17 @@ class FakeLink:
         self.gate = gate  # an asyncio.Event send waits for
         self.error = error  # raised by send
 
+    @property
+    def started(self):
+        return self.protocol is not None
+
     async def start(self, target):
         self.protocol = object()
 
     async def discover(self, target, timeout=5.0):
         if not self.remotes:
             return []
-        return [Remote(MAC, "192.168.1.20", "rm4", "RM4 mini", None)]
+        return [Remote(MAC, "192.168.1.20", "rm4", "RM4 mini", None, "wlp5s0")]
 
     async def send(self, remote, packet, timeout=5):
         if self.error is not None:
@@ -304,3 +308,10 @@ def test_changing_brand_drops_the_model(tmp_path):
         assert len(app.query_one("#controls").children) == 0
 
     run(case, link=None, names_path=tmp_path / "rc")
+
+
+def test_a_broadlink_shows_the_interface_that_found_it(tmp_path):
+    async def case(app, pilot):
+        assert "wlp5s0" in str(app.query_one("#remote", Select)._options)
+
+    run(case, link=FakeLink(), names_path=tmp_path / "rc")

@@ -5,12 +5,13 @@ from hvactest.link import BROADCAST, Link
 
 
 class FakeTransport:
-    def __init__(self):
+    def __init__(self, ip="192.168.1.10"):
         self.closed = False
+        self.ip = ip
 
     def get_extra_info(self, key):
         assert key == "sockname"
-        return ("192.168.1.10", 41234)
+        return (self.ip, 41234)
 
     def close(self):
         self.closed = True
@@ -69,7 +70,7 @@ async def started(answers):
     async def endpoint(protocol, ip):
         protocol.transport = FakeTransport()
 
-    link = Link(abl=fake_abl(answers), endpoint=endpoint)
+    link = Link(abl=fake_abl(answers), endpoint=endpoint, interfaces=lambda: [])
     await link.start()
     return link
 
@@ -135,3 +136,144 @@ async def _test_stale_answers_are_dropped_and_only_packets_are_learned():
     assert rm.result.empty()
     rm.learned = True  # an acknowledgement, not a packet
     assert await link.learn(remote) is None
+
+
+# ------------------------------------------------- interfaces
+IP_ADDR = [  # what `ip -j -4 addr show up` reports
+    {
+        "ifname": "lo",
+        "operstate": "UNKNOWN",
+        "addr_info": [{"local": "127.0.0.1", "prefixlen": 8}],
+    },
+    {
+        "ifname": "br0",
+        "operstate": "UP",
+        "addr_info": [
+            {"local": "192.168.128.1", "prefixlen": 24, "broadcast": "192.168.128.255"}
+        ],
+    },
+    {
+        "ifname": "wlp5s0",
+        "operstate": "UP",
+        "addr_info": [
+            {"local": "10.0.5.7", "prefixlen": 22, "broadcast": "10.0.7.255"}
+        ],
+    },
+    {
+        "ifname": "docker0",
+        "operstate": "UP",
+        "addr_info": [
+            {"local": "172.17.0.1", "prefixlen": 16, "broadcast": "172.17.255.255"}
+        ],
+    },
+    {
+        "ifname": "tun0",
+        "operstate": "UNKNOWN",
+        "addr_info": [{"local": "192.168.3.2", "prefixlen": 24}],
+    },
+    {
+        "ifname": "eno1",
+        "operstate": "DOWN",
+        "addr_info": [{"local": "192.168.9.2", "prefixlen": 24}],
+    },
+]
+
+
+def sys_tree(root):
+    """A /sys/class/net: enp6s0 (physical) under br0, wlp5s0 and eno1
+    physical, docker0 over a veth, tun0 and lo virtual."""
+    net = root / "class" / "net"
+    for name in ("lo", "br0", "enp6s0", "wlp5s0", "docker0", "veth1", "tun0", "eno1"):
+        (net / name).mkdir(parents=True)
+    for name in ("enp6s0", "wlp5s0", "eno1"):
+        (net / name / "device").mkdir()
+    (net / "br0" / "lower_enp6s0").symlink_to(net / "enp6s0")
+    (net / "docker0" / "lower_veth1").symlink_to(net / "veth1")
+    return net
+
+
+def test_only_active_physical_interfaces_are_used(tmp_path):
+    from hvactest.link import physical_ipv4
+
+    found = physical_ipv4(run=lambda: IP_ADDR, net=sys_tree(tmp_path))
+    assert [(i.name, i.ip, i.broadcast) for i in found] == [
+        ("br0", "192.168.128.1", "192.168.128.255"),  # a bridge over a NIC
+        ("wlp5s0", "10.0.5.7", "10.0.7.255"),
+    ]
+
+
+def test_no_ip_command_means_no_interfaces(tmp_path):
+    from hvactest.link import physical_ipv4
+
+    def missing():
+        raise FileNotFoundError("ip")
+
+    assert physical_ipv4(run=missing, net=sys_tree(tmp_path)) == []
+
+
+def two_lans_abl(devices):
+    """aiobroadlink fake: a Hello sent to a subnet broadcast (or a device's
+    own address) from an endpoint is answered by that subnet's devices."""
+
+    class Scout:
+        def __init__(self, devtype, name):
+            self.result = asyncio.Queue()
+            self.ip = None
+            self.controller = None
+
+        def hello(self, ip, port):
+            for dev in devices:
+                same_lan = dev.ip.rsplit(".", 1)[0] == ip.rsplit(".", 1)[0]
+                if same_lan and self.ip in (dev.ip, ip.rsplit(".", 1)[0] + ".255"):
+                    self.result.put_nowait(dev)
+
+    return types.SimpleNamespace(
+        BroadlinkProtocol=FakeProtocol, BroadlinkDevice=Scout, rm=FakeRm
+    )
+
+
+def lans():
+    from hvactest.link import Interface
+
+    return [
+        Interface("br0", "192.168.1.10", "192.168.1.255", 24),
+        Interface("wlp5s0", "192.168.2.10", "192.168.2.255", 24),
+    ]
+
+
+async def two_lan_link(devices):
+    async def endpoint(protocol, ip):
+        protocol.transport = FakeTransport(ip)
+
+    link = Link(abl=two_lans_abl(devices), endpoint=endpoint, interfaces=lans)
+    await link.start()
+    return link
+
+
+def test_discovery_covers_every_interface():
+    asyncio.run(_test_discovery_covers_every_interface())
+
+
+async def _test_discovery_covers_every_interface():
+    wired = FakeRm("11:11:11:11:11:11", "192.168.1.20")
+    wifi = FakeRm("22:22:22:22:22:22", "192.168.2.30")
+    link = await two_lan_link([wired, wifi])
+    found = await link.discover(timeout=0.2)
+    assert [(r.mac, r.interface) for r in found] == [
+        ("11:11:11:11:11:11", "br0"),
+        ("22:22:22:22:22:22", "wlp5s0"),
+    ]
+    by_ip = {p.transport.ip: p for p in link.protocols}
+    assert by_ip["192.168.1.10"].registered == [wired]
+    assert by_ip["192.168.2.10"].registered == [wifi]
+
+
+def test_an_address_is_reached_through_its_interface():
+    asyncio.run(_test_an_address_is_reached_through_its_interface())
+
+
+async def _test_an_address_is_reached_through_its_interface():
+    wifi = FakeRm("22:22:22:22:22:22", "192.168.2.30")
+    link = await two_lan_link([wifi])
+    (remote,) = await link.discover(target="192.168.2.30", timeout=0.2)
+    assert remote.interface == "wlp5s0"

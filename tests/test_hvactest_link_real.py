@@ -53,7 +53,7 @@ def test_discovery_finds_the_device_again_attached_to_the_protocol():
         async def endpoint(protocol, ip):
             protocol.transport = AnsweringTransport(protocol)
 
-        link = Link(abl=abl, endpoint=endpoint)
+        link = Link(abl=abl, endpoint=endpoint, interfaces=lambda: [])
         await link.start()
         for _ in range(2):
             (remote,) = await link.discover(timeout=0.3)
@@ -67,7 +67,7 @@ def test_a_socket_error_while_sending_does_not_raise():
     # A UDP send that fails (no route) makes asyncio call the protocol's
     # error_received, which aiobroadlink's protocol lacks.
     async def go():
-        link = Link(abl=abl)
+        link = Link(abl=abl, interfaces=lambda: [])
         await link.start("127.0.0.1")
         assert await link.discover(target="8.8.8.8", timeout=0.2) == []
         link.close()
@@ -80,7 +80,7 @@ def test_a_failed_start_leaves_no_half_started_link():
         async def endpoint(protocol, ip):
             raise OSError("cannot bind")
 
-        link = Link(abl=abl, endpoint=endpoint)
+        link = Link(abl=abl, endpoint=endpoint, interfaces=lambda: [])
         with pytest.raises(OSError):
             await link.start()
         assert link.protocol is None

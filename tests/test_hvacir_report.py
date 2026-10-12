@@ -84,7 +84,12 @@ def test_an_unknown_model_of_a_brand_with_that_device_is_skipped():
 
 
 @pytest.mark.parametrize(
-    "spelled, brand", [("Ggeneral Electric", "General Electric"), ("Fuji", "Fujitsu")]
+    "spelled, brand",
+    [
+        ("Ggeneral Electric", "General Electric"),
+        ("Fuji", "Fujitsu"),
+        ("Mitsubishi Heavy", "Mitsubishi Heavy Industries"),
+    ],
 )
 def test_brand_spellings_are_corrected(spelled, brand):
     new, _ = rows([(file(8, spelled, "X-1"), Match("covered", "CoolixDevice"))])

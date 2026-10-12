@@ -70,3 +70,14 @@ def test_direct_construction_never_picks_a_wrong_variant(row):
     except ValueError:
         return
     assert dev.variant == variant
+
+
+def test_mitsubishi_heavy_industries_is_one_brand():
+    # SmartIR spells it "Mitsubishi Heavy": one manufacturer, one menu entry.
+    assert "Mitsubishi Heavy" not in registry.brands()
+    assert "SRK25ZJ-S1" in registry.models("Mitsubishi Heavy Industries")
+
+
+def test_the_par_fl32ma_is_a_remote():
+    (row,) = [r for r in brands.MODELS if r[1] == "PAR-FL32MA"]
+    assert row[2] == "remote"

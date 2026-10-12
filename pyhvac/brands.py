@@ -690,7 +690,7 @@ MODELS = (
     (
         "Mitsubishi Electric",
         "PAR-FL32MA",
-        "unit",
+        "remote",
         Mitsubishi136Device,
         None,
     ),  # SmartIR 1131
@@ -814,98 +814,98 @@ MODELS = (
     ("Tadiran", "TAC 297H V3.2", "unit", AmcorDevice, None),  # SmartIR 1346
     ("Midea", "42MAQA09S5", "unit", CoolixDevice, None),  # SmartIR 1388
     (
-        "Mitsubishi Heavy",
+        "Mitsubishi Heavy Industries",
         "SRK25ZJ-S1",
         "unit",
         MitsubishiHeavy88Device,
         None,
     ),  # SmartIR 1680
     (
-        "Mitsubishi Heavy",
+        "Mitsubishi Heavy Industries",
         "SRK13CRV-S1",
         "unit",
         MitsubishiHeavy88Device,
         None,
     ),  # SmartIR 1680
     (
-        "Mitsubishi Heavy",
+        "Mitsubishi Heavy Industries",
         "SRK20ZSA-W",
         "unit",
         MitsubishiHeavy152Device,
         None,
     ),  # SmartIR 1686
     (
-        "Mitsubishi Heavy",
+        "Mitsubishi Heavy Industries",
         "SRK25ZSA-W",
         "unit",
         MitsubishiHeavy152Device,
         None,
     ),  # SmartIR 1686
     (
-        "Mitsubishi Heavy",
+        "Mitsubishi Heavy Industries",
         "SRK35ZSA-W",
         "unit",
         MitsubishiHeavy152Device,
         None,
     ),  # SmartIR 1686
     (
-        "Mitsubishi Heavy",
+        "Mitsubishi Heavy Industries",
         "SRK50ZSA-W",
         "unit",
         MitsubishiHeavy152Device,
         None,
     ),  # SmartIR 1686
     (
-        "Mitsubishi Heavy",
+        "Mitsubishi Heavy Industries",
         "SRK35ZJX-S",
         "unit",
         MitsubishiHeavy88Device,
         None,
     ),  # SmartIR 1687
     (
-        "Mitsubishi Heavy",
+        "Mitsubishi Heavy Industries",
         "SRK20ZJX-S",
         "unit",
         MitsubishiHeavy88Device,
         None,
     ),  # SmartIR 1687
     (
-        "Mitsubishi Heavy",
+        "Mitsubishi Heavy Industries",
         "SRK25ZSP-W",
         "unit",
         MitsubishiHeavy88Device,
         None,
     ),  # SmartIR 1688
     (
-        "Mitsubishi Heavy",
+        "Mitsubishi Heavy Industries",
         "SRK35ZSP-W",
         "unit",
         MitsubishiHeavy88Device,
         None,
     ),  # SmartIR 1688
     (
-        "Mitsubishi Heavy",
+        "Mitsubishi Heavy Industries",
         "SRK45ZSP-W",
         "unit",
         MitsubishiHeavy88Device,
         None,
     ),  # SmartIR 1688
     (
-        "Mitsubishi Heavy",
+        "Mitsubishi Heavy Industries",
         "DXK12Z3-S",
         "unit",
         MitsubishiHeavy88Device,
         None,
     ),  # SmartIR 1692
     (
-        "Mitsubishi Heavy",
+        "Mitsubishi Heavy Industries",
         "DXK09Z5-S",
         "unit",
         MitsubishiHeavy88Device,
         None,
     ),  # SmartIR 1692
     (
-        "Mitsubishi Heavy",
+        "Mitsubishi Heavy Industries",
         "DXK15Z5-S",
         "unit",
         MitsubishiHeavy88Device,

@@ -1562,7 +1562,7 @@
 {
 "old_brand": "fujitsu",
 "old_model": "General AR-RCE1E remote",
-"brand": "Fujitsu General",
+"brand": "Fujitsu",
 "model": "AR-RCE1E",
 "kind": "remote",
 "device": "fujitsu.FujitsuAcDevice",
@@ -1575,7 +1575,7 @@
 {
 "old_brand": "fujitsu",
 "old_model": "General ASHG09LLCA",
-"brand": "Fujitsu General",
+"brand": "Fujitsu",
 "model": "ASHG09LLCA",
 "kind": "unit",
 "device": "fujitsu.FujitsuAcDevice",
@@ -1588,7 +1588,7 @@
 {
 "old_brand": "fujitsu",
 "old_model": "General AOHG09LLC",
-"brand": "Fujitsu General",
+"brand": "Fujitsu",
 "model": "AOHG09LLC",
 "kind": "unit",
 "device": "fujitsu.FujitsuAcDevice",
@@ -1718,7 +1718,7 @@
 {
 "old_brand": "fujitsu",
 "old_model": "General AR-JW2 remote",
-"brand": "Fujitsu General",
+"brand": "Fujitsu",
 "model": "AR-JW2",
 "kind": "remote",
 "device": "fujitsu.FujitsuAcDevice",
@@ -1900,7 +1900,7 @@
 {
 "old_brand": "fujitsu",
 "old_model": "General AR-JW17 remote",
-"brand": "Fujitsu General",
+"brand": "Fujitsu",
 "model": "AR-JW17",
 "kind": "remote",
 "device": "fujitsu.FujitsuAcDevice",

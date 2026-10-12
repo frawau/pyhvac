@@ -81,3 +81,9 @@ def test_mitsubishi_heavy_industries_is_one_brand():
 def test_the_par_fl32ma_is_a_remote():
     (row,) = [r for r in brands.MODELS if r[1] == "PAR-FL32MA"]
     assert row[2] == "remote"
+
+
+def test_fujitsu_is_one_brand():
+    # Fujitsu General sells its air conditioners as Fujitsu.
+    assert "Fujitsu General" not in registry.brands()
+    assert {"AOHG09LLC", "AR-JW2"} <= set(registry.models("Fujitsu"))

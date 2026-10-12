@@ -89,6 +89,7 @@ def test_an_unknown_model_of_a_brand_with_that_device_is_skipped():
         ("Ggeneral Electric", "General Electric"),
         ("Fuji", "Fujitsu"),
         ("Mitsubishi Heavy", "Mitsubishi Heavy Industries"),
+        ("Fujitsu General", "Fujitsu"),
     ],
 )
 def test_brand_spellings_are_corrected(spelled, brand):

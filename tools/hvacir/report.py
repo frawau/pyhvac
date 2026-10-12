@@ -33,6 +33,7 @@ BRANDS = {
     "ggeneralelectric": "General Electric",
     "fuji": "Fujitsu",
     "mitsubishiheavy": "Mitsubishi Heavy Industries",
+    "fujitsugeneral": "Fujitsu",
 }
 UNKNOWN_MODELS = {"unknown", "unknow", ""}  # named after the brand instead
 REMOTE_SUFFIX = re.compile(r"\s*\(remote\)\s*$", re.IGNORECASE)

@@ -344,6 +344,13 @@ MODELS = (
     ),
     (
         "Mitsubishi Electric",
+        "MITSUBISHI112 I-feel remote",
+        "remote",
+        Mitsubishi112Device,
+        "i-feel",
+    ),
+    (
+        "Mitsubishi Electric",
         "MITSUBISHI136 protocol",
         "remote",
         Mitsubishi136Device,

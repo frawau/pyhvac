@@ -236,3 +236,70 @@ def test_layouts_must_cover_every_frame():
 # and no mark excess.
 def test_decode_tolerance_is_the_c_decoders():
     assert (MITSUBISHI112.tolerance, MITSUBISHI112.mark_excess) == (0.30, 0)
+
+
+# ---------------------------------------------------------- "i-feel" variant
+# An old Mitsubishi remote without model number (captures learned from it
+# through a Broadlink, 2026-10-12): modes "I feel" (auto), cool, dry, fan; no
+# heat; vertical vane auto, five positions and swing; no horizontal vane.
+I_FEEL_CAPTURES = [
+    (HvacState(True, "cool", 23.0, fan="3", swing_v="off"), "a403080500000000c9"),
+    (HvacState(True, "cool", 24.0, fan="3", swing_v="off"), "a403070500000000c8"),
+    (HvacState(True, "cool", 25.0, fan="3", swing_v="off"), "a403060500000000c7"),
+    (HvacState(True, "cool", 24.0, fan="2", swing_v="off"), "a403070300000000c6"),
+    (HvacState(True, "cool", 25.0, fan="1", swing_v="off"), "a403060200000000c4"),
+    (HvacState(True, "dry", 24.0, fan="3", swing_v="off"), "a402070500000000c7"),
+    (HvacState(True, "fan", 24.0, fan="3", swing_v="off"), "a407070500000000cc"),
+    (HvacState(True, "auto", 24.0, fan="3", swing_v="off"), "a408070500000000cd"),
+    (HvacState(True, "auto", 24.0, fan="4", swing_v="off"), "a408070000000000c8"),
+    (HvacState(True, "auto", 24.0, fan="1", swing_v="off"), "a408070200000000ca"),
+    (HvacState(True, "cool", 24.0, fan="3", swing_v="1"), "a403070d00000000d0"),
+    (HvacState(True, "cool", 25.0, fan="1", swing_v="1"), "a403060a00000000cc"),
+    (HvacState(True, "cool", 25.0, fan="1", swing_v="2"), "a403061200000000d4"),
+    (HvacState(True, "cool", 25.0, fan="1", swing_v="3"), "a403061a00000000dc"),
+    (HvacState(True, "cool", 25.0, fan="1", swing_v="4"), "a403062200000000e4"),
+    (HvacState(True, "cool", 25.0, fan="1", swing_v="5"), "a403062a00000000ec"),
+    (HvacState(True, "cool", 25.0, fan="1", swing_v="auto"), "a403063a00000000fc"),
+]
+
+
+def i_feel():
+    return Mitsubishi112Device("Test", "unit", variant="i-feel")
+
+
+@pytest.mark.parametrize("state, tail", I_FEEL_CAPTURES)
+def test_i_feel_variant_reproduces_the_remote(state, tail):
+    dev = i_feel()
+    (frame,) = dev.frames(None, dev.normalise(state), ())
+    assert frame.data == bytes.fromhex("23cb260100" + tail)
+
+
+def test_i_feel_variant_capabilities_are_the_remotes():
+    caps = i_feel().capabilities
+    assert caps.modes == ("auto", "cool", "dry", "fan")
+    assert caps.fan.values == ("1", "2", "3", "4")
+    assert caps.swing_v.values == ("off", "auto", "1", "2", "3", "4", "5")
+    assert caps.swing_h is None
+    assert dict(caps.features) == {}
+
+
+def test_i_feel_variant_off_clears_the_power_bit_and_keeps_the_rest():
+    dev = i_feel()
+    on, off = (
+        dev.frames(None, dev.normalise(HvacState(power, "fan", 24.0, fan="2")), ())[0]
+        for power in (True, False)
+    )
+    assert off.data[5] == on.data[5] & ~0x04
+    assert off.data[6:13] == on.data[6:13]
+
+
+def test_i_feel_variant_has_a_brands_row():
+    from pyhvac import registry
+
+    dev = registry.get_device("Mitsubishi Electric", "MITSUBISHI112 I-feel remote")
+    assert dev.variant == "i-feel"
+
+
+def test_unknown_variant_is_refused():
+    with pytest.raises(ValueError):
+        Mitsubishi112Device("Test", "unit", variant="nope")

@@ -459,6 +459,34 @@ MITSUBISHI112_LAYOUT = Layout(
     checksum=Sum8(0, 13, 13),
 )
 
+# The "i-feel" variant, as an old remote without model number sends it
+# (learned through a Broadlink, 2026-10-12): byte 5 bit 7 always set, modes
+# "I feel" (auto, 0b1000: the mode field is 4 bits), cool, dry and fan (no
+# heat); the vertical vane has an auto position (0) besides the five
+# positions and swing (7, the header's "auto"); byte 12 (no horizontal vane)
+# is 0. Temperature and fan are the header's.
+MITSUBISHI112_I_FEEL_MODE = {"auto": 0b1000, "cool": 0b011, "dry": 0b010, "fan": 0b111}
+MITSUBISHI112_I_FEEL_SWING_V = {
+    "off": 0b000,  # the remote's vane "auto": no position, the unit's choice
+    "auto": 0b111,  # the remote's swing
+    "1": 0b001,  # highest
+    "2": 0b010,
+    "3": 0b011,
+    "4": 0b100,
+    "5": 0b101,  # lowest
+}
+MITSUBISHI112_I_FEEL_LAYOUT = Layout(
+    bytes.fromhex("23cb260100a00000000000000000"),
+    {
+        "power": Field.at(5, 2, 1),
+        "mode": Field.at(6, 0, 4, values=MITSUBISHI112_I_FEEL_MODE),
+        "temperature": Field.at(7, 0, 4),  # 31 - whole °C
+        "fan": Field.at(8, 0, 3, values=MITSUBISHI112_FAN),
+        "swing_v": Field.at(8, 3, 3, values=MITSUBISHI112_I_FEEL_SWING_V),
+    },
+    checksum=Sum8(0, 13, 13),
+)
+
 
 class Mitsubishi112Device(Device):
     """Mitsubishi112 (KPOA remote): a full-state protocol, ``previous`` is
@@ -482,8 +510,39 @@ class Mitsubishi112Device(Device):
         swing_h=SWING_H_6,
         features={"quiet": ON_OFF},
     )
+    VARIANTS = ("i-feel",)
+
+    def __init__(self, brand, model, variant=None):
+        super().__init__(brand, model)
+        if variant is None:  # built directly: the brands table's variant
+            from ..registry import variant_of
+
+            variant = variant_of(type(self), brand, model)
+        if variant is not None and variant not in self.VARIANTS:
+            raise ValueError(f"unknown Mitsubishi112 variant {variant!r}")
+        self.variant = variant
+        if variant == "i-feel":
+            self.LAYOUTS = (MITSUBISHI112_I_FEEL_LAYOUT,)
+            self.capabilities = replace(
+                self.capabilities,
+                modes=("auto", "cool", "dry", "fan"),
+                swing_v=SWING_V_ANGLES,
+                swing_h=None,
+                features={},
+            )
 
     def frames(self, previous, target, actions):
+        if self.variant == "i-feel":
+            # No off capture: the off message is assumed to carry the
+            # state, as the header's does but for the mode.
+            data = MITSUBISHI112_I_FEEL_LAYOUT.build(
+                power=target.power,
+                mode=target.mode,
+                temperature=MITSUBISHI112_MAX_TEMP - int(target.temperature),
+                fan=target.fan,
+                swing_v=target.swing_v,
+            )
+            return [Frame("main", bytes(data))]
         # As the C path: an off message carries mode auto (IRac passes mode
         # "off", which convertMode maps to auto) and the setpoint as given.
         # Quiet overrides the fan (setQuiet runs after setFan).

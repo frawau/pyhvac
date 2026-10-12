@@ -464,8 +464,14 @@ MITSUBISHI112_LAYOUT = Layout(
 # "I feel" (auto, 0b1000: the mode field is 4 bits), cool, dry and fan (no
 # heat); the vertical vane has an auto position (0) besides the five
 # positions and swing (7, the header's "auto"); byte 12 (no horizontal vane)
-# is 0. Temperature and fan are the header's.
+# is 0. The temperature is the header's; the fan has auto (0, the header's
+# max) and three speeds.
 MITSUBISHI112_I_FEEL_MODE = {"auto": 0b1000, "cool": 0b011, "dry": 0b010, "fan": 0b111}
+MITSUBISHI112_I_FEEL_FAN = {"auto": 0b000, "1": 0b010, "2": 0b011, "3": 0b101}
+MITSUBISHI112_I_FEEL_FAN_CHOICE = Choice(
+    ("auto", "1", "2", "3"),
+    {"auto": "auto", "1": "lowest", "2": "medium", "3": "highest"},
+)
 MITSUBISHI112_I_FEEL_SWING_V = {
     "off": 0b000,  # the remote's vane "auto": no position, the unit's choice
     "auto": 0b111,  # the remote's swing
@@ -481,7 +487,7 @@ MITSUBISHI112_I_FEEL_LAYOUT = Layout(
         "power": Field.at(5, 2, 1),
         "mode": Field.at(6, 0, 4, values=MITSUBISHI112_I_FEEL_MODE),
         "temperature": Field.at(7, 0, 4),  # 31 - whole °C
-        "fan": Field.at(8, 0, 3, values=MITSUBISHI112_FAN),
+        "fan": Field.at(8, 0, 3, values=MITSUBISHI112_I_FEEL_FAN),
         "swing_v": Field.at(8, 3, 3, values=MITSUBISHI112_I_FEEL_SWING_V),
     },
     checksum=Sum8(0, 13, 13),
@@ -526,6 +532,7 @@ class Mitsubishi112Device(Device):
             self.capabilities = replace(
                 self.capabilities,
                 modes=("auto", "cool", "dry", "fan"),
+                fan=MITSUBISHI112_I_FEEL_FAN_CHOICE,
                 swing_v=SWING_V_ANGLES,
                 swing_h=None,
                 features={},

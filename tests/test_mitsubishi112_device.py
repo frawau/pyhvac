@@ -251,7 +251,7 @@ I_FEEL_CAPTURES = [
     (HvacState(True, "dry", 24.0, fan="3", swing_v="off"), "a402070500000000c7"),
     (HvacState(True, "fan", 24.0, fan="3", swing_v="off"), "a407070500000000cc"),
     (HvacState(True, "auto", 24.0, fan="3", swing_v="off"), "a408070500000000cd"),
-    (HvacState(True, "auto", 24.0, fan="4", swing_v="off"), "a408070000000000c8"),
+    (HvacState(True, "auto", 24.0, fan="auto", swing_v="off"), "a408070000000000c8"),
     (HvacState(True, "auto", 24.0, fan="1", swing_v="off"), "a408070200000000ca"),
     (HvacState(True, "cool", 24.0, fan="3", swing_v="1"), "a403070d00000000d0"),
     (HvacState(True, "cool", 25.0, fan="1", swing_v="1"), "a403060a00000000cc"),
@@ -277,7 +277,14 @@ def test_i_feel_variant_reproduces_the_remote(state, tail):
 def test_i_feel_variant_capabilities_are_the_remotes():
     caps = i_feel().capabilities
     assert caps.modes == ("auto", "cool", "dry", "fan")
-    assert caps.fan.values == ("1", "2", "3", "4")
+    # The remote's fan: auto and three speeds (the header's "4" is its auto).
+    assert caps.fan.values == ("auto", "1", "2", "3")
+    assert [caps.fan.labels[v] for v in caps.fan.values] == [
+        "auto",
+        "lowest",
+        "medium",
+        "highest",
+    ]
     assert caps.swing_v.values == ("off", "auto", "1", "2", "3", "4", "5")
     assert caps.swing_h is None
     assert dict(caps.features) == {}

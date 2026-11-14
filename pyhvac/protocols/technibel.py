@@ -1,7 +1,7 @@
 #! /usr/bin/env python3
 # -*- coding:utf-8 -*-
 #
-# Plugin to generate Technibel AC IR commands.
+# The Technibel A/C IR protocol.
 #
 # Copyright (c) 2024 François Wautier
 #
@@ -104,7 +104,7 @@ TECHNIBEL_AC_LAYOUT = Layout(
 
 class TechnibelAcDevice(Device):
     """Technibel A/C (IRTechnibelAc, protocol TECHNIBEL_AC): one full-state
-    word, sent by the technibel, teco and alaska plugins, all with the full
+    word, sent for Technibel, Teco and Alaska, all with the full
     Technibel capabilities (the teco/alaska models' old "teco" variant, the
     legacy Teco entity, is gone: phase 4 design, section 4).
 
@@ -163,9 +163,15 @@ class TechnibelAcDevice(Device):
         return [Frame("main", bytes(data))]
 
 
-TECHNIBEL_AC_MODELS = ("IRO PLUS", "generic")  # technibel plugin
-TECHNIBEL_AC_TECO_MODELS = ("generic",)  # teco plugin
-TECHNIBEL_AC_ALASKA_MODELS = ("SAC9010QC", "SAC9010QC remote")  # alaska plugin
+TECHNIBEL_AC_MODELS = (
+    "IRO PLUS",
+    "generic",
+)  # 0.1.x "technibel" plugin names (fixture tests)
+TECHNIBEL_AC_TECO_MODELS = ("generic",)  # 0.1.x "teco" plugin names (fixture tests)
+TECHNIBEL_AC_ALASKA_MODELS = (
+    "SAC9010QC",
+    "SAC9010QC remote",
+)  # 0.1.x "alaska" plugin names (fixture tests)
 
 
 # Now the match between models and objects

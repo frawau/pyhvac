@@ -1,7 +1,7 @@
 #! /usr/bin/env python3
 # -*- coding:utf-8 -*-
 #
-# Plugin to generate Kelvinator AC IR commands.
+# The Kelvinator A/C IR protocol.
 #
 # Copyright (c) 2024 François Wautier
 #
@@ -262,7 +262,7 @@ class KelvinatorDevice(Device):
         ]
 
 
-KELVINATOR_MODELS = (  # kelvinator plugin
+KELVINATOR_MODELS = (  # 0.1.x "kelvinator" plugin names (fixture tests)
     "YALIF remote",
     "KSV26CRC",
     "KSV26HRC",
@@ -275,8 +275,14 @@ KELVINATOR_MODELS = (  # kelvinator plugin
     "KSV80HRC",
     "generic",
 )
-KELVINATOR_GREE_MODELS = ("YAPOF3 remote", "YAP0F8 remote")  # gree plugin
-KELVINATOR_SHARP_MODELS = ("YB1FA remote", "A5VEY")  # sharp plugin
+KELVINATOR_GREE_MODELS = (
+    "YAPOF3 remote",
+    "YAP0F8 remote",
+)  # 0.1.x "gree" plugin names (fixture tests)
+KELVINATOR_SHARP_MODELS = (
+    "YB1FA remote",
+    "A5VEY",
+)  # 0.1.x "sharp" plugin names (fixture tests)
 
 
 # Now the match between models and objects

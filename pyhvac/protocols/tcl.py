@@ -1,7 +1,7 @@
 #! /usr/bin/env python3
 # -*- coding:utf-8 -*-
 #
-# Plugin to generate TCL AC IR commands.
+# The TCL A/C IR protocol.
 #
 # Copyright (c) 2024 François Wautier
 #
@@ -303,15 +303,17 @@ TCL112AC_MODELS = {  # model -> remote variant (tcl_ac_remote_model_t)
     "generic v1": "TAC09CHSD",
     "generic v2": "GZ055BE1",
 }
-TCL112AC_DAEWOO_MODELS = {  # daewoo plugin
+TCL112AC_DAEWOO_MODELS = {  # 0.1.x "daewoo" plugin names (fixture tests)
     "DSB-F0934ELH-V": "GZ055BE1",
     "GYKQ-52E remote": "GZ055BE1",
 }
-TCL112AC_TECHNOPOINT_MODELS = {  # technopoint plugin
+TCL112AC_TECHNOPOINT_MODELS = {  # 0.1.x "technopoint" plugin names (fixture tests)
     "Allegro SSA-09H": "GZ055BE1",
     "GZ-055B-E1 remote": "GZ055BE1",
 }
-TCL112AC_LEBERG_MODELS = {"LBS-TOR07": "TAC09CHSD"}  # leberg plugin
+TCL112AC_LEBERG_MODELS = {
+    "LBS-TOR07": "TAC09CHSD"
+}  # 0.1.x "leberg" plugin names (fixture tests)
 Tcl112AcDevice.MODELS = {
     **TCL112AC_MODELS,
     **TCL112AC_DAEWOO_MODELS,

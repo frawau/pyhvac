@@ -1,7 +1,7 @@
 #! /usr/bin/env python3
 # -*- coding:utf-8 -*-
 #
-# Plugin to generate Eurom AC IR commands.
+# The Eurom A/C IR protocol.
 #
 # Copyright (c) 2024 François Wautier
 #

@@ -1,7 +1,7 @@
 #! /usr/bin/env python3
 # -*- coding:utf-8 -*-
 #
-# Plugin to generate Midea AC IR commands.
+# The Midea A/C IR protocol.
 #
 # Copyright (c) 2024 François Wautier
 #
@@ -294,17 +294,19 @@ class MideaDevice(Device):
         return out
 
 
-MIDEA_MODELS = ("generic",)  # midea plugin
-MIDEA_COMFEE_MODELS = ("MPD1-12CRN7",)  # comfee plugin
-MIDEA_DANBY_MODELS = (  # danby plugin
+MIDEA_MODELS = ("generic",)  # 0.1.x "midea" plugin names (fixture tests)
+MIDEA_COMFEE_MODELS = ("MPD1-12CRN7",)  # 0.1.x "comfee" plugin names (fixture tests)
+MIDEA_DANBY_MODELS = (  # 0.1.x "danby" plugin names (fixture tests)
     "DAC080BGUWDB",
     "DAC100BGUWDB",
     "DAC120BGUWDB",
     "R09C/BCGE remote",
 )
-MIDEA_KAYSUN_MODELS = ("Casual CF",)  # kaysun plugin
-MIDEA_KEYSTONE_MODELS = ("RG57H4(B)BGEF remote",)  # keystone plugin
-MIDEA_LENNOX_MODELS = (  # lennox plugin
+MIDEA_KAYSUN_MODELS = ("Casual CF",)  # 0.1.x "kaysun" plugin names (fixture tests)
+MIDEA_KEYSTONE_MODELS = (
+    "RG57H4(B)BGEF remote",
+)  # 0.1.x "keystone" plugin names (fixture tests)
+MIDEA_LENNOX_MODELS = (  # 0.1.x "lennox" plugin names (fixture tests)
     "RG57A6/BGEFU1 remote",
     "MWMA009S4-3P",
     "MWMA012S4-3P",
@@ -318,8 +320,10 @@ MIDEA_LENNOX_MODELS = (  # lennox plugin
     "M33A",
     "M33B",
 )
-MIDEA_MRCOOL_MODELS = ("RG57A6/BGEFU1 remote",)  # mrcool plugin
-MIDEA_PIONEER_SYSTEM_MODELS = (  # pioneer_system plugin
+MIDEA_MRCOOL_MODELS = (
+    "RG57A6/BGEFU1 remote",
+)  # 0.1.x "mrcool" plugin names (fixture tests)
+MIDEA_PIONEER_SYSTEM_MODELS = (  # 0.1.x "pioneer_system" plugin names (fixture tests)
     "RYBO12GMFILCAD",
     "RUBO18GMFILCAD",
     "WS012GMFI22HLD",
@@ -327,7 +331,7 @@ MIDEA_PIONEER_SYSTEM_MODELS = (  # pioneer_system plugin
     "UB018GMFILCFHD",
     "RG66B6(B)/BGEFU1 remote",
 )
-MIDEA_TROTECH_MODELS = (  # trotech plugin
+MIDEA_TROTECH_MODELS = (  # 0.1.x "trotech" plugin names (fixture tests)
     "PAC 2100 X",
     "PAC 3900 X",
     "RG57H(B)/BGE remote",

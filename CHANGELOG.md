@@ -24,3 +24,16 @@ Breaking: new API, pure Python.
   "smash 2" never sent powerful.
 - Removed: Hitachi "PC-LH3B" and "generic 3" (HITACHI_AC3: 0.1.x sent
   nothing for them); Sharp "generic" (it never produced a valid command).
+- More models: 121 brands and 687 models and remotes (82 brands and 404
+  rows before the SmartIR import), mostly from the SmartIR community's
+  learned climate codes. A SmartIR file becomes a pyhvac row only when a
+  pyhvac protocol generates its codes; pyhvac ships and fetches no SmartIR
+  data.
+- New protocol variants found in those captures: Coolix 16C and quiet;
+  Electra aux (AUX-family remotes); Gree YAW1F-wifi, YAW1F-0 and YX1FSF-H;
+  Kelon dry-grade and 16C; Midea RG57 and RG57-F (whole °F on the wire);
+  Panasonic JKE-M13 and RKR-81; Mitsubishi A/C remote; TCL112 GZ055BE1-R,
+  TAC09CHSD-R/-RH and TAC09CHSD-X03/X80/X83/XC0. Mitsubishi112 i-feel was
+  learned from a unit.
+- An unknown brand's error suggests the closest names.
+- The sdist holds the package only (no tests, tools or docs).

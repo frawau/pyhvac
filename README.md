@@ -38,6 +38,9 @@ packet = to_broadlink(command.signal)  # send it with a Broadlink RM
   models. Names are written as the manufacturers write them; lookups ignore
   case, spaces and punctuation (`"mitsubishi_heavy_industries"` finds
   "Mitsubishi Heavy Industries").
+- `registry.get_device(brand, model)` needs the model unless the brand has
+  only one; there is no "generic" default. An unknown brand's error suggests
+  the closest names.
 - `HvacState(power, mode, temperature, fan="auto", swing_v="off",
   swing_h="off", features={})` is what you want the unit to do. Temperatures
   are in °C.
@@ -97,7 +100,7 @@ checksums from captures. Register the models in `pyhvac/brands.py`.
 | `frames = dev.build_ircode(); dev.to_broadlink(frames)` | `to_broadlink(device.encode(previous, state).signal)` |
 | `dev.capabilities["temperature"]`, `dev.all_capabilities["fan"]` | `device.capabilities.temperature`, `device.capabilities.fan` (values and labels) |
 | scripts `gaccode`, `gcpanasonic`, `gcdaikin`, `gclg`, `gcsharp` | `pyhvac` (or `python -m pyhvac`), see Command line |
-| brand = plugin module name, e.g. `"mitsubishi_heavy_industries"` | brand as the maker writes it; lookups ignore case and punctuation |
+| brand = plugin module name, e.g. `"mitsubishi_heavy_industries"` | brand as the maker writes it; lookups ignore case and punctuation, so most module names still work. Renamed: `trotech` -> Trotec, `technopoint` -> Teknopoint, `vailland` -> Vaillant, `soleus` -> Soleus Air; `coolix` is gone (its models are under their brands, the bare protocol is Midea "COOLIX protocol") |
 | model strings of 0.1.x | the new names below; 0.1.x names still work for the former pure-Python devices (Daikin, LG and Panasonic "generic" and their variants, Airspool, Sharp "j-tech") |
 
 The full old -> new name table is in

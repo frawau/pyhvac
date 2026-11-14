@@ -2,7 +2,7 @@
 fixtures (tests/fixtures/oracle/<PROTOCOL>.json.gz).
 
     python tools/portkit.py timings DAIKIN2
-    python tools/portkit.py decode DAIKIN2 --protocol pyhvac.plugins.daikin:DAIKIN2 \\
+    python tools/portkit.py decode DAIKIN2 --protocol pyhvac.protocols.daikin:DAIKIN2 \\
         --expected leader,first,second
     python tools/portkit.py diff DAIKIN2 --protocol ... --expected ...
     python tools/portkit.py checksum DAIKIN2 --protocol ... --expected ...

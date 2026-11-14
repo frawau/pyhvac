@@ -1,7 +1,7 @@
 #! /usr/bin/env python3
 # -*- coding:utf-8 -*-
 #
-# Plugin to generate Haier AC IR commands.
+# The Haier A/C IR protocol.
 #
 # Copyright (c) 2024 François Wautier
 #
@@ -438,7 +438,10 @@ HAIER176_MODELS = {  # model -> remote variant (haier_ac176_remote_model_t)
     "generic 176 code a": "A",
     "generic 176 code b": "B",
 }
-HAIER176_MABE_MODELS = ("MMI18HDBWCA6MI8", "V12843 HJ200223 remote")  # mabe plugin
+HAIER176_MABE_MODELS = (
+    "MMI18HDBWCA6MI8",
+    "V12843 HJ200223 remote",
+)  # 0.1.x "mabe" plugin names (fixture tests)
 
 
 class Haier176Device(_HaierAc176Device):

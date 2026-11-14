@@ -1,7 +1,7 @@
 #! /usr/bin/env python3
 # -*- coding:utf-8 -*-
 #
-# Plugin to generate Gree AC IR commands.
+# The Gree A/C IR protocol.
 #
 # Copyright (c) 2024 François Wautier
 #
@@ -301,7 +301,7 @@ class GreeDevice(Device):
         return [Frame("block1", bytes(data[:4])), Frame("block2", bytes(data[4:]))]
 
 
-GREE_MODELS = (  # gree plugin
+GREE_MODELS = (  # 0.1.x "gree" plugin names (fixture tests)
     "YAA1FBF remote",
     "YB1F2F remote",
     "YAN1F1 remote",
@@ -310,14 +310,29 @@ GREE_MODELS = (  # gree plugin
     "VIR12HP230V1AH",
     "gemeric",
 )
-GREE_AMANA_MODELS = ("PBC093G00CC", "YX1FF remote")  # amana plugin
-GREE_COOPER_HUNTER_MODELS = ("YB1F2 remote", "CH-S09FTXG")  # cooper_hunter plugin
-GREE_EKOKAI_MODELS = ("generic",)  # ekokai plugin
-GREE_GREEN_MODELS = ("YBOFB remote", "YBOFB2 remote")  # green plugin
-GREE_RUSCLIMATE_MODELS = ("EACS/I-09HAR_X/N3", "YAW1F remote")  # rusclimate plugin
-GREE_SOLEUS_MODELS = ("Air window",)  # soleus plugin
-GREE_ULTIMATE_MODELS = ("Heat Pump",)  # ultimate plugin
-GREE_VAILLAND_MODELS = ("YACIFB remote", "VAI5-035WNI")  # vailland plugin
+GREE_AMANA_MODELS = (
+    "PBC093G00CC",
+    "YX1FF remote",
+)  # 0.1.x "amana" plugin names (fixture tests)
+GREE_COOPER_HUNTER_MODELS = (
+    "YB1F2 remote",
+    "CH-S09FTXG",
+)  # 0.1.x "cooper_hunter" plugin names (fixture tests)
+GREE_EKOKAI_MODELS = ("generic",)  # 0.1.x "ekokai" plugin names (fixture tests)
+GREE_GREEN_MODELS = (
+    "YBOFB remote",
+    "YBOFB2 remote",
+)  # 0.1.x "green" plugin names (fixture tests)
+GREE_RUSCLIMATE_MODELS = (
+    "EACS/I-09HAR_X/N3",
+    "YAW1F remote",
+)  # 0.1.x "rusclimate" plugin names (fixture tests)
+GREE_SOLEUS_MODELS = ("Air window",)  # 0.1.x "soleus" plugin names (fixture tests)
+GREE_ULTIMATE_MODELS = ("Heat Pump",)  # 0.1.x "ultimate" plugin names (fixture tests)
+GREE_VAILLAND_MODELS = (
+    "YACIFB remote",
+    "VAI5-035WNI",
+)  # 0.1.x "vailland" plugin names (fixture tests)
 GREE_MODEL_VARIANT = {  # model -> remote (gree_ac_remote_model_t), as Greev1-3
     **{
         m: "YAW1F"
@@ -331,7 +346,7 @@ GREE_MODEL_VARIANT = {  # model -> remote (gree_ac_remote_model_t), as Greev1-3
     },
     **{m: "YBOFB" for m in GREE_GREEN_MODELS},
     "YX1F2F remote": "YX1FSF",
-    "Air window": "YX1FSF",  # soleus plugin
+    "Air window": "YX1FSF",  # 0.1.x "soleus" plugin names (fixture tests)
 }
 
 

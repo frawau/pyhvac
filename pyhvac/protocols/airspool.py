@@ -1,7 +1,7 @@
 #! /usr/bin/env python3
 # -*- coding:utf-8 -*-
 #
-# Plugin to generate Airspool (Tuya-style mini-split) AC IR commands.
+# The Airspool (Tuya-style mini-split) A/C IR protocol.
 #
 # Protocol reverse-engineered and documented at:
 #   https://twosortoftechguys.wordpress.com/2026/06/14/sending-ir-codes-to-an-airspool-mini-split-using-a-raspberry-pi-ai-failed-us-2/

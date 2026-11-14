@@ -1,7 +1,7 @@
 #! /usr/bin/env python3
 # -*- coding:utf-8 -*-
 #
-# Plugin to generate Electra AC IR commands.
+# The Electra A/C IR protocol.
 #
 # Copyright (c) 2024 François Wautier
 #
@@ -242,18 +242,32 @@ class ElectraAcDevice(Device):
         return data
 
 
-ELECTRA_AC_MODELS = (  # electra plugin
+ELECTRA_AC_MODELS = (  # 0.1.x "electra" plugin names (fixture tests)
     "Classic INV 17",
     "AXW12DCS",
     "YKR-M/003E remote",
     "generic",
 )
-ELECTRA_AC_AEG_MODELS = ("Chillflex Pro AXP26U338CW",)  # aeg plugin
-ELECTRA_AC_AUX_MODELS = ("KFR-35GW/BpNFW=3", "YKR-T/011 remote")  # aux plugin
-ELECTRA_AC_CENTEK_MODELS = ("SCT-65Q09", "YKR-P/002E remote")  # centek plugin
-ELECTRA_AC_DELONGHI_MODELS = ("PAC EM90",)  # delonghi plugin
-ELECTRA_AC_ELECTROLUX_MODELS = ("YKR-H/531E",)  # electrolux plugin
-ELECTRA_AC_FRIGIDAIRE_MODELS = ("FGPC102AB1",)  # frigidaire plugin
+ELECTRA_AC_AEG_MODELS = (
+    "Chillflex Pro AXP26U338CW",
+)  # 0.1.x "aeg" plugin names (fixture tests)
+ELECTRA_AC_AUX_MODELS = (
+    "KFR-35GW/BpNFW=3",
+    "YKR-T/011 remote",
+)  # 0.1.x "aux" plugin names (fixture tests)
+ELECTRA_AC_CENTEK_MODELS = (
+    "SCT-65Q09",
+    "YKR-P/002E remote",
+)  # 0.1.x "centek" plugin names (fixture tests)
+ELECTRA_AC_DELONGHI_MODELS = (
+    "PAC EM90",
+)  # 0.1.x "delonghi" plugin names (fixture tests)
+ELECTRA_AC_ELECTROLUX_MODELS = (
+    "YKR-H/531E",
+)  # 0.1.x "electrolux" plugin names (fixture tests)
+ELECTRA_AC_FRIGIDAIRE_MODELS = (
+    "FGPC102AB1",
+)  # 0.1.x "frigidaire" plugin names (fixture tests)
 ELECTRA_AC_SUBTROPIC_MODELS = ("SUB-07HN1_18Y", "YKR-H/102E remote")  # subtropic
 
 

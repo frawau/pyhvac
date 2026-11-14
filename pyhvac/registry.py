@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import difflib
 import re
 
 from . import brands as _brands
@@ -38,8 +39,8 @@ def models(brand):
 
 
 def get_device(brand, model=None):
-    """A Device for ``brand`` and ``model``. ``model`` may be left out when
-    the brand has one model. The 0.1.x names of the devices that were pure
+    """A Device for ``brand`` and ``model``. ``model`` may be left out only
+    when the brand has one model; there is no "generic" default. The 0.1.x names of the devices that were pure
     Python in 0.1.x still resolve (brands.ALIASES)."""
     alias = _alias(brand, model)
     if alias is not None:
@@ -73,7 +74,12 @@ def _brand(brand):
     try:
         return _ROWS[_key(brand)]
     except KeyError:
-        raise KeyError(f"unknown brand {brand!r}") from None
+        keys = {_key(name): name for name, _ in _ROWS.values()}
+        close = [keys[k] for k in difflib.get_close_matches(_key(brand), keys, 3, 0.6)]
+        hint = f"; did you mean {', '.join(map(repr, close))}?" if close else ""
+        raise KeyError(
+            f"unknown brand {brand!r}{hint} (registry.brands() lists them all)"
+        ) from None
 
 
 def _alias(brand, model):

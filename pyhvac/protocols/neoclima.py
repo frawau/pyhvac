@@ -1,7 +1,7 @@
 #! /usr/bin/env python3
 # -*- coding:utf-8 -*-
 #
-# Plugin to generate Neoclima AC IR commands.
+# The Neoclima A/C IR protocol.
 #
 # Copyright (c) 2024 François Wautier
 #
@@ -197,8 +197,15 @@ class NeoclimaDevice(Device):
         return [Frame("main", bytes(data))]
 
 
-NEOCLIMA_MODELS = ("NS-09AHTI", "ZH/TY-01 remote", "generic")  # neoclima plugin
-NEOCLIMA_SOLEUS_MODELS = ("Air TTWM1-10-01", "Air ZCF/TL-05 remote")  # soleus plugin
+NEOCLIMA_MODELS = (
+    "NS-09AHTI",
+    "ZH/TY-01 remote",
+    "generic",
+)  # 0.1.x "neoclima" plugin names (fixture tests)
+NEOCLIMA_SOLEUS_MODELS = (
+    "Air TTWM1-10-01",
+    "Air ZCF/TL-05 remote",
+)  # 0.1.x "soleus" plugin names (fixture tests)
 
 
 # Now the match between models and objects

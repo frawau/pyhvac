@@ -1,7 +1,7 @@
 #! /usr/bin/env python3
 # -*- coding:utf-8 -*-
 #
-# Plugin to generate Coolix AC IR commands.
+# The Coolix A/C IR protocol.
 #
 # Copyright (c) 2024 François Wautier
 #
@@ -289,23 +289,30 @@ class CoolixDevice(Device):
         return frames
 
 
-COOLIX_MODELS = ("generic",)  # coolix plugin
-COOLIX_AIRWELL_MODELS = ("RC08B remote",)  # airwell plugin
-COOLIX_BEKO_MODELS = ("RG57K7(B)/BGEF Remote", "BINR 070/071")  # beko plugin
-COOLIX_BOSCH_MODELS = (  # bosch plugin
+COOLIX_MODELS = ("generic",)  # 0.1.x "coolix" plugin names (fixture tests)
+COOLIX_AIRWELL_MODELS = (
+    "RC08B remote",
+)  # 0.1.x "airwell" plugin names (fixture tests)
+COOLIX_BEKO_MODELS = (
+    "RG57K7(B)/BGEF Remote",
+    "BINR 070/071",
+)  # 0.1.x "beko" plugin names (fixture tests)
+COOLIX_BOSCH_MODELS = (  # 0.1.x "bosch" plugin names (fixture tests)
     "RG36B4/BGE remote",
     "B1ZAI2441W",
     "B1ZAO2441W",
 )
-COOLIX_KASTRON_MODELS = ("RG57A7/BGEF remote",)  # kastron plugin
-COOLIX_KAYSUN_MODELS = ("Casual CF Alt",)  # kaysun plugin
-COOLIX_MIDEA_MODELS = (  # midea plugin
+COOLIX_KASTRON_MODELS = (
+    "RG57A7/BGEF remote",
+)  # 0.1.x "kastron" plugin names (fixture tests)
+COOLIX_KAYSUN_MODELS = ("Casual CF Alt",)  # 0.1.x "kaysun" plugin names (fixture tests)
+COOLIX_MIDEA_MODELS = (  # 0.1.x "midea" plugin names (fixture tests)
     "RG52D/BGE Remote",
     "MS12FU-10HRDN1-QRD0GW(B)",
     "MSABAU-07HRFN1-QRD0GW",
 )
 COOLIX_TOKIO_MODELS = ("AATOEMF17-12CHR1SW", "RG51|50/BGE Remote")  # tokio
-COOLIX_TOSHIBA_MODELS = (  # toshiba plugin
+COOLIX_TOSHIBA_MODELS = (  # 0.1.x "toshiba" plugin names (fixture tests)
     "RAS-M10YKV-E",
     "RAS-M13YKV-E",
     "RAS-4M27YAV-E",

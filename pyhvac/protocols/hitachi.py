@@ -1,7 +1,7 @@
 #! /usr/bin/env python3
 # -*- coding:utf-8 -*-
 #
-# Plugin to generate Hitachi AC IR commands.
+# The Hitachi A/C IR protocol.
 #
 # Copyright (c) 2024 François Wautier
 #

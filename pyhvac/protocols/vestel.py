@@ -1,7 +1,7 @@
 #! /usr/bin/env python3
 # -*- coding:utf-8 -*-
 #
-# Plugin to generate Vestel AC IR commands.
+# The Vestel A/C IR protocol.
 #
 # Copyright (c) 2024 François Wautier
 #

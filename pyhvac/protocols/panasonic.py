@@ -1,7 +1,7 @@
 #! /usr/bin/env python3
 # -*- coding:utf-8 -*-
 #
-# Plugin to generate Panasonic AC IR commands
+# The Panasonic A/C IR protocol
 #
 # This module is in part based on the work/code from:
 #      Scott Kyle https://gist.github.com/appden/42d5272bf128125b019c45bc2ed3311f
@@ -618,7 +618,7 @@ PANASONIC_NATIVE_VARIANTS = {
         features={"purifier": ON_OFF, "economy": ON_OFF, "cleaning": ON_OFF},
     ),
 }
-PANASONIC_NATIVE_MODELS = {  # model -> variant, as PluginObject.MODELS
+PANASONIC_NATIVE_MODELS = {  # model -> variant, 0.1.x names
     "generic": "generic",
     "4 way cassette": "4 way cassette",
 }

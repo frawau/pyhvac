@@ -9,7 +9,8 @@
 - `oracle_extra/<test module>.json.gz`: the C output the tests compared with
   beyond the grid (persistent-object sequences, extra states, the
   fixed-glue cases, direct IRac checks), recorded once by `tests/c_oracle.py`
-  (PYHVAC_FREEZE=1) while the C extension still existed; replayed ever since.
+  (with its since-removed PYHVAC_FREEZE=1 switch) while the C extension
+  still existed; replayed ever since.
 - `golden/<module>.json.gz`: what the 0.1.x pure-Python classes sent.
 - `airwell_c_raw.json`: the AIRWELL state words the C library built (its
   SWIG timing recorder mis-recorded Manchester pulses).

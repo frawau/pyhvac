@@ -1,7 +1,7 @@
 #! /usr/bin/env python3
 # -*- coding:utf-8 -*-
 #
-# Plugin to generate Mirage AC IR commands.
+# The Mirage A/C IR protocol.
 #
 # Copyright (c) 2024 François Wautier
 #
@@ -301,12 +301,16 @@ MIRAGE_MODEL_VARIANT = {  # model -> remote variant (mirage_ac_remote_model_t)
     "VLU series": "KKG9AC1",
     "generic": "KKG9AC1",
     "generic 2": "KKG29AC1",
-    "Maxell MX-CH18CF": "KKG9AC1",  # maxell plugin
-    "Maxell KKG9A-C1 remote": "KKG9AC1",  # maxell plugin
-    "Reykir 9000": "KKG29AC1",  # tronitechnik plugin
-    "KKG29A-C1 remote": "KKG29AC1",  # tronitechnik plugin
+    "Maxell MX-CH18CF": "KKG9AC1",  # 0.1.x "maxell" plugin names (fixture tests)
+    "Maxell KKG9A-C1 remote": "KKG9AC1",  # 0.1.x "maxell" plugin names (fixture tests)
+    "Reykir 9000": "KKG29AC1",  # 0.1.x "tronitechnik" plugin names (fixture tests)
+    "KKG29A-C1 remote": "KKG29AC1",  # 0.1.x "tronitechnik" plugin names (fixture tests)
 }
-MIRAGE_MODELS = ("VLU series", "generic", "generic 2")  # mirage plugin
+MIRAGE_MODELS = (
+    "VLU series",
+    "generic",
+    "generic 2",
+)  # 0.1.x "mirage" plugin names (fixture tests)
 MIRAGE_MAXELL_MODELS = ("Maxell MX-CH18CF", "Maxell KKG9A-C1 remote")
 MIRAGE_TRONITECHNIK_MODELS = ("Reykir 9000", "KKG29A-C1 remote")
 

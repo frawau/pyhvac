@@ -24,6 +24,13 @@ def test_unknown_brand_or_model():
         registry.get_device("Daikin", "nope")
 
 
+def test_unknown_brand_suggests_close_names():
+    with pytest.raises(KeyError, match="did you mean 'Trotec'"):
+        registry.models("trotech")
+    with pytest.raises(KeyError, match=r"unknown brand 'zzz' \(registry"):
+        registry.models("zzz")
+
+
 def test_model_may_be_left_out_only_for_single_model_brands():
     single = next(b for b in registry.brands() if len(registry.models(b)) == 1)
     assert registry.get_device(single).brand == single

@@ -1,7 +1,7 @@
 #! /usr/bin/env python3
 # -*- coding:utf-8 -*-
 #
-# Plugin to generate Sharp AC IR commands as done by the CRMC-B028JBEZ and others
+# The Sharp A/C IR protocol as done by the CRMC-B028JBEZ and others
 #
 # This module  is in part based on the work/code from:
 #      ToniA      https://github.com/adafruit/Raw-IR-decoder-for-Arduino/pull/3/commits/887ed4204711c0b911571f3090b7fd066e93f006

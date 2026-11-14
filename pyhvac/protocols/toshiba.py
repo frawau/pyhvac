@@ -1,7 +1,7 @@
 #! /usr/bin/env python3
 # -*- coding:utf-8 -*-
 #
-# Plugin to generate Toshiba AC IR commands.
+# The Toshiba A/C IR protocol.
 #
 # Copyright (c) 2024 François Wautier
 #
@@ -209,7 +209,7 @@ TOSHIBA_AC_MODELS = (
     "RAS-25SKVP2-ND",
     "generic",
 )
-TOSHIBA_AC_CARRIER_MODELS = (  # carrier plugin
+TOSHIBA_AC_CARRIER_MODELS = (  # 0.1.x "carrier" plugin names (fixture tests)
     "42NQV060M2 / 38NYV060M2",
     "42NQV050M2 / 38NYV050M2",
     "42NQV035M2 / 38NYV035M2",

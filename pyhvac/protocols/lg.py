@@ -1,7 +1,7 @@
 #! /usr/bin/env python3
 # -*- coding:utf-8 -*-
 #
-# Plugin to generate LG AC IR commands as done by the AXB74515402 and others
+# The LG A/C IR protocol as done by the AXB74515402 and others
 #
 # Found the info about 4 bits somewhere on the  Internet...Can't find
 # it again. Apologies for not being able to thanks that person.
@@ -247,11 +247,17 @@ LG_AC_CAPABILITIES = {  # variant -> capabilities
 LG_AC_MODEL_VARIANT = {  # model -> remote variant (lg_ac_remote_model_t)
     "6711A20083V  remote": "LG6711A20083V",
     "TS-H122ERM1  remote": "LG6711A20083V",
-    "AG1BH09AW101": "GE6711AR2853M",  # ge plugin
-    "6711AR2853M Remote": "GE6711AR2853M",  # ge plugin
+    "AG1BH09AW101": "GE6711AR2853M",  # 0.1.x "ge" plugin names (fixture tests)
+    "6711AR2853M Remote": "GE6711AR2853M",  # 0.1.x "ge" plugin names (fixture tests)
 }
-LG_AC_MODELS = ("6711A20083V  remote", "TS-H122ERM1  remote")  # lg plugin
-LG_AC_GE_MODELS = ("AG1BH09AW101", "6711AR2853M Remote")  # ge plugin
+LG_AC_MODELS = (
+    "6711A20083V  remote",
+    "TS-H122ERM1  remote",
+)  # 0.1.x "lg" plugin names (fixture tests)
+LG_AC_GE_MODELS = (
+    "AG1BH09AW101",
+    "6711AR2853M Remote",
+)  # 0.1.x "ge" plugin names (fixture tests)
 
 
 class LgAcDevice(_LgWordDevice):
@@ -259,7 +265,7 @@ class LgAcDevice(_LgWordDevice):
     toggle word for the LG6711A20083V remote.
 
     The variant (an lg_ac_remote_model_t name: LG6711A20083V, or
-    GE6711AR2853M for the "ge" plugin's models) comes from the model
+    GE6711AR2853M for the GE models) comes from the model
     (LG_AC_MODEL_VARIANT) unless given, and picks the capabilities (the
     legacy LGv2 / LGv1 entities). The variants share the state word.
 
@@ -697,7 +703,7 @@ LG_NATIVE_VARIANTS = {
         actions={"diagnostic": "diagnostic"},
     ),
 }
-LG_NATIVE_MODELS = {  # model -> variant, as PluginObject.MODELS
+LG_NATIVE_MODELS = {  # model -> variant, 0.1.x names
     "generic": "generic",
     "inverter v": "inverter v",
     "dual inverter": "dual inverter",

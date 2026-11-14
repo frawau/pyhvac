@@ -3,13 +3,8 @@ served keeps resolving and encoding (consumers such as the IR HVAC Home
 Assistant integration store these names).
 
 A rename keeps the old name in ``brands.ALIASES``. At each release, add the
-new pairs to the fixture:
-
-    python -c "import json; from pyhvac import registry; \
-print(json.dumps(sorted([b, m] for b in registry.brands() \
-for m in registry.models(b)), indent=1))" > tests/fixtures/released_models.json
-
-(only ever adding pairs: never remove one from the fixture).
+new pairs to the fixture with ``python tools/released_models.py``, which
+only ever adds pairs: never remove one from the fixture.
 """
 
 import json
@@ -35,3 +30,18 @@ def test_released_model_still_works(brand, model):
     device = registry.get_device(brand, model)
     caps = device.capabilities
     device.encode(None, HvacState(True, caps.modes[0], caps.temperature.min))
+
+
+def test_fixture_is_sorted_and_unique():
+    assert RELEASED == [list(p) for p in sorted({tuple(p) for p in RELEASED})]
+
+
+def test_update_keeps_pairs_no_longer_listed():
+    from released_models import merge
+
+    old = [["Gone", "Old Name"], ["Kept", "A"]]
+    assert merge(old, [("Kept", "A"), ("New", "B")]) == [
+        ["Gone", "Old Name"],
+        ["Kept", "A"],
+        ["New", "B"],
+    ]

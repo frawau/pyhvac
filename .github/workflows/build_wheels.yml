@@ -36,3 +36,16 @@ jobs:
           name: dist
           path: dist
       - uses: pypa/gh-action-pypi-publish@release/v1
+
+  notify_irhvac:
+    needs: [upload_pypi]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    steps:
+      - name: Tell IR HVAC to follow this release
+        env:
+          GH_TOKEN: ${{ secrets.IRHVACHA_DISPATCH_TOKEN }}
+        run: |
+          gh api repos/frawau/irhvacha/dispatches \
+            -f event_type=pyhvac-release \
+            -F 'client_payload[version]=${{ github.event.release.tag_name }}'

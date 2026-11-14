@@ -108,7 +108,7 @@ The full old -> new name table is in
 
 ## Supported models
 
-- **AEG**: Chillflex Pro AXP26U338CW
+- **AEG**: Chillflex Pro AXP26U338CW, Chillflex Pro AXP26U558HW, Chillflex Pro AXP34U338CW
 - **Airspool**: AIRSPOOL protocol (remote), Mini-split
 - **Airton**: AIRTON protocol (remote), RD1A1 (remote), SMVH09B-2A2A3NH
 - **Airwell**: AIRWELL protocol (remote), DC Series, RC04 (remote), RC08B (remote), RC08W (remote)

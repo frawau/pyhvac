@@ -24,11 +24,13 @@ Breaking: new API, pure Python.
   "smash 2" never sent powerful.
 - Removed: Hitachi "PC-LH3B" and "generic 3" (HITACHI_AC3: 0.1.x sent
   nothing for them); Sharp "generic" (it never produced a valid command).
-- More models: 121 brands and 687 models and remotes (82 brands and 404
+- More models: 121 brands and 689 models and remotes (82 brands and 404
   rows before the SmartIR import), mostly from the SmartIR community's
   learned climate codes. A SmartIR file becomes a pyhvac row only when a
   pyhvac protocol generates its codes; pyhvac ships and fetches no SmartIR
   data.
+- AEG Chillflex Pro AXP26U558HW (verified on a unit by ha-aeg-infrared)
+  and AXP34U338CW, both Electra like the AXP26U338CW.
 - New protocol variants found in those captures: Coolix 16C and quiet;
   Electra aux (AUX-family remotes); Gree YAW1F-wifi, YAW1F-0 and YX1FSF-H;
   Kelon dry-grade and 16C; Midea RG57 and RG57-F (whole °F on the wire);

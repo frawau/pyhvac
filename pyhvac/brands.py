@@ -80,6 +80,10 @@ from .protocols.whirlpool import WhirlpoolAcDevice
 
 MODELS = (
     ("AEG", "Chillflex Pro AXP26U338CW", "unit", ElectraAcDevice, None),
+    # Verified on a unit by the ha-aeg-infrared integration (2026).
+    ("AEG", "Chillflex Pro AXP26U558HW", "unit", ElectraAcDevice, None),
+    # Same line as the AXP26U338CW; not verified on a unit.
+    ("AEG", "Chillflex Pro AXP34U338CW", "unit", ElectraAcDevice, None),
     ("Airspool", "AIRSPOOL protocol", "remote", AirspoolDevice, None),
     ("Airspool", "Mini-split", "unit", AirspoolDevice, None),
     ("Airton", "AIRTON protocol", "remote", AirtonDevice, None),

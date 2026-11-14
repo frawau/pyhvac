@@ -6,15 +6,21 @@ setpoint, fan, swing, features); it returns the IR signal, ready for a
 Broadlink (or any IR blaster that takes Pronto or raw timings). It decodes
 those signals too.
 
-It covers 416 models from 77 brands. Most protocols were ported from
-[IRremoteESP8266](https://github.com/crankyoldgit/IRremoteESP8266) and checked
-against recordings of what that library sent; the others are pyhvac's own.
+It covers 689 models and remotes from 121 brands. Most protocols were ported
+from [IRremoteESP8266](https://github.com/crankyoldgit/IRremoteESP8266) and
+checked against recordings of what that library sent; the others are
+pyhvac's own.
 
 Credits for the protocol work go to:
  - Scott Kyle https://gist.github.com/appden/42d5272bf128125b019c45bc2ed3311f
  - mat_fr https://www.instructables.com/id/Reverse-engineering-of-an-Air-Conditioning-control/
  - user two, mathieu, vincent https://www.analysir.com/blog/2014/12/27/reverse-engineering-panasonic-ac-infrared-protocol/
  - all the people who contributed to https://github.com/crankyoldgit/IRremoteESP8266
+ - SmartIR https://github.com/smartHomeHub/SmartIR and all the people who
+   contributed its climate captures: they were the evidence for many models
+   and protocol variants (pyhvac ships none of their files)
+ - quadjojo's ha-aeg-infrared https://github.com/quadjojo/ha-aeg-infrared,
+   for verifying the AEG Chillflex Pro AXP26U558HW on a unit
 
 ## Installation
 

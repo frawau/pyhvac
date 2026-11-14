@@ -1,2 +1,3 @@
-include *.txt setup.cfg
-recursive-include *.txt *.py
+prune tests
+prune tools
+prune docs

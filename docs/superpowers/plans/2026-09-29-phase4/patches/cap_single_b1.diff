@@ -1,0 +1,1094 @@
+diff -ruN -x __pycache__ a/pyhvac/plugins/kelvinator.py b/pyhvac/plugins/kelvinator.py
+--- a/pyhvac/plugins/kelvinator.py	2026-09-29 14:46:17.000000000 +0700
++++ b/pyhvac/plugins/kelvinator.py	2026-09-29 14:51:44.957184734 +0700
+@@ -26,7 +26,7 @@
+ from dataclasses import dataclass
+ 
+ from .hvaclib import PulseBased, GenPluginObject
+-from ..choices import FAN_3, ON_OFF, SWING, SWING_V_ANGLES
++from ..choices import FAN_5, ON_OFF, SWING, SWING_V_ANGLES
+ from ..device import Device
+ from ..fields import Checksums, Copy, Field, Joined, Layout
+ from ..ir.model import Frame, Protocol, PulseDistance, Section
+@@ -113,10 +113,12 @@
+     "fan": 3,
+     "heat": 4,
+ }
+-# IRac::kelvinator passes the stdAc fan speed unconverted ("No conversion
+-# needed"): kLow 2, kMedium 3, kHigh 4, of kKelvinatorFanAuto (0) to
+-# kKelvinatorFanMax (5).
+-KELVINATOR_FAN = {"auto": 0, "1": 2, "2": 3, "3": 4}
++# Fan: kKelvinatorFanAuto (0), then speeds kKelvinatorFanMin (1) to
++# kKelvinatorFanMax (5), as setFan takes them ("0 is auto, 1-5 is the
++# speed"). IRac::kelvinator passes the stdAc fan speed unconverted ("No
++# conversion needed"): kLow 2, kMedium 3, kHigh 4, so the legacy entity's
++# low/medium/high are "2"/"3"/"4" (FAN_5's labels).
++KELVINATOR_FAN = {"auto": 0, "1": 1, "2": 2, "3": 3, "4": 4, "5": 5}
+ KELVINATOR_BASIC_FAN_MAX = 3  # kKelvinatorBasicFanMax
+ KELVINATOR_SWING_V = {  # kKelvinatorSwingV*: canonical "1" highest .. "5" lowest
+     "off": 0b0000,
+@@ -217,8 +219,9 @@
+       "off"), with the requested setpoint, fan and settings;
+     - the requested setpoint is sent in every mode: setMode's 25 C for auto
+       and dry is overwritten by setTemp;
+-    - fan low/medium/high are the stdAc speeds 2/3/4 (Fan), BasicFan being
+-      the same capped at kKelvinatorBasicFanMax;
++    - fan "1".."5" is Fan 1..5 (kKelvinatorFanMin..kKelvinatorFanMax;
++      the legacy low/medium/high, IRac's stdAc speeds 2/3/4, are "2"/"3"/
++      "4"), BasicFan being the same capped at kKelvinatorBasicFanMax;
+     - cleaning (XFan) is cleared outside cool and dry (fixup), so also in
+       every off message;
+     - powerful is Turbo, purifier is IonFilter; the sleep and timer bits
+@@ -247,7 +250,7 @@
+     capabilities = Capabilities(
+         modes=("auto", "cool", "fan", "dry", "heat"),
+         temperature=TemperatureRange(16.0, 30.0),
+-        fan=FAN_3,
++        fan=FAN_5,  # kKelvinatorFanMin..kKelvinatorFanMax, and auto
+         swing_v=SWING_V_ANGLES,
+         swing_h=SWING,
+         features={
+diff -ruN -x __pycache__ a/pyhvac/plugins/mirage.py b/pyhvac/plugins/mirage.py
+--- a/pyhvac/plugins/mirage.py	2026-09-29 14:46:17.000000000 +0700
++++ b/pyhvac/plugins/mirage.py	2026-09-29 14:52:41.115127627 +0700
+@@ -28,7 +28,7 @@
+ from ..fields import Field, Layout, NibbleSum
+ from ..ir.model import Frame, Protocol, PulseDistance, Section
+ from ..choices import FAN_3, ON_OFF, SWING, SWING_V_ANGLES
+-from ..state import Capabilities, TemperatureRange
++from ..state import Capabilities, Choice, TemperatureRange
+ 
+ try:
+     from ..irhvac import KKG9AC1, KKG29AC1
+@@ -231,8 +231,14 @@
+     MIRAGE_CHECKSUM,
+ )
+ 
++# KKG29AC1's SwingV is one bit: setSwingV sets it for every position but
++# kMirageAcSwingVOff, and getSwingV reads it back as kMirageAcSwingVAuto. The
++# fixed positions do nothing there, so the remote offers off and auto only
++# (auto, as KKG9AC1 names kMirageAcSwingVAuto).
++MIRAGE_KKG29AC1_SWING_V = Choice(("off", "auto"), {"off": "off", "auto": "auto"})
++
+ _MIRAGE_FEATURES = {"powerful": ON_OFF, "sleep": ON_OFF, "light": ON_OFF}
+-MIRAGE_CAPABILITIES = {  # remote variant -> the legacy entity (Miragev1 / v2)
++MIRAGE_CAPABILITIES = {  # remote variant -> what its layout can encode
+     "KKG9AC1": Capabilities(
+         modes=("cool", "fan", "dry", "heat"),
+         temperature=TemperatureRange(float(MIRAGE_MIN_TEMP), float(MIRAGE_MAX_TEMP)),
+@@ -244,7 +250,7 @@
+         modes=("cool", "fan", "dry", "heat"),
+         temperature=TemperatureRange(float(MIRAGE_MIN_TEMP), float(MIRAGE_MAX_TEMP)),
+         fan=FAN_3,
+-        swing_v=SWING_V_ANGLES,
++        swing_v=MIRAGE_KKG29AC1_SWING_V,
+         swing_h=SWING,
+         features={
+             **_MIRAGE_FEATURES,
+@@ -265,8 +271,8 @@
+ 
+     The variant (a mirage_ac_remote_model_t name: KKG9AC1 or KKG29AC1)
+     comes from the model (MIRAGE_MODEL_VARIANT) unless given; unknown models
+-    get KKG9AC1, IRMirageAc's default. It picks the capabilities (the legacy
+-    Miragev1 / Miragev2 entities) and the layout.
++    get KKG9AC1, IRMirageAc's default. It picks the capabilities and the
++    layout.
+ 
+     As IRac::mirage (fromCommon on a fresh object) sends it:
+     - an off message carries mode cool (convertMode's default, which IRac's
+@@ -274,8 +280,8 @@
+     - powerful sets Turbo in cool only (setTurbo);
+     - KKG9AC1: the vane position and the power share SwingAndPower (the
+       position, plus kMirageAcPowerOff when off);
+-    - KKG29AC1: SwingV is one bit, set for every position but off; purifier
+-      sets Filter.
++    - KKG29AC1: SwingV is one bit (swing_v off or auto); purifier sets
++      Filter.
+ 
+     ``previous`` matters for KKG29AC1 only, whose light and clean bits are
+     toggles (LightToggle_Kkg29ac1, CleanToggle). IRac::handleToggles sends
+diff -ruN -x __pycache__ a/pyhvac/plugins/tcl.py b/pyhvac/plugins/tcl.py
+--- a/pyhvac/plugins/tcl.py	2026-09-29 14:46:17.000000000 +0700
++++ b/pyhvac/plugins/tcl.py	2026-09-29 14:53:18.970728428 +0700
+@@ -138,7 +138,7 @@
+         ),
+         "health": Field.at(6, 4, 1),
+         "turbo": Field.at(6, 5, 1),
+-        # kTcl112AcTempMax - degrees (setTemp), whole degrees.
++        # kTcl112AcTempMax - whole degrees (setTemp); HalfDegree adds 0.5.
+         "temperature": Field.at(7, 0, 4, values={t: 31 - t for t in range(16, 32)}),
+         "fan": Field.at(  # kTcl112AcFan{Auto,Min,Low,Med,High}
+             8, 0, 3, values={"auto": 0, "1": 1, "2": 2, "3": 3, "4": 5}
+@@ -185,6 +185,8 @@
+     message:
+     - an off message carries mode auto (IRac passes mode "off", which
+       convertMode maps to its default, kTcl112AcAuto);
++    - the setpoint is kTcl112AcTempMin..kTcl112AcTempMax in half degrees:
++      Temp holds the whole degrees, HalfDegree the half (setTemp);
+     - powerful sets Turbo, and setTurbo (called after setFan and
+       setSwingVertical) forces kTcl112AcFanHigh and kTcl112AcSwingVOn;
+     - purifier sets Health; the Light bit is cleared when the light is on.
+@@ -212,8 +214,9 @@
+     PROTOCOL = TCL112AC
+     LAYOUTS = (TCL112AC_LAYOUT,)
+     capabilities = Capabilities(
+-        modes=("cool", "dry", "fan", "heat"),
+-        temperature=TemperatureRange(16.0, 31.0),
++        modes=("auto", "cool", "dry", "fan", "heat"),  # kTcl112Ac{Auto,...}
++        # kTcl112AcTempMin..kTcl112AcTempMax, 0.5 steps (HalfDegree)
++        temperature=TemperatureRange(TCL112AC_MIN, TCL112AC_MAX, (0, 5)),
+         fan=FAN_4,
+         swing_v=SWING_V_ANGLES,
+         swing_h=SWING,
+@@ -251,6 +254,7 @@
+             health=features["purifier"],
+             turbo=powerful,
+             temperature=min(max(int(target.temperature), TCL112AC_MIN), TCL112AC_MAX),
++            half_degree=target.temperature % 1 == 0.5,
+             # setTurbo(true) forces kTcl112AcFanHigh and kTcl112AcSwingVOn.
+             fan="4" if powerful else target.fan,
+             swing_v="auto" if powerful else target.swing_v,
+diff -ruN -x __pycache__ a/pyhvac/plugins/technibel.py b/pyhvac/plugins/technibel.py
+--- a/pyhvac/plugins/technibel.py	2026-09-29 14:46:17.000000000 +0700
++++ b/pyhvac/plugins/technibel.py	2026-09-29 15:02:26.121502997 +0700
+@@ -25,7 +25,7 @@
+ 
+ 
+ from .hvaclib import PulseBased, GenPluginObject
+-from ..choices import FAN_3, FAN_3_FIXED, ON_OFF, SWING
++from ..choices import FAN_3_FIXED, ON_OFF, SWING
+ from ..device import Device
+ from ..fields import Field, Layout, Sum8
+ from ..ir.model import Frame, Protocol, PulseDistance, Section
+@@ -120,55 +120,26 @@
+     checksum=Sum8(1, 5, 6, base=0),  # IRTechnibelAc::calcChecksum: ~sum + 1
+ )
+ 
+-TECHNIBEL_AC_CAPABILITIES = {  # variant -> the legacy entity (old class)
+-    "technibel": Capabilities(  # Technibel
+-        modes=("cool", "dry", "fan", "heat"),
+-        temperature=TemperatureRange(16.0, 31.0),
+-        fan=FAN_3_FIXED,
+-        swing_v=SWING,
+-        features={"sleep": ON_OFF},
+-    ),
+-    "teco": Capabilities(  # Teco
+-        modes=("auto", "cool", "dry", "fan", "heat"),
+-        temperature=TemperatureRange(16.0, 30.0),
+-        fan=FAN_3,
+-        swing_v=SWING,
+-        features={"sleep": ON_OFF, "light": ON_OFF},
+-    ),
+-}
+-# brand -> variant. By brand, not model: "generic" is a teco and a
+-# technibel model.
+-TECHNIBEL_AC_BRAND_VARIANT = {
+-    "technibel": "technibel",
+-    "teco": "teco",
+-    "alaska": "teco",
+-}
+-
+ 
+ class TechnibelAcDevice(Device):
+     """Technibel A/C (IRTechnibelAc, protocol TECHNIBEL_AC): one full-state
+-    word, sent by the technibel, teco and alaska plugins.
+-
+-    The variant ("technibel" or "teco", after the legacy Technibel and Teco
+-    classes) comes from the brand (TECHNIBEL_AC_BRAND_VARIANT) unless given,
+-    and picks the capabilities (the legacy entities). The variants send the
+-    same word.
++    word, sent by the technibel, teco and alaska plugins, all with the full
++    Technibel capabilities (the teco/alaska models' old "teco" variant, the
++    legacy Teco entity, is gone: phase 4 design, section 4).
+ 
+     As IRac::technibel sends it:
+     - an off message carries mode cool: convertMode maps IRac's mode "off"
+       (and auto, which the protocol lacks) to its default, kTechnibelAcCool;
+       the Power bit is clear, the other settings are sent as requested;
+-    - fan auto is kTechnibelAcFanLow (convertFan's default), and dry mode
+-      always sends kTechnibelAcFanLow (IRTechnibelAc::setFan's dry rule);
+-    - the setpoint is clamped to kTechnibelAcTempMinC..MaxC, in Celsius;
+-    - no timer; light (the teco entity's) sends nothing: the protocol has
+-      no light.
+-
+-    Legacy parity: the "teco" variant serves the old Teco class (teco.py,
+-    alaska.py), which always drove TECHNIBEL_AC. ir_Teco.h lists the Alaska
+-    SAC9010QC among TECO (a different 35-bit protocol, with a light), so
+-    those units probably expect TECO; the port keeps what 0.1.x sent until
+-    that is decided.
++    - the protocol has no fan auto (kTechnibelAcFan{Low,Medium,High}); dry
++      mode always sends kTechnibelAcFanLow (IRTechnibelAc::setFan's dry
++      rule);
++    - the setpoint is kTechnibelAcTempMinC..MaxC, in Celsius;
++    - no timer, and no light: the protocol has none.
++
++    ir_Teco.h lists the Alaska SAC9010QC among TECO (a different 35-bit
++    protocol, with a light), so those units may expect TECO; the teco and
++    alaska models keep sending TECHNIBEL_AC, as 0.1.x did.
+ 
+     ``previous`` is ignored: the word is a full state, the Fan/Temp/Timer
+     Change bits are never written by IRTechnibelAc (0 in C and in the real
+@@ -181,17 +152,20 @@
+ 
+     PROTOCOL = TECHNIBEL_AC
+     LAYOUTS = (TECHNIBEL_AC_LAYOUT,)
+-    VARIANT_CAPABILITIES = TECHNIBEL_AC_CAPABILITIES
+-    capabilities = TECHNIBEL_AC_CAPABILITIES["technibel"]
+-
+-    def __init__(self, brand, model, variant=None):
+-        super().__init__(brand, model)
+-        self.variant = variant or TECHNIBEL_AC_BRAND_VARIANT.get(brand, "technibel")
+-        if self.variant not in self.VARIANT_CAPABILITIES:
+-            raise ValueError(f"unknown Technibel A/C variant {self.variant!r}")
+-        self.capabilities = self.VARIANT_CAPABILITIES[self.variant]
++    capabilities = Capabilities(
++        modes=("cool", "dry", "fan", "heat"),  # kTechnibelAc{Cool,Dry,Fan,Heat}
++        # kTechnibelAcTempMinC..kTechnibelAcTempMaxC
++        temperature=TemperatureRange(
++            float(TECHNIBEL_AC_MIN_TEMP), float(TECHNIBEL_AC_MAX_TEMP)
++        ),
++        fan=FAN_3_FIXED,  # kTechnibelAcFan{Low,Medium,High}, no auto
++        swing_v=SWING,  # Swing
++        features={"sleep": ON_OFF},  # Sleep
++    )
+ 
+     def frames(self, previous, target, actions):
++        # Mode and fan auto are not offered (normalise never passes them);
++        # if given, they fall to convertMode's and convertFan's defaults.
+         mode = target.mode if target.power and target.mode != "auto" else "cool"
+         fan = "1" if target.fan == "auto" or mode == "dry" else target.fan
+         temp = min(
+diff -ruN -x __pycache__ a/pyhvac/plugins/whirlpool.py b/pyhvac/plugins/whirlpool.py
+--- a/pyhvac/plugins/whirlpool.py	2026-09-29 14:46:17.000000000 +0700
++++ b/pyhvac/plugins/whirlpool.py	2026-09-29 14:55:55.740799062 +0700
+@@ -166,6 +166,23 @@
+ WHIRLPOOL_AC_RANGE = {"DG11J13A": (18, 32), "DG11J191": (16, 30)}
+ 
+ 
++def _whirlpool_ac_capabilities(low, high):
++    return Capabilities(
++        modes=("auto", "cool", "dry", "fan", "heat"),  # kWhirlpoolAc*
++        temperature=TemperatureRange(float(low), float(high)),
++        fan=FAN_3,  # kWhirlpoolAcFan{Auto,Low,Medium,High}
++        swing_v=SWING,  # Swing1/Swing2
++        features={"light": ON_OFF, "sleep": ON_OFF, "powerful": ON_OFF},
++    )
++
++
++# Remote variant -> capabilities: the same but for the setpoint range.
++WHIRLPOOL_AC_CAPABILITIES = {
++    variant: _whirlpool_ac_capabilities(low, high)
++    for variant, (low, high) in WHIRLPOOL_AC_RANGE.items()
++}
++
++
+ WHIRLPOOL_AC_MODELS = {  # model -> remote variant (whirlpool_ac_remote_model_t)
+     "DG11J1-3A remote": "DG11J13A",
+     "DG11J1-04 remote": "DG11J13A",
+@@ -184,8 +201,8 @@
+     """Whirlpool DG11J1 remotes: full state, except that the power bit is a
+     toggle. The model picks the remote variant (MODELS: DG11J13A or
+     DG11J191, whirlpool_ac_remote_model_t), which sets J191 and the
+-    setpoint range (18-32 °C, or 16-30 °C for DG11J191; the entity keeps
+-    18-32 °C, as the legacy entity, and DG11J191 sends 31-32 °C as 30 °C).
++    setpoint range the capabilities offer: kWhirlpoolAcMinTemp..MaxTemp
++    (18-32 °C), or the same minus DG11J191's offset of 2 (16-30 °C).
+ 
+     Power: with ``previous`` the toggle bit is set only when the power
+     changes, as C does with a persistent IRac (IRac::handleToggles toggles
+@@ -218,19 +235,15 @@
+     # The Sum1 checksum spans the first two sections: one layout, 3 frames.
+     LAYOUTS = (Joined(WHIRLPOOL_AC_LAYOUT, 3),)
+     MODELS = WHIRLPOOL_AC_MODELS
+-    capabilities = Capabilities(
+-        modes=("auto", "cool", "dry", "fan", "heat"),
+-        temperature=TemperatureRange(18.0, 32.0),
+-        fan=FAN_3,
+-        swing_v=SWING,
+-        features={"light": ON_OFF, "sleep": ON_OFF, "powerful": ON_OFF},
+-    )
++    VARIANT_CAPABILITIES = WHIRLPOOL_AC_CAPABILITIES
++    capabilities = WHIRLPOOL_AC_CAPABILITIES["DG11J13A"]
+ 
+     def __init__(self, brand, model, variant=None):
+         super().__init__(brand, model)
+         self.variant = variant or self.MODELS.get(model, "DG11J13A")
+         if self.variant not in WHIRLPOOL_AC_RANGE:
+             raise ValueError(f"unknown Whirlpool variant {self.variant!r}")
++        self.capabilities = self.VARIANT_CAPABILITIES[self.variant]
+ 
+     def frames(self, previous, target, actions):
+         low, high = WHIRLPOOL_AC_RANGE[self.variant]
+diff -ruN -x __pycache__ a/tests/test_kelvinator_device.py b/tests/test_kelvinator_device.py
+--- a/tests/test_kelvinator_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_kelvinator_device.py	2026-09-29 14:52:28.352717168 +0700
+@@ -186,7 +186,7 @@
+     # power on, cool, 27 C, fan 1, XFan on.
+     values = KELVINATOR_LAYOUT.read(TYPICAL)
+     assert (values["power"], values["mode"], values["temp"]) == (1, "cool", 27)
+-    assert (values["fan"], values["basic_fan"], values["xfan"]) == (1, 1, 1)
++    assert (values["fan"], values["basic_fan"], values["xfan"]) == ("1", 1, 1)
+     # Every set bit is a named field or the skeleton's.
+     rebuilt = bytearray(KELVINATOR_LAYOUT.skeleton)
+     for name in KELVINATOR_LAYOUT.fields:
+@@ -210,17 +210,18 @@
+ def test_port_reproduces_the_irac_example():
+     # TestIRac.Kelvinator: cool, 19 C, fan medium, swing off, light, filter
+     # and clean on: "Fan: 3 (Medium) ... XFan: On, Ion: On, Light: On".
++    # kMedium is Fan 3: canonical "3" (FAN_5's "medium").
+     target = state(
+         True,
+         "cool",
+         19.0,
+-        fan="2",
++        fan="3",
+         features={"light": True, "purifier": True, "cleaning": True},
+     )
+     raw = data(target)
+     assert raw == bytes.fromhex("3903e05000000060" "3903e07000003090")
+     values = KELVINATOR_LAYOUT.read(raw)
+-    assert (values["mode"], values["temp"], values["fan"]) == ("cool", 19, "2")
++    assert (values["mode"], values["temp"], values["fan"]) == ("cool", 19, "3")
+     assert (values["xfan"], values["ion_filter"], values["light"]) == (1, 1, 1)
+     assert (values["turbo"], values["quiet"], values["swing_h"]) == (0, 0, "off")
+     assert values["swing_v"] == "off"
+@@ -268,11 +269,19 @@
+ 
+ @pytest.mark.parametrize("mode", MODES)
+ @pytest.mark.parametrize(
+-    "fan, raw, basic", [("auto", 0, 0), ("1", 2, 2), ("2", 3, 3), ("3", 4, 3)]
++    "fan, raw, basic",
++    [
++        ("auto", 0, 0),  # kKelvinatorFanAuto
++        ("1", 1, 1),  # kKelvinatorFanMin
++        ("2", 2, 2),
++        ("3", 3, 3),
++        ("4", 4, 3),
++        ("5", 5, 3),  # kKelvinatorFanMax
++    ],
+ )
+ def test_every_fan_level(mode, fan, raw, basic):
+-    # IRac passes the stdAc speed (kLow 2, kMedium 3, kHigh 4); setFan caps
+-    # BasicFan at kKelvinatorBasicFanMax.
++    # setFan: "0 is auto, 1-5 is the speed" (kKelvinatorFanMin..FanMax);
++    # it caps BasicFan at kKelvinatorBasicFanMax.
+     raw_data = data(state(True, mode, fan=fan))
+     assert KELVINATOR_LAYOUT.read_raw(raw_data, "fan") == raw
+     assert KELVINATOR_LAYOUT.read_raw(raw_data, "basic_fan") == basic
+@@ -382,14 +391,78 @@
+     assert isinstance(registry.get_device(brand, model), KelvinatorDevice)
+ 
+ 
+-@pytest.mark.parametrize("brand, model", ALL_MODELS)
+-def test_capabilities_match_the_legacy_entity(brand, model):
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.kelvinator import Kelvinator
++def test_fan_offers_the_five_documented_speeds():
++    # kKelvinatorFanAuto, then kKelvinatorFanMin (1) .. kKelvinatorFanMax (5).
++    fan = device().capabilities.fan
++    assert fan.values == ("auto", "1", "2", "3", "4", "5")
++    # The legacy entity's low/medium/high (the stdAc kLow/kMedium/kHigh that
++    # IRac passes unconverted, Fan 2/3/4) keep their meaning.
++    assert {fan.label(v): v for v in ("2", "3", "4")} == {
++        "low": "2",
++        "medium": "3",
++        "high": "4",
++    }
++
++
++# TestKelvinatorClass.MessageConstuction: setFan(1), cool, 27 C, SwingV off,
++# SwingH on, IonFilter and XFan on, Quiet, Light and Turbo off, as
++# IRsendTest records it.
++MESSAGE_CONSTRUCTION_WIRE = wire(
++    "f38000d50"
++    "m9010s4505"
++    "m680s1530m680s510m680s510m680s1530m680s1530m680s510m680s1530m680s510"
++    "m680s1530m680s1530m680s510m680s1530m680s510m680s510m680s510m680s510"
++    "m680s510m680s510m680s510m680s510m680s510m680s510m680s1530m680s1530"
++    "m680s510m680s510m680s510m680s510m680s1530m680s510m680s1530m680s510"
++    "m680s510m680s1530m680s510"
++    "m680s19975"
++    "m680s510m680s510m680s510m680s510m680s1530m680s510m680s510m680s510"
++    "m680s510m680s510m680s510m680s510m680s510m680s510m680s510m680s510"
++    "m680s510m680s510m680s510m680s510m680s510m680s510m680s510m680s510"
++    "m680s510m680s510m680s510m680s510m680s1530m680s1530m680s1530m680s1530"
++    "m680s39950"
++    "m9010s4505"
++    "m680s1530m680s510m680s510m680s1530m680s1530m680s510m680s1530m680s510"
++    "m680s1530m680s1530m680s510m680s1530m680s510m680s510m680s510m680s510"
++    "m680s510m680s510m680s510m680s510m680s510m680s510m680s1530m680s1530"
++    "m680s510m680s510m680s510m680s510m680s1530m680s1530m680s1530m680s510"
++    "m680s510m680s1530m680s510"
++    "m680s19975"
++    "m680s510m680s510m680s510m680s510m680s510m680s510m680s510m680s510"
++    "m680s510m680s510m680s510m680s510m680s510m680s510m680s510m680s510"
++    "m680s510m680s510m680s510m680s510m680s1530m680s510m680s510m680s510"
++    "m680s510m680s510m680s510m680s510m680s1530m680s1530m680s1530m680s1530"
++    "m680s39950"
++)
++
++
++def test_port_reproduces_the_fan_1_message_construction():
++    # Fan "1" (kKelvinatorFanMin), which the legacy entity could not send.
++    target = state(
++        True,
++        "cool",
++        27.0,
++        fan="1",
++        swing_h="swing",
++        features={"purifier": True, "cleaning": True},
++    )
++    signal = device().encode(None, target).signal
++    assert list(signal.pulses) == MESSAGE_CONSTRUCTION_WIRE
++    values = read(target)
++    assert (values["fan"], values["basic_fan"]) == ("1", 1)
++    # SendDataOnly's typical message is also fan 1: cool, 27 C, XFan on.
++    assert data(state(True, "cool", 27.0, fan="1", features={"cleaning": True})) == (
++        TYPICAL
++    )
++
+ 
+-    legacy = LegacyDevice(brand, model, Kelvinator)
+-    assert KelvinatorDevice(brand, model).capabilities == legacy.capabilities
++def test_fan_5_is_kelvinator_fan_max():
++    # TestKelvinatorClass.HumanReadable: setFan(kKelvinatorFanMax) reads
++    # "Fan: 5 (High)"; BasicFan is capped at kKelvinatorBasicFanMax.
++    values = read(state(True, "cool", 25.0, fan="5"))
++    assert (values["fan"], values["basic_fan"]) == ("5", 3)
++    raw = data(state(True, "cool", 25.0, fan="5"))
++    assert KELVINATOR_LAYOUT.read_raw(raw, "fan") == 5  # kKelvinatorFanMax
+ 
+ 
+ # States the oracle grid lacks: off in every mode with every feature, every
+diff -ruN -x __pycache__ a/tests/test_mirage_device.py b/tests/test_mirage_device.py
+--- a/tests/test_mirage_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_mirage_device.py	2026-09-29 14:53:05.290455683 +0700
+@@ -61,6 +61,21 @@
+ KKG29AC1_HEAT = bytes.fromhex("56740000120040000000000000001d")
+ KKG29AC1_COOL = bytes.fromhex("567200002300000000000000000019")
+ 
++# KKG29AC1's SwingV is one bit (IRMirageAc::setSwingV: SwingV = position !=
++# kMirageAcSwingVOff), so its capabilities offer swing_v off and auto only.
++# The legacy Miragev2 entity offered the five angles too; C sends each of
++# them as the auto bit, so a Miragev2 record's angle is read as "auto".
++KKG29AC1_ANGLES = ("90°", "60°", "45°", "30°", "0°")
++
++
++def adapt(record):
++    """The record as the port's capabilities read it (see KKG29AC1_ANGLES)."""
++    old = record["state"]
++    if record["class"] == "Miragev2" and old.get("swing") in KKG29AC1_ANGLES:
++        return {**record, "state": {**old, "swing": "auto"}}
++    return record
++
++
+ MODES = ("cool", "fan", "dry", "heat")
+ VARIANTS = ("KKG9AC1", "KKG29AC1")
+ LAYOUT = {"KKG9AC1": MIRAGE_KKG9AC1_LAYOUT, "KKG29AC1": MIRAGE_KKG29AC1_LAYOUT}
+@@ -91,7 +106,7 @@
+ @pytest.mark.parametrize("record", oracle_params("MIRAGE"))
+ def test_matches_c_library(record):
+     dev = device_for(record)
+-    assert_matches_oracle(dev, record, dev.LAYOUTS, DEFECTS)
++    assert_matches_oracle(dev, adapt(record), dev.LAYOUTS, DEFECTS)
+ 
+ 
+ @pytest.mark.parametrize("record, states", sequence_params("MIRAGE"))
+@@ -99,7 +114,7 @@
+     # KKG29AC1's light and clean toggles depend on the message before, which
+     # C's IRac keeps (IRac::handleToggles).
+     dev = device_for(record)
+-    assert_sequence_matches_c(dev, record, states, dev.LAYOUTS, DEFECTS)
++    assert_sequence_matches_c(dev, record, states, dev.LAYOUTS, DEFECTS, adapt=adapt)
+ 
+ 
+ def test_every_oracle_record_names_its_variant():
+@@ -109,7 +124,7 @@
+ 
+ 
+ def test_layout_round_trips_every_oracle_state():
+-    for record in load_oracle("MIRAGE"):
++    for record in map(adapt, load_oracle("MIRAGE")):
+         dev = device_for(record)
+         (main,) = dev.frames(None, state_from_record(dev, record["state"]), ())
+         layout = dev.LAYOUTS[0]
+@@ -156,7 +171,7 @@
+     for old in _extra_states(variant):
+         # One fresh C object per state: no toggle carries over.
+         (rec,) = c_sequence(record, [old])
+-        assert_matches_oracle(dev, rec, dev.LAYOUTS, DEFECTS)
++        assert_matches_oracle(dev, adapt(rec), dev.LAYOUTS, DEFECTS)
+ 
+ 
+ @pytest.mark.parametrize("variant", VARIANTS)
+@@ -322,13 +337,43 @@
+     assert layout.read_raw(off, "swing_power") == raw + 0x5F
+ 
+ 
+-@pytest.mark.parametrize("swing", ["off", "auto", "1", "2", "3", "4", "5"])
+-def test_kkg29ac1_swing_v_is_one_bit(swing):
+-    assert read("KKG29AC1", state("KKG29AC1", swing_v=swing))["swing_v"] == (
+-        swing != "off"
++@pytest.mark.parametrize("swing, bit", [("off", 0), ("auto", 1)])
++def test_kkg29ac1_swing_v_is_one_bit(swing, bit):
++    assert read("KKG29AC1", state("KKG29AC1", swing_v=swing))["swing_v"] == bit
++
++
++def test_kkg29ac1_offers_no_swing_v_position():
++    # Removed no-op: the fixed positions set the same SwingV bit as auto.
++    assert device("KKG29AC1").capabilities.swing_v.values == ("off", "auto")
++    # KKG9AC1's SwingAndPower holds every documented position.
++    assert device("KKG9AC1").capabilities.swing_v.values == (
++        "off",
++        "auto",
++        "1",
++        "2",
++        "3",
++        "4",
++        "5",
+     )
+ 
+ 
++@pytest.mark.parametrize("angle", KKG29AC1_ANGLES)
++def test_a_legacy_kkg29ac1_angle_is_sent_as_c_sends_it(angle):
++    # C (setSwingV on a KKG29AC1) sends every angle as the auto bit: the
++    # adapted record ("auto") is byte for byte the C record.
++    record = next(
++        r
++        for r in load_oracle("MIRAGE")
++        if r["class"] == "Miragev2"
++        and r["state"].get("swing") == angle
++        and r["state"].get("sleep") != "on"
++        and r["state"].get("hswing") != "on"
++    )
++    dev = device_for(record)
++    assert adapt(record)["state"]["swing"] == "auto"
++    assert_matches_oracle(dev, adapt(record), dev.LAYOUTS)
++
++
+ def test_kkg29ac1_power_bits():
+     assert read("KKG29AC1", state("KKG29AC1", True))["power"] is True
+     off = frame("KKG29AC1", state("KKG29AC1", False))
+@@ -516,15 +561,6 @@
+     )
+ 
+ 
+-def test_capabilities_match_the_legacy_entity():
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-
+-    for brand, model, cls in _legacy_classes():
+-        legacy = LegacyDevice(brand, model, cls)
+-        assert MirageDevice(brand, model).capabilities == legacy.capabilities, model
+-
+-
+ def _record(cls, **match):
+     return next(
+         r
+@@ -546,7 +582,7 @@
+     ],
+ )
+ def test_undeclared_deviation_is_reported(defect, cls, match):
+-    record = _record(cls, **match)
++    record = adapt(_record(cls, **match))
+     dev = device_for(record)
+     defects = [d for d in DEFECTS if d != defect]
+     with pytest.raises(AssertionError, match=defect.field):
+diff -ruN -x __pycache__ a/tests/test_samsung_ac_device.py b/tests/test_samsung_ac_device.py
+--- a/tests/test_samsung_ac_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_samsung_ac_device.py	2026-09-29 14:56:28.816528108 +0700
+@@ -512,13 +512,26 @@
+ 
+ 
+ @pytest.mark.parametrize("model", SAMSUNG_AC_MODELS)
+-def test_capabilities_match_the_legacy_entity(model):
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.samsung import Samsung
+-
+-    legacy = LegacyDevice("samsung", model, Samsung)
+-    assert device(model).capabilities == legacy.capabilities
++def test_capabilities_are_what_the_protocol_documents(model):
++    # The audit found nothing to add or remove: kSamsungAc{Auto,Cool,Dry,
++    # Fan,Heat}, kSamsungAcMinTemp..kSamsungAcMaxTemp, kSamsungAcFan{Auto,
++    # Low,Med,High} (Turbo is powerful), Swing V/H, Quiet, FanSpecial
++    # Powerful/Econo, Display, Ion, CleanToggle. Sleep (Sleep5/Sleep12) is
++    # a sleep timer, set only with the off timer (_setSleepTimer): deferred
++    # with the timers. Breeze (FanSpecial) has no feature name yet.
++    caps = device(model).capabilities
++    assert caps.modes == ("auto", "cool", "dry", "heat", "fan")
++    assert (caps.temperature.min, caps.temperature.max) == (16.0, 30.0)
++    assert caps.fan.values == ("auto", "1", "2", "3")
++    assert caps.swing_v.values == caps.swing_h.values == ("off", "swing")
++    assert set(caps.features) == {
++        "cleaning",
++        "quiet",
++        "powerful",
++        "economy",
++        "light",
++        "purifier",
++    }
+ 
+ 
+ def _record(**match):
+diff -ruN -x __pycache__ a/tests/test_tcl112ac_device.py b/tests/test_tcl112ac_device.py
+--- a/tests/test_tcl112ac_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_tcl112ac_device.py	2026-09-29 14:54:10.352237011 +0700
+@@ -91,6 +91,17 @@
+ # 16 C, fan auto, swing on, light on, TimerIndicator clear.
+ REAL_TEKNOPOINT = bytes([0x23, 0xCB, 0x26, 0x01, 0x00, 0x24, 0x03])
+ REAL_TEKNOPOINT += bytes([0x0F, 0x38, 0x00, 0x00, 0x00, 0x00, 0x83])
++# TestTcl112AcClass.Temperature's states (library test states, not
++# captures: TAC09CHSD, on, cool, fan auto, swing off, light on,
++# TimerIndicator clear): 16.5 C and 19.5 C (HalfDegree set), and its
++# "automode" state (mode kTcl112AcAuto, 24 C), whose Sum byte (0x48) is not
++# the sum of its bytes (0xC8): setRaw and toString do not check it.
++TEMP_16_5 = bytes([0x23, 0xCB, 0x26, 0x01, 0x00, 0x24, 0x03])
++TEMP_16_5 += bytes([0x0F, 0x00, 0x00, 0x00, 0x00, 0xA0, 0xEB])
++TEMP_19_5 = bytes([0x23, 0xCB, 0x26, 0x01, 0x00, 0x24, 0x03])
++TEMP_19_5 += bytes([0x0C, 0x00, 0x00, 0x00, 0x00, 0xA0, 0xE8])
++AUTO_MODE = bytes([0x23, 0xCB, 0x26, 0x01, 0x00, 0x24, 0x08])
++AUTO_MODE += bytes([0x07, 0x00, 0x00, 0x00, 0x00, 0x80, 0x48])
+ 
+ 
+ def device(model=V1, plugin="tcl"):
+@@ -308,11 +319,14 @@
+     [
+         (dict(temperature=23.0), V1, REAL_744),
+         (dict(temperature=16.0, swing_v="auto"), V2, REAL_TEKNOPOINT),
++        (dict(temperature=16.5), V1, TEMP_16_5),
++        (dict(temperature=19.5), V1, TEMP_19_5),
+     ],
+ )
+ def test_port_reproduces_real_captures_but_timer_indicator(target, model, capture):
+-    # Both captures have TimerIndicator clear; IRac never calls the timer
+-    # setters, so it keeps stateReset's 1 (as the oracle records carry).
++    # These states have TimerIndicator clear; IRac never calls the timer
++    # setters, so it keeps stateReset's 1 (as the oracle records carry). The
++    # half-degree states (new setpoints) are the library's own test states.
+     target = state(model=model, features={"light": True}, **target)
+     ours = bytearray(frames(target, model=model)[-1].data)
+     assert TCL112AC_LAYOUT.read(ours)["timer_indicator"] == 1
+@@ -340,9 +354,11 @@
+ 
+ 
+ @pytest.mark.parametrize(
+-    "mode, raw", [("cool", 3), ("dry", 2), ("fan", 7), ("heat", 1)]
++    "mode, raw", [("auto", 8), ("cool", 3), ("dry", 2), ("fan", 7), ("heat", 1)]
+ )
+ def test_mode_uses_its_documented_value(mode, raw):
++    # kTcl112Ac{Auto,Cool,Dry,Fan,Heat}; auto is new (the legacy entity had
++    # none).
+     assert TCL112AC_LAYOUT.read_raw(frames(state(True, mode))[-1].data, "mode") == raw
+ 
+ 
+@@ -366,6 +382,44 @@
+ def test_setpoint_is_clamped_to_16_31():
+     assert read(state(temperature=10.0))["temperature"] == 16
+     assert read(state(temperature=40.0))["temperature"] == 31
++    assert read(state(temperature=40.0))["half_degree"] == 0  # no 31.5
++
++
++def test_capabilities_offer_auto_and_half_degrees():
++    caps = device().capabilities
++    assert caps.modes == ("auto", "cool", "dry", "fan", "heat")  # kTcl112AcAuto
++    # kTcl112AcTempMin..kTcl112AcTempMax, HalfDegree: 0.5 steps.
++    assert (caps.temperature.min, caps.temperature.max) == (16.0, 31.0)
++    assert caps.temperature.decimals == (0, 5)
++    assert caps.temperature.snap(20.3) == 20.5
++    assert caps.temperature.snap(31.5) == 31.0
++
++
++@pytest.mark.parametrize("model", [V1, V2])
++@pytest.mark.parametrize("t", [16 + n / 2 for n in range(31)])
++def test_every_half_degree_setpoint(model, t):
++    # setTemp: Temp = kTcl112AcTempMax - whole degrees, HalfDegree the half.
++    data = frames(state(temperature=t, model=model), model=model)[-1].data
++    assert data[7] == 31 - int(t)
++    assert TCL112AC_LAYOUT.read(data)["half_degree"] == (t % 1 == 0.5)
++
++
++def test_port_reproduces_the_auto_mode_state_but_its_sum():
++    target = state(True, "auto", 24.0, features={"light": True})
++    ours = bytearray(frames(target)[-1].data)
++    TCL112AC_LAYOUT.write_raw(ours, "timer_indicator", 0)
++    TCL112AC_LAYOUT.checksum.apply(ours)
++    assert bytes(ours[:13]) == AUTO_MODE[:13]
++    assert ours[13] == sum(AUTO_MODE[:13]) & 0xFF == 0xC8
++
++
++@pytest.mark.parametrize("model", [V1, V2])
++@pytest.mark.parametrize("power", [True, False])
++def test_auto_mode_is_sent(model, power):
++    # kTcl112AcAuto: an off message is auto anyway (convertMode's default).
++    values = read(state(power, "auto", 22.0, model=model, fan="2"), model=model)
++    assert (values["mode"], values["power"]) == ("auto", int(power))
++    assert (values["temperature"], values["fan"]) == (22, "2")
+ 
+ 
+ @pytest.mark.parametrize(
+@@ -482,17 +536,6 @@
+     assert dev.variant == PLUGIN_MODELS[plugin][model]
+ 
+ 
+-@pytest.mark.parametrize("plugin, model", SERVED)
+-def test_capabilities_match_the_legacy_entity(plugin, model):
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins import tcl
+-
+-    cls = getattr(tcl, LEGACY_CLASS[PLUGIN_MODELS[plugin][model]])
+-    legacy = LegacyDevice(plugin, model, cls)
+-    assert Tcl112AcDevice(plugin, model).capabilities == legacy.capabilities
+-
+-
+ def _record(cls, **match):
+     return next(
+         r
+diff -ruN -x __pycache__ a/tests/test_technibel_ac_device.py b/tests/test_technibel_ac_device.py
+--- a/tests/test_technibel_ac_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_technibel_ac_device.py	2026-09-29 14:55:30.975596722 +0700
+@@ -7,7 +7,6 @@
+ from pyhvac.plugins.technibel import (
+     TECHNIBEL_AC,
+     TECHNIBEL_AC_ALASKA_MODELS,
+-    TECHNIBEL_AC_CAPABILITIES,
+     TECHNIBEL_AC_LAYOUT,
+     TECHNIBEL_AC_MODELS,
+     TECHNIBEL_AC_RESET_STATE,
+@@ -79,17 +78,29 @@
+     return device(record["plugin"], record["model"])
+ 
+ 
++def adapt(record):
++    """The record as the Technibel capabilities read it. The legacy Teco
++    entity (teco, alaska) offered fan auto, which the protocol lacks: C sends
++    it as kTechnibelAcFanLow (IRTechnibelAc::convertFan's default), which is
++    what the record's "low" stands for. Its mode auto (convertMode's default,
++    kTechnibelAcCool) and light (no field) need nothing: normalise sends
++    cool and drops light."""
++    if record["state"].get("fan") == "auto":
++        return {**record, "state": {**record["state"], "fan": "low"}}
++    return record
++
++
+ # ------------------------------------------------------------------ oracle
+ 
+ 
+ @pytest.mark.parametrize("record", oracle_params("TECHNIBEL_AC"))
+ def test_matches_c_library(record):
+     dev = record_device(record)
+-    assert_matches_oracle(dev, record, dev.LAYOUTS, DEFECTS)
++    assert_matches_oracle(dev, adapt(record), dev.LAYOUTS, DEFECTS)
+ 
+ 
+ def test_layout_round_trips_every_oracle_state():
+-    for record in load_oracle("TECHNIBEL_AC"):
++    for record in map(adapt, load_oracle("TECHNIBEL_AC")):
+         dev = record_device(record)
+         (main,) = dev.frames(None, state_from_record(dev, record["state"]), ())
+         values = TECHNIBEL_AC_LAYOUT.read(main.data)
+@@ -104,10 +115,20 @@
+         assert TECHNIBEL_AC_LAYOUT.checksum.check(main.data)
+ 
+ 
+-def test_oracle_records_use_the_variant_of_their_legacy_class():
+-    classes = {r["class"]: r["plugin"] for r in load_oracle("TECHNIBEL_AC")}
+-    assert device(classes["Teco"]).variant == "teco"
+-    assert device(classes["Technibel"]).variant == "technibel"
++def test_legacy_teco_fan_auto_is_c_s_fan_low():
++    # C sent the Teco entity's fan auto as kTechnibelAcFanLow: each fan-auto
++    # record's pulses are those of the same state with fan low.
++    records = load_oracle("TECHNIBEL_AC")
++    by_state = {
++        (r["plugin"], r["model"], tuple(sorted(r["state"].items()))): r["pulses"]
++        for r in records
++    }
++    autos = [r for r in records if r["state"].get("fan") == "auto"]
++    assert autos and all(r["class"] == "Teco" for r in autos)
++    for r in autos:
++        low = {**r["state"], "fan": "low"}
++        key = (r["plugin"], r["model"], tuple(sorted(low.items())))
++        assert by_state[key] == r["pulses"], r["state"]
+ 
+ 
+ # ------------------------------------------------------------ real captures
+@@ -196,7 +217,9 @@
+ 
+ 
+ def test_auto_is_sent_as_cool():
+-    # The teco entity's auto: convertMode's default, kTechnibelAcCool.
++    # No auto mode (removed from the old teco entity): normalise, like
++    # convertMode's default, sends kTechnibelAcCool.
++    assert "auto" not in device("teco").capabilities.modes
+     assert data(on("auto"), brand="teco") == data(on("cool"), brand="teco")
+ 
+ 
+@@ -207,10 +230,13 @@
+     assert TECHNIBEL_AC_LAYOUT.read_raw(word, "fan") == raw
+ 
+ 
++@pytest.mark.parametrize("brand", ["technibel", "teco", "alaska"])
+ @pytest.mark.parametrize("mode", ["auto", "cool", "fan", "heat"])
+-def test_fan_auto_is_sent_as_low(mode):
+-    # The teco entity's fan auto: convertFan's default, kTechnibelAcFanLow.
+-    assert read(on(mode, fan="auto"), brand="teco")["fan"] == "1"
++def test_fan_auto_is_sent_as_low(brand, mode):
++    # No fan auto (removed from the old teco entity): normalise, like
++    # convertFan's default, sends kTechnibelAcFanLow.
++    assert "auto" not in device(brand).capabilities.fan.values
++    assert read(on(mode, fan="auto"), brand=brand)["fan"] == "1"
+ 
+ 
+ @pytest.mark.parametrize("brand", ["technibel", "teco"])
+@@ -228,9 +254,11 @@
+     assert TECHNIBEL_AC_LAYOUT.read_raw(data(on(mode, float(t))), "temp") == t
+ 
+ 
+-def test_teco_setpoints_stop_at_30():
+-    # The teco entity's range; the word itself takes 16-31.
+-    assert read(on("cool", 31.0), brand="teco")["temp"] == 30
++@pytest.mark.parametrize("brand", ["teco", "alaska"])
++def test_teco_and_alaska_reach_31(brand):
++    # kTechnibelAcTempMaxC: the old teco entity stopped at 30.
++    assert device(brand).capabilities.temperature.max == 31.0
++    assert read(on("cool", 31.0), brand=brand)["temp"] == 31
+ 
+ 
+ @pytest.mark.parametrize("power", [True, False])
+@@ -245,11 +273,13 @@
+     assert read(on(sleep=False, power=power))["sleep"] == 0
+ 
+ 
+-def test_light_sends_nothing():
+-    # The teco entity offers light; TECHNIBEL_AC has no light field. (Legacy
+-    # parity: the Teco class drove TECHNIBEL_AC, though ir_Teco.h lists
+-    # its Alaska models under TECO, which has a light.)
+-    assert data(on(light=True), brand="teco") == data(on(light=False), brand="teco")
++@pytest.mark.parametrize("brand", ["technibel", "teco", "alaska"])
++def test_light_is_not_offered(brand):
++    # Removed no-op: the old teco entity offered light, but TECHNIBEL_AC has
++    # no light field. (ir_Teco.h lists the Alaska models under TECO, which
++    # has one; they keep sending TECHNIBEL_AC.)
++    assert "light" not in device(brand).capabilities.features
++    assert data(on(light=True), brand=brand) == data(on(light=False), brand=brand)
+ 
+ 
+ def test_unused_fields_stay_clear():
+@@ -287,22 +317,22 @@
+ # ------------------------------------------------------------------ variants
+ 
+ 
+-def test_variant_comes_from_the_brand():
+-    assert device("technibel", "generic").variant == "technibel"
+-    assert device("teco", "generic").variant == "teco"
+-    assert device("alaska", "SAC9010QC").variant == "teco"
+-    assert TechnibelAcDevice("teco", "generic", "technibel").variant == "technibel"
+-
+-
+-@pytest.mark.parametrize("variant", sorted(TECHNIBEL_AC_CAPABILITIES))
+-def test_variant_picks_the_capabilities(variant):
+-    dev = TechnibelAcDevice("technibel", "generic", variant)
+-    assert dev.capabilities == TECHNIBEL_AC_CAPABILITIES[variant]
+-
+-
+-def test_unknown_variant_is_rejected():
+-    with pytest.raises(ValueError, match="variant"):
+-        TechnibelAcDevice("technibel", "generic", "nope")
++@pytest.mark.parametrize("brand, model", SERVED)
++def test_every_model_has_the_full_technibel_capabilities(brand, model):
++    # The "teco" variant is gone: teco and alaska are plain Technibel.
++    caps = TechnibelAcDevice(brand, model).capabilities
++    assert caps == TechnibelAcDevice.capabilities
++    assert caps.modes == ("cool", "dry", "fan", "heat")  # kTechnibelAc*
++    assert (caps.temperature.min, caps.temperature.max) == (16.0, 31.0)
++    assert caps.fan.values == ("1", "2", "3")  # kTechnibelAcFan{Low,Med,High}
++    assert caps.swing_v.values == ("off", "swing")
++    assert set(caps.features) == {"sleep"}
++    assert not hasattr(TechnibelAcDevice(brand, model), "variant")
++
++
++def test_there_is_no_variant_parameter():
++    with pytest.raises(TypeError):
++        TechnibelAcDevice("teco", "generic", "teco")
+ 
+ 
+ # ------------------------------------------------------------ registration
+@@ -320,15 +350,6 @@
+     return Technibel if brand == "technibel" else Teco
+ 
+ 
+-@pytest.mark.parametrize("brand, model", SERVED)
+-def test_capabilities_match_the_legacy_entity(brand, model):
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-
+-    legacy = LegacyDevice(brand, model, _legacy_class(brand))
+-    assert device(brand, model).capabilities == legacy.capabilities
+-
+-
+ # -------------------------------------------------------------- the C path
+ 
+ 
+@@ -340,22 +361,21 @@
+ @pytest.mark.parametrize("brand", ["technibel", "teco"])
+ def test_matches_the_c_path_beyond_the_oracle_grid(brand):
+     # The oracle has no off message and only 16/23/30-31 C: check off in
+-    # every mode, every setpoint, every fan (dry included) and light
+-    # against the C path. Swing and sleep stay off (DEFECTS).
++    # every mode, every setpoint, every fan (dry included) against the C
++    # path. Swing and sleep stay off (DEFECTS). The legacy Teco entity
++    # clamps 31 C to 30, so its check stops at 30.
+     pytest.importorskip("pyhvac.irhvac")
+     from pyhvac.legacy import LegacyDevice
+ 
+     legacy = LegacyDevice(brand, "generic", _legacy_class(brand))
+     dev = device(brand)
+     caps = dev.capabilities
++    top = 30 if brand == "teco" else 31
+     for power in (True, False):
+         for mode in caps.modes:
+-            for t in range(16, 32):
++            for t in range(16, top + 1):
+                 for fan in caps.fan.values:
+-                    features = {"light": True} if "light" in caps.features else {}
+-                    target = HvacState(
+-                        power, mode, float(t), fan=fan, features=features
+-                    )
++                    target = HvacState(power, mode, float(t), fan=fan)
+                     theirs = _c_word(legacy.encode(None, target).signal.pulses)
+                     assert data(target, brand=brand) == theirs, target
+ 
+@@ -386,7 +406,9 @@
+ 
+ def test_undeclared_swing_deviation_is_reported():
+     record = next(
+-        r for r in load_oracle("TECHNIBEL_AC") if r["state"].get("swing") == "on"
++        r
++        for r in map(adapt, load_oracle("TECHNIBEL_AC"))
++        if r["state"].get("swing") == "on"
+     )
+     dev = record_device(record)
+     defects = [d for d in DEFECTS if d.field != "swing_v"]
+@@ -398,7 +420,7 @@
+ def test_undeclared_sleep_deviation_is_reported(cls):
+     record = next(
+         r
+-        for r in load_oracle("TECHNIBEL_AC")
++        for r in map(adapt, load_oracle("TECHNIBEL_AC"))
+         if r["class"] == cls and r["state"].get("sleep") == "on"
+     )
+     dev = record_device(record)
+@@ -408,7 +430,7 @@
+ 
+ 
+ def test_records_without_swing_or_sleep_need_no_defect():
+-    for record in load_oracle("TECHNIBEL_AC"):
++    for record in map(adapt, load_oracle("TECHNIBEL_AC")):
+         state = record["state"]
+         if state.get("swing") != "on" and state.get("sleep") != "on":
+             dev = record_device(record)
+@@ -416,6 +438,6 @@
+ 
+ 
+ def test_layouts_must_cover_every_frame():
+-    record = load_oracle("TECHNIBEL_AC")[0]
++    record = adapt(load_oracle("TECHNIBEL_AC")[0])
+     with pytest.raises(AssertionError, match="layout"):
+         assert_matches_oracle(record_device(record), record, (), DEFECTS)
+diff -ruN -x __pycache__ a/tests/test_voltas_device.py b/tests/test_voltas_device.py
+--- a/tests/test_voltas_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_voltas_device.py	2026-09-29 14:56:28.816451643 +0700
+@@ -380,13 +380,19 @@
+ 
+ 
+ @pytest.mark.parametrize("model", VOLTAS_MODELS)
+-def test_capabilities_match_the_legacy_entity(model):
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.voltas import PluginObject
+-
+-    legacy = LegacyDevice("voltas", model, PluginObject.MODELS[model])
+-    assert device(model).capabilities == legacy.capabilities
++def test_capabilities_are_what_the_protocol_documents(model):
++    # The audit found nothing to add or remove: kVoltas{Cool,Dry,Fan,Heat}
++    # (no auto), kVoltasMinTemp..kVoltasMaxTemp, kVoltasFan{Auto,Low,Med,
++    # High}, SwingV on/off (0b111/0b000), SwingH (Unknown only; 122LZF
++    # ignores setSwingH), Econo, Turbo, Light and Sleep bits.
++    caps = device(model).capabilities
++    assert caps.modes == ("cool", "dry", "fan", "heat")
++    assert (caps.temperature.min, caps.temperature.max) == (16.0, 30.0)
++    assert caps.fan.values == ("auto", "1", "2", "3")
++    assert caps.swing_v.values == ("off", "swing")
++    has_swing_h = VOLTAS_MODELS[model] == "Unknown"
++    assert (caps.swing_h is not None) == has_swing_h
++    assert set(caps.features) == {"economy", "powerful", "light", "sleep"}
+ 
+ 
+ def _record(model, **match):
+diff -ruN -x __pycache__ a/tests/test_whirlpool_ac_device.py b/tests/test_whirlpool_ac_device.py
+--- a/tests/test_whirlpool_ac_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_whirlpool_ac_device.py	2026-09-29 14:56:28.816392801 +0700
+@@ -391,9 +391,13 @@
+ @pytest.mark.parametrize(
+     "model, t, raw",
+     [
++        (V1, 16, 0),  # clamped to kWhirlpoolAcMinTemp
+         (V1, 18, 0),
+         (V1, 25, 7),
+         (V1, 32, 14),
++        # New: DG11J191 starts at 16C (kWhirlpoolAcMinTemp - 2).
++        (V2, 16, 0),
++        (V2, 17, 1),
+         (V2, 18, 2),
+         (V2, 25, 9),
+         (V2, 30, 14),
+@@ -558,14 +562,41 @@
+         assert WHIRLPOOL_AC_MODELS[model] == variant[cls.__name__]
+ 
+ 
++@pytest.mark.parametrize(
++    "model, low, high",
++    [
++        (V1, 18.0, 32.0),  # kWhirlpoolAcMinTemp..kWhirlpoolAcMaxTemp
++        (V2, 16.0, 30.0),  # the same, DG11J191's -2 offset (getTempOffset)
++    ],
++)
++def test_capabilities_offer_the_variants_setpoint_range(model, low, high):
++    caps = device(model).capabilities
++    assert (caps.temperature.min, caps.temperature.max) == (low, high)
++    assert caps.temperature.decimals == (0,)
++    # The rest is the same for both remotes.
++    assert caps.modes == ("auto", "cool", "dry", "fan", "heat")
++    assert caps.fan.values == ("auto", "1", "2", "3")
++    assert caps.swing_v.values == ("off", "swing")
++    assert caps.swing_h is None
++    assert set(caps.features) == {"light", "sleep", "powerful"}
++
++
+ @pytest.mark.parametrize("model", sorted(WHIRLPOOL_AC_MODELS))
+-def test_capabilities_match_the_legacy_entity(model):
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.whirlpool import PluginObject
++def test_every_model_gets_its_variants_capabilities(model):
++    low, high = {"DG11J13A": (18.0, 32.0), "DG11J191": (16.0, 30.0)}[
++        WHIRLPOOL_AC_MODELS[model]
++    ]
++    temperature = device(model).capabilities.temperature
++    assert (temperature.min, temperature.max) == (low, high)
++
+ 
+-    legacy = LegacyDevice("whirlpool", model, PluginObject.MODELS[model])
+-    assert device(model).capabilities == legacy.capabilities
++def test_dg11j191_normalises_31_and_32_to_30_as_c_clamps():
++    # _setTemp clamps to kWhirlpoolAcMaxTemp + offset: the legacy 31-32 C
++    # states (in the oracle) normalise to what C sent.
++    for t in (31.0, 32.0):
++        assert state(True, "cool", t, V2).temperature == 30.0
++    assert state(True, "cool", 16.0, V2).temperature == 16.0
++    assert state(True, "cool", 16.0, V1).temperature == 18.0
+ 
+ 
+ def _record(**match):

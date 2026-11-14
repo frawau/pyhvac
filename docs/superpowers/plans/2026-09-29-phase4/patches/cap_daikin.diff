@@ -1,0 +1,1026 @@
+diff -ruN a/pyhvac/plugins/daikin.py b/pyhvac/plugins/daikin.py
+--- a/pyhvac/plugins/daikin.py	2026-09-29 14:46:17.000000000 +0700
++++ b/pyhvac/plugins/daikin.py	2026-09-29 15:01:04.962438247 +0700
+@@ -28,12 +28,13 @@
+ ##
+ 
+ import struct
++from dataclasses import replace
+ 
+ from .hvaclib import HVAC, PulseBased, GenPluginObject, bit_reverse
+ from ..device import Device
+ from ..fields import Field, HighNibbleSum, Layout, NibbleSum, Sum8
+ from ..ir.model import Frame, Protocol, PulseDistance, Section
+-from ..choices import FAN_3, FAN_5, ON_OFF, SWING, SWING_V_ANGLES
++from ..choices import FAN_5, ON_OFF, SWING, SWING_V_AUTO_ANGLES
+ from ..state import Capabilities, Choice, TemperatureRange
+ 
+ DAIKIN_NATIVE = Protocol(
+@@ -469,9 +470,32 @@
+     "heat": 4,
+     "fan": 6,
+ }
+-# kDaikinFanAuto, and IRac's kLow/kMedium/kHigh (kDaikinFanMin, Med, Max - 1)
+-# as sent: the C fan value plus 2.
+-DAIKIN_FAN = {"auto": 0xA, "1": 3, "2": 5, "3": 6}
++# The fan field (setFan): kDaikinFanAuto, kDaikinFanQuiet, and speeds
++# kDaikinFanMin (1) .. kDaikinFanMax (5), sent as the speed plus 2. Quiet is
++# the slowest step ("1"), as convertFan maps kMin to it; the old
++# vocabulary's low/medium/high are what IRac sent for kLow/kMedium/kHigh
++# (kDaikinFanMin, kDaikinFanMed, kDaikinFanMax - 1).
++DAIKIN_FAN = {
++    "auto": 0xA,  # kDaikinFanAuto
++    "1": 0xB,  # kDaikinFanQuiet
++    "2": 3,  # speed 1, kDaikinFanMin
++    "3": 4,  # speed 2
++    "4": 5,  # speed 3, kDaikinFanMed
++    "5": 6,  # speed 4
++    "6": 7,  # speed 5, kDaikinFanMax
++}
++DAIKIN_FAN_CHOICE = Choice(
++    tuple(DAIKIN_FAN),
++    {
++        "auto": "auto",
++        "1": "quiet",
++        "2": "low",
++        "3": "medium-low",
++        "4": "medium",
++        "5": "high",
++        "6": "highest",
++    },
++)
+ DAIKIN_SWING = {"off": 0x0, "swing": 0xF}  # kDaikinSwingOff / kDaikinSwingOn
+ DAIKIN_SWING_BIT = {"off": 0, "swing": 1}  # Daikin64/Daikin128 SwingV bit
+ 
+@@ -517,6 +541,7 @@
+ }
+ DAIKIN2_SWING_H = {  # kDaikin2SwingH*
+     "off": 0xBF,
++    "auto": 0xBE,  # kDaikin2SwingHAuto, a.k.a. swing
+     "1": 0xA8,  # far left
+     "2": 0xA9,  # left
+     "3": 0xAA,  # middle
+@@ -529,6 +554,8 @@
+     bytes.fromhex("11da2700010040f0200c8004b01624000000d000"),
+     {
+         "power2": Field.at(6, 7, 1),  # inverse of power
++        # kDaikinLightBright when on, kDaikinLightOff when off (as IRac)
++        "light": Field.at(7, 4, 2, values={True: 1, False: 3}),
+         "mold": Field.at(8, 3, 1),
+         "swing_h": Field.at(17, 0, 8, values=DAIKIN2_SWING_H),
+         "swing_v": Field.at(18, 0, 4, values=DAIKIN2_SWING_V),
+@@ -552,6 +579,17 @@
+ DAIKIN2_MIN_COOL = 18.0  # kDaikin2MinCoolTemp
+ 
+ 
++def _raise_setpoint(state, mode, floor):
++    """``state`` with its setpoint raised to ``floor`` when it runs in ``mode``.
++
++    An off message carries mode auto on these protocols (see ``frames``), so
++    the floor only applies while the unit is on.
++    """
++    if state.power and state.mode == mode and state.temperature < floor:
++        return replace(state, temperature=floor)
++    return state
++
++
+ class Daikin2Device(Device):
+     """Daikin2 (ARC477A1): a full-state protocol, ``previous`` is ignored."""
+ 
+@@ -560,7 +598,7 @@
+     capabilities = Capabilities(
+         modes=DAIKIN_MODES,
+         temperature=TemperatureRange(10.0, 32.0),
+-        fan=FAN_3,
++        fan=DAIKIN_FAN_CHOICE,
+         swing_v=Choice(
+             ("off", "auto", "1", "2", "3", "4", "5", "6"),
+             {
+@@ -575,9 +613,10 @@
+             },
+         ),
+         swing_h=Choice(
+-            ("off", "1", "2", "3", "4", "5", "6"),
++            ("off", "auto", "1", "2", "3", "4", "5", "6"),
+             {
+                 "off": "off",
++                "auto": "auto",
+                 "1": "far left",
+                 "2": "close left",
+                 "3": "middle",
+@@ -587,10 +626,15 @@
+             },
+         ),
+         features=dict.fromkeys(
+-            ("economy", "powerful", "quiet", "cleaning", "purifier"), ON_OFF
++            ("economy", "powerful", "quiet", "cleaning", "purifier", "light"), ON_OFF
+         ),
+     )
+ 
++    def normalise(self, state):
++        # setTemp: kDaikin2MinCoolTemp in cool, kDaikinMinTemp otherwise.
++        state = super().normalise(state)
++        return _raise_setpoint(state, "cool", DAIKIN2_MIN_COOL)
++
+     def frames(self, previous, target, actions):
+         feat = target.features
+         # As the C path: an off message carries mode auto (IRac passes mode
+@@ -602,6 +646,7 @@
+             temperature = max(temperature, DAIKIN2_MIN_COOL)
+         first = DAIKIN2_FIRST.build(
+             power2=not target.power,
++            light=feat["light"],
+             mold=feat["cleaning"],
+             swing_h=target.swing_h,
+             swing_v=target.swing_v,
+@@ -692,7 +737,7 @@
+     capabilities = Capabilities(
+         modes=DAIKIN_MODES,
+         temperature=TemperatureRange(10.0, 32.0, (0, 5)),
+-        fan=FAN_3,
++        fan=DAIKIN_FAN_CHOICE,
+         swing_v=SWING,
+         swing_h=SWING,
+         features=dict.fromkeys(("economy", "powerful", "quiet", "cleaning"), ON_OFF),
+@@ -783,6 +828,7 @@
+         "fan": Field.at(1, 4, 4, values=DAIKIN64_FAN),
+         "temperature": Field.at(6, 0, 8, values=DAIKIN64_TEMPERATURE),
+         "swing_v": Field.at(7, 0, 1, values=DAIKIN_SWING_BIT),
++        "sleep": Field.at(7, 1, 1),
+         "power": Field.at(7, 3, 1),  # a toggle
+     },
+     checksum=HighNibbleSum(0, 7, 7, with_low=True),  # kDaikin64Checksum*
+@@ -808,6 +854,7 @@
+         temperature=TemperatureRange(16.0, 30.0),
+         fan=FAN_5,
+         swing_v=SWING,
++        features={"sleep": ON_OFF},  # Sleep bit (setSleep)
+     )
+ 
+     def frames(self, previous, target, actions):
+@@ -822,6 +869,7 @@
+             fan=target.fan,
+             temperature=int(target.temperature),
+             swing_v=target.swing_v,
++            sleep=target.features["sleep"],
+             power=toggle,
+         )
+         return [
+@@ -915,12 +963,15 @@
+ 
+ 
+ class Daikin128Device(Device):
+-    """Daikin128 (BRC52B63): full state, but power is a toggle bit.
++    """Daikin128 (BRC52B63): full state, but power and light are toggle bits.
+ 
+     The power bit asks the unit to flip its power, so it is set only when
+     the power changes: ``previous.power != target.power``. With no previous
+     state it is set for "on" and clear for "off", as IRac sends from a fresh
+-    object (no previous state to toggle against).
++    object (no previous state to toggle against). The light is the same kind
++    of toggle (IRac::handleToggles treats DAIKIN128's light as it treats its
++    power), sent on the wall-unit bit as IRac::daikin128 does
++    (setLightToggle(kDaikin128BitWall)).
+     """
+ 
+     PROTOCOL = DAIKIN128
+@@ -930,14 +981,17 @@
+         temperature=TemperatureRange(16.0, 30.0),
+         fan=FAN_5,
+         swing_v=SWING,
+-        features={"economy": ON_OFF},
++        # Econo and Sleep bits; the light is a toggle (Wall bit)
++        features={"economy": ON_OFF, "sleep": ON_OFF, "light": ON_OFF},
+     )
+ 
+     def frames(self, previous, target, actions):
++        light = target.features["light"]
+         if previous is None:
+             toggle = target.power
+         else:
+             toggle = previous.power != target.power
++            light = light != previous.features["light"]
+         # As the C path: an off message carries mode auto (IRac passes mode
+         # "off", which convertMode maps to auto).
+         mode = target.mode if target.power else "auto"
+@@ -949,12 +1003,13 @@
+             fan=fan,
+             temperature=target.temperature,
+             swing_v=target.swing_v,
++            sleep=target.features["sleep"],
+             power=toggle,
+         )
+         second = DAIKIN128_SECOND.build(
++            wall=light,
+             # setEcono: only in cool and heat
+-            economy=target.features["economy"]
+-            and mode in ("cool", "heat"),
++            economy=target.features["economy"] and mode in ("cool", "heat"),
+         )
+         return [
+             Frame("preamble", b""),
+@@ -1024,11 +1079,19 @@
+     capabilities = Capabilities(
+         modes=DAIKIN_MODES,
+         temperature=TemperatureRange(10.0, 32.0),
+-        fan=FAN_3,
++        fan=DAIKIN_FAN_CHOICE,
+         swing_v=SWING,
+         features=dict.fromkeys(("economy", "powerful", "quiet"), ON_OFF),
+     )
+ 
++    def normalise(self, state):
++        # setTemp: kDaikinMinTemp in heat, kDaikin2MinCoolTemp in every other
++        # mode (the union's 10 °C is heat only).
++        state = super().normalise(state)
++        if state.mode == "heat":
++            return state
++        return _raise_setpoint(state, state.mode, DAIKIN152_MIN_OTHER)
++
+     def frames(self, previous, target, actions):
+         feat = target.features
+         # As the C path: an off message carries mode auto (IRac passes mode
+@@ -1082,7 +1145,6 @@
+ 
+ DAIKIN160_SWING_V = {  # kDaikin160SwingV*; the header has no "off" value
+     "auto": 0xF,
+-    "off": 0xF,  # as the C path: setSwingVertical falls back to auto
+     "1": 0x5,  # highest
+     "2": 0x4,  # high
+     "3": 0x3,  # middle
+@@ -1090,6 +1152,11 @@
+     "5": 0x1,  # lowest
+ }
+ 
++# setFan: kDaikinFanAuto, speeds kDaikinFanMin (1) .. kDaikinFanMax (5) sent
++# as the speed plus 2. convertFan maps kMin..kMax to speeds 1..5, so the old
++# vocabulary's low/medium/high are speeds 2/3/4 (FAN_5's labels).
++DAIKIN160_FAN = {"auto": 0xA, "1": 3, "2": 4, "3": 5, "4": 6, "5": 7}
++
+ DAIKIN160_FIRST = Layout(
+     bytes.fromhex("11da27f00d0000"),
+     {},
+@@ -1102,7 +1169,7 @@
+         "mode": Field.at(5, 4, 3, values=DAIKIN_MODE),
+         "swing_v": Field.at(6, 4, 4, values=DAIKIN160_SWING_V),
+         "temperature": Field.at(9, 1, 6),  # whole °C - 10
+-        "fan": Field.at(10, 0, 4, values={"auto": 0xA, "1": 4, "2": 5, "3": 6}),
++        "fan": Field.at(10, 0, 4, values=DAIKIN160_FAN),
+     },
+     checksum=Sum8(0, 12, 12),
+ )
+@@ -1116,8 +1183,10 @@
+     capabilities = Capabilities(
+         modes=DAIKIN_MODES,
+         temperature=TemperatureRange(10.0, 32.0),
+-        fan=FAN_3,
+-        swing_v=SWING_V_ANGLES,
++        fan=FAN_5,
++        # No "off": the header documents kDaikin160SwingVAuto and five
++        # positions only (setSwingVertical sends anything else as auto).
++        swing_v=SWING_V_AUTO_ANGLES,
+     )
+ 
+     def frames(self, previous, target, actions):
+@@ -1254,6 +1323,29 @@
+ 
+ DAIKIN216_SWING = {"off": 0b0000, "swing": 0b1111}  # kDaikin216Swing{Off,On}
+ 
++# setFan as DAIKIN_FAN, but quiet (kDaikinFanQuiet) is the quiet feature
++# (setQuiet), not a fan step: speeds 1..5 are "1".."5".
++DAIKIN216_FAN = {
++    "auto": 0xA,  # kDaikinFanAuto
++    "1": 3,  # speed 1, kDaikinFanMin
++    "2": 4,
++    "3": 5,  # kDaikinFanMed
++    "4": 6,
++    "5": 7,  # kDaikinFanMax
++    "quiet": 0xB,  # kDaikinFanQuiet, written by the quiet feature
++}
++DAIKIN216_FAN_CHOICE = Choice(
++    ("auto", "1", "2", "3", "4", "5"),
++    {
++        "auto": "auto",
++        "1": "low",
++        "2": "medium-low",
++        "3": "medium",
++        "4": "high",
++        "5": "highest",
++    },
++)
++
+ DAIKIN216_FIRST = Layout(
+     bytes.fromhex("11da27f000000000"),
+     {},
+@@ -1267,7 +1359,7 @@
+         "temperature": Field.at(6, 1, 6, encode=int),  # whole °C
+         "swing_v": Field.at(8, 0, 4, values=DAIKIN216_SWING),
+         # kDaikinFan*, plus quiet as a fan value (kDaikinFanQuiet).
+-        "fan": Field.at(8, 4, 4, values={**DAIKIN_FAN, "quiet": 0xB}),
++        "fan": Field.at(8, 4, 4, values=DAIKIN216_FAN),
+         "swing_h": Field.at(9, 0, 4, values=DAIKIN216_SWING),
+         "powerful": Field.at(13, 0, 1),
+     },
+@@ -1283,7 +1375,7 @@
+     capabilities = Capabilities(
+         modes=DAIKIN_MODES,
+         temperature=TemperatureRange(10.0, 32.0),
+-        fan=FAN_3,
++        fan=DAIKIN216_FAN_CHOICE,
+         swing_v=SWING,
+         swing_h=SWING,
+         features=dict.fromkeys(("powerful", "quiet"), ON_OFF),
+@@ -1339,6 +1431,17 @@
+     mark_excess=0,
+ )
+ 
++DAIKIN312_SWING_V = {  # kDaikin312SwingV*
++    "off": 0x0,  # kDaikin312SwingVOff
++    "swing": 0xF,  # kDaikin312SwingVAuto, a.k.a. swing
++    "1": 0x1,  # highest
++    "2": 0x2,  # high
++    "3": 0x3,  # upper middle
++    "4": 0x4,  # lower middle
++    "5": 0x5,  # low
++    "6": 0x6,  # lowest
++}
++
+ # Skeleton bits the port never changes, as IRac::daikin312 sends them: beep
+ # off (Beep = 3, byte 7) and auto clean hardwired on (Clean, byte 14 bit 4).
+ DAIKIN312_FIRST = Layout(
+@@ -1356,7 +1459,7 @@
+         "power": Field.at(5, 0, 1),
+         "mode": Field.at(5, 4, 3, values=DAIKIN_MODE),
+         "temperature": Field.at(6, 0, 7),  # in half degrees
+-        "swing_v": Field.at(8, 0, 4, values=DAIKIN_SWING),
++        "swing_v": Field.at(8, 0, 4, values=DAIKIN312_SWING_V),
+         "fan": Field.at(8, 4, 4, values=DAIKIN_FAN),
+         "swing_h": Field.at(9, 0, 4, values=DAIKIN_SWING),
+         "powerful": Field.at(13, 0, 1),
+@@ -1377,8 +1480,24 @@
+     capabilities = Capabilities(
+         modes=DAIKIN_MODES,
+         temperature=TemperatureRange(10.0, 32.0, (0, 5)),
+-        fan=FAN_3,
+-        swing_v=SWING,
++        fan=DAIKIN_FAN_CHOICE,
++        # The positions carry Daikin2's labels: the same kDaikin*SwingV*
++        # values.
++        swing_v=Choice(
++            ("off", "swing", "1", "2", "3", "4", "5", "6"),
++            {
++                "off": "off",
++                "swing": "on",
++                "1": "ceiling",
++                "2": "90°",
++                "3": "60°",
++                "4": "45°",
++                "5": "30°",
++                "6": "0°",
++            },
++        ),
++        # Only off/swing: kDaikin312SwingH{Wide,LeftMax,...} are 8-bit
++        # values that do not fit the header's 4-bit SwingH field.
+         swing_h=SWING,
+         features=dict.fromkeys(
+             (
+@@ -1393,6 +1512,11 @@
+         ),
+     )
+ 
++    def normalise(self, state):
++        # setTemp: kDaikin312MinCoolTemp in cool, kDaikinMinTemp otherwise.
++        state = super().normalise(state)
++        return _raise_setpoint(state, "cool", DAIKIN312_MIN_COOL)
++
+     def frames(self, previous, target, actions):
+         feat = target.features
+         # As the C path: an off message carries mode auto (IRac passes mode
+diff -ruN a/tests/test_daikin128_device.py b/tests/test_daikin128_device.py
+--- a/tests/test_daikin128_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_daikin128_device.py	2026-09-29 15:01:04.050658592 +0700
+@@ -153,19 +153,39 @@
+     assert DAIKIN128_SECOND.read(second.data)["economy"] == 0
+ 
+ 
+-def test_registry_serves_the_port():
+-    for model in DAIKIN128_MODELS:
+-        assert isinstance(registry.get_device("daikin", model), Daikin128Device)
++@pytest.mark.parametrize("sleep", [False, True])
++def test_sleep_sets_the_documented_bit(sleep):
++    # Daikin128Protocol byte 7 bit 1 (Sleep, setSleep), in every mode.
++    for mode in ("auto", "dry", "cool", "heat", "fan"):
++        _, first, _ = device().frames(None, on(mode, features={"sleep": sleep}), ())
++        assert first.data[7] >> 1 & 1 == sleep
++        assert DAIKIN128_FIRST.read(first.data)["sleep"] == sleep
++
++
++def test_light_without_previous_follows_the_c_path():
++    # IRac::daikin128 from a fresh object: setLightToggle(light ?
++    # kDaikin128BitWall : 0), Wall = byte 9 bit 3, Ceiling (bit 0) never set.
++    for light in (False, True):
++        _, _, second = device().frames(None, on(features={"light": light}), ())
++        assert second.data[1] & 0b1001 == (0b1000 if light else 0)
++
++
++@pytest.mark.parametrize(
++    "was, now, toggle",
++    [(False, True, 1), (True, False, 1), (True, True, 0), (False, False, 0)],
++)
++def test_light_toggles_only_when_it_changes(was, now, toggle):
++    # IRac::handleToggles: result.light = desired.light ^ prev->light.
++    previous = on(features={"light": was})
++    target = on(temperature=20.0, features={"light": now})
++    _, _, second = device().frames(previous, target, ())
++    assert DAIKIN128_SECOND.read(second.data)["wall"] == toggle
++    assert DAIKIN128_SECOND.read(second.data)["ceiling"] == 0
+ 
+ 
+-def test_capabilities_match_the_legacy_entity():
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.daikin import Daikin128
+-
++def test_registry_serves_the_port():
+     for model in DAIKIN128_MODELS:
+-        legacy = LegacyDevice("daikin", model, Daikin128)
+-        assert device().capabilities == legacy.capabilities
++        assert isinstance(registry.get_device("daikin", model), Daikin128Device)
+ 
+ 
+ def _without(defect):
+diff -ruN a/tests/test_daikin152_device.py b/tests/test_daikin152_device.py
+--- a/tests/test_daikin152_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_daikin152_device.py	2026-09-29 14:56:22.219658094 +0700
+@@ -53,6 +53,65 @@
+     assert _read(HvacState(True, "heat", 10.0))["temperature"] == 10
+ 
+ 
++@pytest.mark.parametrize(
++    "mode, expected",
++    [("auto", 18.0), ("dry", 18.0), ("cool", 18.0), ("fan", 18.0), ("heat", 10.0)],
++)
++def test_normalise_reports_the_per_mode_floor(mode, expected):
++    # setTemp: kDaikinMinTemp (10) in heat, kDaikin2MinCoolTemp (18) in every
++    # other mode; the capabilities give the union (10..32).
++    assert device().normalise(HvacState(True, mode, 10.0)).temperature == expected
++
++
++def test_normalise_keeps_the_setpoint_of_an_off_state():
++    assert device().normalise(HvacState(False, "heat", 10.0)).temperature == 10.0
++
++
++# IRDaikin152::setFan: kDaikinFanAuto (0xA), kDaikinFanQuiet (0xB), and
++# kDaikinFanMin (1) .. kDaikinFanMax (5) sent as the speed plus 2.
++@pytest.mark.parametrize(
++    "fan,raw",
++    [("auto", 0xA), ("1", 0xB), ("2", 3), ("3", 4), ("4", 5), ("5", 6), ("6", 7)],
++)
++def test_every_fan_step_uses_its_documented_value(fan, raw):
++    dev = device()
++    state = dev.normalise(HvacState(True, "cool", 24.0, fan=fan))
++    assert state.fan == fan
++    _, main = dev.frames(None, state, ())
++    assert DAIKIN152_MAIN.read_raw(main.data, "fan") == raw
++
++
++def test_old_fan_labels_are_the_speeds_the_c_path_sent():
++    # convertFan (IRDaikinESP's): kLow -> kDaikinFanMin, kMedium ->
++    # kDaikinFanMed, kHigh -> kDaikinFanMax - 1.
++    labels = device().capabilities.fan.labels
++    assert (labels["2"], labels["4"], labels["5"]) == ("low", "medium", "high")
++
++
++# TestDecodeDaikin152.RealExample: "Power: Off, Mode: 0 (Auto), Temp: 26C,
++# Fan: 2 (UNKNOWN), Swing(V): Off, Powerful: Off, Quiet: On, Econo: Off".
++REAL_EXAMPLE = bytes(
++    [
++        0x11, 0xDA, 0x27, 0x00, 0x00, 0x00, 0x34, 0x00, 0x40, 0x00,
++        0x00, 0x00, 0x00, 0x20, 0x00, 0xC5, 0x40, 0x00, 0xAB,
++    ]
++)  # fmt: skip
++
++
++def test_real_capture_with_fan_speed_2():
++    dev = device()
++    state = dev.normalise(
++        HvacState(False, "auto", 26.0, fan="3", features={"quiet": True})
++    )
++    _, main = dev.frames(None, state, ())
++    # The remote also set byte 16 bit 6, a bit the header leaves unnamed;
++    # with it, the port's frame is the capture byte for byte.
++    ours = bytearray(main.data)
++    ours[16] |= 0x40
++    DAIKIN152_MAIN.checksum.apply(ours)
++    assert bytes(ours) == REAL_EXAMPLE
++
++
+ @pytest.mark.parametrize("mode", ["dry", "fan"])
+ def test_dry_and_fan_keep_the_requested_setpoint(mode):
+     # setMode's kDaikin152DryTemp/FanTemp are overwritten by IRac's setTemp.
+@@ -92,16 +151,6 @@
+         assert isinstance(registry.get_device("daikin", model), Daikin152Device)
+ 
+ 
+-def test_capabilities_match_the_legacy_entity():
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.daikin import Daikin152
+-
+-    for model in ("ARC480A5 remote", "Daikin152"):
+-        legacy = LegacyDevice("daikin", model, Daikin152)
+-        assert Daikin152Device("daikin", model).capabilities == legacy.capabilities
+-
+-
+ def test_undeclared_deviation_is_reported():
+     dev = device()
+     record = next(
+diff -ruN a/tests/test_daikin160_device.py b/tests/test_daikin160_device.py
+--- a/tests/test_daikin160_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_daikin160_device.py	2026-09-29 14:54:54.693855427 +0700
+@@ -27,15 +27,32 @@
+     return Daikin160Device("daikin", "ARC423A5 remote")
+ 
+ 
++def c_record(record):
++    """``record`` with the old vocabulary's swing "off" read as "auto".
++
++    The header has no SwingV off value and the port no longer offers one:
++    IRDaikin160::convertSwingV sent kOff as kDaikin160SwingVAuto, so the C
++    frame recorded for "off" is the frame for "auto".
++    """
++    state = dict(record["state"])
++    if state.get("swing") == "off":
++        state["swing"] = "auto"
++    return {**record, "state": state}
++
++
++def records():
++    return [c_record(r) for r in load_oracle("DAIKIN160")]
++
++
+ @pytest.mark.parametrize("record", oracle_params("DAIKIN160"))
+ def test_matches_c_library(record):
+     dev = device()
+-    assert_matches_oracle(dev, record, dev.LAYOUTS, DEFECTS)
++    assert_matches_oracle(dev, c_record(record), dev.LAYOUTS, DEFECTS)
+ 
+ 
+ def test_layouts_round_trip_every_oracle_state():
+     dev = device()
+-    for record in load_oracle("DAIKIN160"):
++    for record in records():
+         state = state_from_record(dev, record["state"])
+         first, second = dev.frames(None, state, ())
+         for layout, frame in ((DAIKIN160_FIRST, first), (DAIKIN160_SECOND, second)):
+@@ -68,15 +85,36 @@
+     assert DAIKIN160_SECOND.read(second.data)["temperature"] == temperature - 10
+ 
+ 
+-def test_swing_off_is_sent_as_auto():
+-    # The header has no "off" value; the C path falls back to auto (0xF).
++def test_swing_off_is_not_offered():
++    # The header documents kDaikin160SwingVAuto and five positions, no off:
++    # a state asking for off normalises to auto (0xF), which is what the C
++    # path sent for it.
++    dev = device()
++    assert "off" not in dev.capabilities.swing_v.values
++    state = dev.normalise(HvacState(True, "cool", 24.0, swing_v="off"))
++    assert state.swing_v == "auto"
++    _, second = dev.frames(None, state, ())
++    assert DAIKIN160_SECOND.read_raw(second.data, "swing_v") == 0xF
++
++
++# setFan: kDaikinFanAuto (0xA), kDaikinFanMin (1) .. kDaikinFanMax (5) sent as
++# the speed plus 2.
++@pytest.mark.parametrize(
++    "fan,raw", [("auto", 0xA), ("1", 3), ("2", 4), ("3", 5), ("4", 6), ("5", 7)]
++)
++def test_every_fan_speed_uses_its_documented_value(fan, raw):
+     dev = device()
+-    off = dev.frames(None, dev.normalise(HvacState(True, "cool", 24.0)), ())
+-    auto = dev.frames(
+-        None, dev.normalise(HvacState(True, "cool", 24.0, swing_v="auto")), ()
+-    )
+-    assert off == auto
+-    assert DAIKIN160_SECOND.read_raw(off[1].data, "swing_v") == 0xF
++    state = dev.normalise(HvacState(True, "cool", 24.0, fan=fan))
++    assert state.fan == fan
++    _, second = dev.frames(None, state, ())
++    assert DAIKIN160_SECOND.read_raw(second.data, "fan") == raw
++
++
++def test_old_fan_labels_are_the_speeds_the_c_path_sent():
++    # IRDaikin160::convertFan: kLow -> kDaikinFanMin + 1, kMedium -> + 2,
++    # kHigh -> kDaikinFanMax - 1.
++    labels = device().capabilities.fan.labels
++    assert (labels["2"], labels["3"], labels["4"]) == ("low", "medium", "high")
+ 
+ 
+ def test_swing_positions_follow_the_header():
+@@ -98,21 +136,11 @@
+         assert isinstance(registry.get_device("daikin", model), Daikin160Device)
+ 
+ 
+-@pytest.mark.parametrize("model", DAIKIN160_MODELS)
+-def test_capabilities_match_the_legacy_entity(model):
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.daikin import Daikin160
+-
+-    legacy = LegacyDevice("daikin", model, Daikin160)
+-    assert Daikin160Device("daikin", model).capabilities == legacy.capabilities
+-
+-
+ def test_undeclared_deviation_is_reported():
+     dev = device()
+     record = next(
+         r
+-        for r in load_oracle("DAIKIN160")
++        for r in records()
+         if r["state"]["swing"] == "60°" and r["state"]["mode"] != "off"
+     )
+     with pytest.raises(AssertionError, match="swing_v"):
+@@ -121,7 +149,7 @@
+ 
+ def test_layouts_must_cover_every_frame():
+     dev = device()
+-    record = load_oracle("DAIKIN160")[0]
++    record = records()[0]
+     with pytest.raises(AssertionError, match="layout"):
+         assert_matches_oracle(dev, record, dev.LAYOUTS[:1], DEFECTS)
+ 
+diff -ruN a/tests/test_daikin176_device.py b/tests/test_daikin176_device.py
+--- a/tests/test_daikin176_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_daikin176_device.py	2026-09-29 14:56:58.641983604 +0700
+@@ -87,16 +87,6 @@
+     assert isinstance(registry.get_device("daikin", model), Daikin176Device)
+ 
+ 
+-def test_capabilities_match_the_legacy_entity():
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.daikin import Daikin176
+-
+-    for model in DAIKIN176_MODELS:
+-        legacy = LegacyDevice("daikin", model, Daikin176)
+-        assert device().capabilities == legacy.capabilities
+-
+-
+ def test_undeclared_deviation_is_reported():
+     dev = device()
+     record = next(
+diff -ruN a/tests/test_daikin216_device.py b/tests/test_daikin216_device.py
+--- a/tests/test_daikin216_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_daikin216_device.py	2026-09-29 14:56:37.577542633 +0700
+@@ -83,6 +83,31 @@
+     assert (read["fan"], read["powerful"]) == ("2", 1)
+ 
+ 
++# IRDaikin216::setFan: kDaikinFanAuto (0xA), and kDaikinFanMin (1) ..
++# kDaikinFanMax (5) sent as the speed plus 2. kDaikinFanQuiet stays the quiet
++# feature (setQuiet), not a fan step.
++@pytest.mark.parametrize(
++    "fan,raw", [("auto", 0xA), ("1", 3), ("2", 4), ("3", 5), ("4", 6), ("5", 7)]
++)
++def test_every_fan_speed_uses_its_documented_value(fan, raw):
++    dev = device()
++    state = dev.normalise(HvacState(True, "cool", 24.0, fan=fan))
++    assert state.fan == fan
++    _, frame = dev.frames(None, state, ())
++    assert DAIKIN216_SECOND.read_raw(frame.data, "fan") == raw
++
++
++def test_quiet_is_not_a_fan_step():
++    assert "quiet" not in device().capabilities.fan.values
++
++
++def test_old_fan_labels_are_the_speeds_the_c_path_sent():
++    # convertFan (IRDaikinESP's): kLow -> kDaikinFanMin, kMedium ->
++    # kDaikinFanMed, kHigh -> kDaikinFanMax - 1.
++    labels = device().capabilities.fan.labels
++    assert (labels["1"], labels["3"], labels["4"]) == ("low", "medium", "high")
++
++
+ def test_swing_on_sets_the_documented_nibble():
+     read = second(HvacState(True, "cool", 24.0, swing_v="swing", swing_h="swing"))
+     assert (read["swing_v"], read["swing_h"]) == ("swing", "swing")
+@@ -95,15 +120,6 @@
+     assert isinstance(registry.get_device("daikin", model), Daikin216Device)
+ 
+ 
+-def test_capabilities_match_the_legacy_entity():
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.daikin import Daikin216
+-
+-    legacy = LegacyDevice("daikin", "ARC433B69 remote", Daikin216)
+-    assert device().capabilities == legacy.capabilities
+-
+-
+ def test_undeclared_deviation_is_reported():
+     dev = device()
+     record = next(
+diff -ruN a/tests/test_daikin2_device.py b/tests/test_daikin2_device.py
+--- a/tests/test_daikin2_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_daikin2_device.py	2026-09-29 14:55:34.732547395 +0700
+@@ -13,7 +13,7 @@
+     Defect("swing_v", "1", "2", "C sends 'high' for highest"),
+     Defect("swing_v", "2", "3", "C sends 'upper middle' for high"),
+     Defect("swing_v", "3", "auto", "C has no upper-middle case: sends auto"),
+-    Defect("swing_h", "off", 0xBE, "C has no off case: sends auto (0xBE)"),
++    Defect("swing_h", "off", "auto", "C has no off case: sends auto (0xBE)"),
+ )
+ 
+ 
+@@ -43,6 +43,118 @@
+     assert DAIKIN2_SECOND.read(second.data)["temperature"] == 18
+ 
+ 
++def test_normalise_reports_the_cool_minimum():
++    # setTemp: kDaikin2MinCoolTemp (18) in cool, kDaikinMinTemp (10) otherwise.
++    dev = device()
++    assert dev.normalise(HvacState(True, "cool", 12.0)).temperature == 18.0
++    assert dev.normalise(HvacState(True, "heat", 12.0)).temperature == 12.0
++    # Off messages carry mode auto: the requested setpoint is kept.
++    assert dev.normalise(HvacState(False, "cool", 12.0)).temperature == 12.0
++
++
++# setFan: kDaikinFanAuto (0xA), kDaikinFanQuiet (0xB), and kDaikinFanMin (1)
++# .. kDaikinFanMax (5) sent as the speed plus 2.
++@pytest.mark.parametrize(
++    "fan,raw",
++    [("auto", 0xA), ("1", 0xB), ("2", 3), ("3", 4), ("4", 5), ("5", 6), ("6", 7)],
++)
++def test_every_fan_step_uses_its_documented_value(fan, raw):
++    dev = device()
++    state = dev.normalise(HvacState(True, "cool", 24.0, fan=fan))
++    assert state.fan == fan
++    _, _, second = dev.frames(None, state, ())
++    assert DAIKIN2_SECOND.read_raw(second.data, "fan") == raw
++
++
++def test_old_fan_labels_are_the_speeds_the_c_path_sent():
++    # IRDaikinESP::convertFan: kLow -> kDaikinFanMin, kMedium -> kDaikinFanMed,
++    # kHigh -> kDaikinFanMax - 1.
++    labels = device().capabilities.fan.labels
++    assert (labels["2"], labels["4"], labels["5"]) == ("low", "medium", "high")
++
++
++def test_swing_h_auto_is_kdaikin2swinghauto():
++    dev = device()
++    state = dev.normalise(HvacState(True, "cool", 24.0, swing_h="auto"))
++    assert state.swing_h == "auto"
++    _, first, _ = dev.frames(None, state, ())
++    assert first.data[17] == 0xBE  # kDaikin2SwingHAuto
++
++
++@pytest.mark.parametrize("light,raw", [(False, 3), (True, 1)])
++def test_light_as_irac_sends_it(light, raw):
++    # Light (byte 7 bits 4-5): kDaikinLightBright (1) on, kDaikinLightOff (3)
++    # off, as IRac::daikin2 sets it.
++    dev = device()
++    state = dev.normalise(HvacState(True, "cool", 24.0, features={"light": light}))
++    _, first, _ = dev.frames(None, state, ())
++    assert (first.data[7] >> 4) & 0x03 == raw
++
++
++# Real captures (ir_Daikin_test.cpp). The port does not model the clock,
++# fresh air, beep or eye bits these remotes also sent, so every field the
++# layouts do model is compared.
++ISSUE_1035_ON = bytes(  # TestDaikin2Class.Issue1035, on_code
++    [
++        0x11, 0xDA, 0x27, 0x00, 0x01, 0x15, 0x43, 0x90, 0x29, 0x0C, 0x80, 0x04,
++        0xC0, 0x16, 0x24, 0x00, 0x00, 0xBE, 0xC1, 0x2D, 0x11, 0xDA, 0x27, 0x00,
++        0x00, 0x09, 0x2A, 0x00, 0xB0, 0x00, 0x00, 0x06, 0x60, 0x00, 0x00, 0xC1,
++        0x90, 0x60, 0x0C,
++    ]
++)  # fmt: skip
++ISSUE_908_FAN_MEDIUM = bytes(  # TestDaikin2ClassNew.Issue908, fanMedium
++    [
++        0x11, 0xDA, 0x27, 0x00, 0x01, 0x4A, 0x42, 0xB0, 0x28, 0x0C, 0x80, 0x04,
++        0xB0, 0x16, 0x24, 0x00, 0x00, 0xAA, 0xC3, 0x5E, 0x11, 0xDA, 0x27, 0x00,
++        0x00, 0x09, 0x3C, 0x00, 0x50, 0x00, 0x00, 0x06, 0x60, 0x00, 0x00, 0xC1,
++        0x90, 0x60, 0xBE,
++    ]
++)  # fmt: skip
++
++
++def assert_fields_match(ours, capture):
++    first, second = capture[:20], capture[20:]
++    assert DAIKIN2_FIRST.read(ours[1].data) == DAIKIN2_FIRST.read(first)
++    assert DAIKIN2_SECOND.read(ours[2].data) == DAIKIN2_SECOND.read(second)
++
++
++def test_real_capture_with_quiet_fan_light_and_swing_h_auto():
++    # "Power: On, Mode: 0 (Auto), Temp: 21C, Fan: 11 (Quiet), Swing(V): 1
++    # (Highest), Swing(H): 190 (Auto), Light: 1 (High), Mould: On, Purify: On"
++    dev = device()
++    state = dev.normalise(
++        HvacState(
++            True,
++            "auto",
++            21.0,
++            fan="1",
++            swing_v="1",
++            swing_h="auto",
++            features={"light": True, "cleaning": True, "purifier": True},
++        )
++    )
++    assert_fields_match(dev.frames(None, state, ()), ISSUE_1035_ON)
++
++
++def test_real_capture_with_fan_speed_3():
++    # "Power: On, Mode: 0 (Auto), Temp: 30C, Fan: 3 (Medium), Swing(V): 3
++    # (Upper Middle), Swing(H): 170 (Middle), Light: 3 (Off), Mould: On,
++    # Purify: On"
++    dev = device()
++    state = dev.normalise(
++        HvacState(
++            True,
++            "auto",
++            30.0,
++            fan="4",
++            swing_v="3",
++            swing_h="3",
++            features={"cleaning": True, "purifier": True},
++        )
++    )
++    assert_fields_match(dev.frames(None, state, ()), ISSUE_908_FAN_MEDIUM)
++
++
+ def test_off_clears_power_and_sets_power2():
+     dev = device()
+     _, first, second = dev.frames(
+@@ -56,15 +168,6 @@
+     assert isinstance(registry.get_device("daikin", "FTXZ25NV1B"), Daikin2Device)
+ 
+ 
+-def test_capabilities_match_the_legacy_entity():
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.daikin import Daikin2
+-
+-    legacy = LegacyDevice("daikin", "ARC477A1 remote", Daikin2)
+-    assert device().capabilities == legacy.capabilities
+-
+-
+ def test_undeclared_deviation_is_reported():
+     dev = device()
+     record = next(r for r in load_oracle("DAIKIN2") if "hswing" not in r["state"])
+diff -ruN a/tests/test_daikin312_device.py b/tests/test_daikin312_device.py
+--- a/tests/test_daikin312_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_daikin312_device.py	2026-09-29 14:57:13.090107610 +0700
+@@ -67,6 +67,49 @@
+     assert DAIKIN312_SECOND.read(second.data)["temperature"] == 36  # 18 °C
+ 
+ 
++def test_normalise_reports_the_cool_minimum():
++    # setTemp: kDaikin312MinCoolTemp (18) in cool, kDaikinMinTemp otherwise.
++    dev = device()
++    assert dev.normalise(HvacState(True, "cool", 12.5)).temperature == 18.0
++    assert dev.normalise(HvacState(True, "heat", 12.5)).temperature == 12.5
++    assert dev.normalise(HvacState(False, "cool", 12.5)).temperature == 12.5
++
++
++# setFan (as IRDaikinESP's): kDaikinFanAuto (0xA), kDaikinFanQuiet (0xB), and
++# kDaikinFanMin (1) .. kDaikinFanMax (5) sent as the speed plus 2.
++@pytest.mark.parametrize(
++    "fan,raw",
++    [("auto", 0xA), ("1", 0xB), ("2", 3), ("3", 4), ("4", 5), ("5", 6), ("6", 7)],
++)
++def test_every_fan_step_uses_its_documented_value(fan, raw):
++    _, _, second = frames(power=True, mode="cool", temperature=24.0, fan=fan)
++    assert DAIKIN312_SECOND.read_raw(second.data, "fan") == raw
++
++
++def test_old_fan_labels_are_the_speeds_the_c_path_sent():
++    # convertFan (IRDaikinESP's): kLow -> kDaikinFanMin, kMedium ->
++    # kDaikinFanMed, kHigh -> kDaikinFanMax - 1.
++    labels = device().capabilities.fan.labels
++    assert (labels["2"], labels["4"], labels["5"]) == ("low", "medium", "high")
++
++
++# kDaikin312SwingVOff (0x0), kDaikin312SwingVAuto a.k.a. swing (0xF), and
++# kDaikin312SwingVHighest (0x1) .. kDaikin312SwingVLowest (0x6).
++@pytest.mark.parametrize(
++    "swing_v,raw",
++    [("off", 0x0), ("swing", 0xF)] + [(str(n), n) for n in range(1, 7)],
++)
++def test_every_swing_v_position_uses_its_documented_value(swing_v, raw):
++    _, _, second = frames(power=True, mode="cool", temperature=24.0, swing_v=swing_v)
++    assert DAIKIN312_SECOND.read_raw(second.data, "swing_v") == raw
++
++
++def test_swing_h_has_no_positions():
++    # kDaikin312SwingH{Wide,LeftMax,...,RightMax} are 0xA3..0xAC, which do not
++    # fit the header's 4-bit SwingH field: only off and swing are offered.
++    assert device().capabilities.swing_h.values == ("off", "swing")
++
++
+ def test_off_clears_power_and_sets_power2():
+     _, first, second = frames(power=False, mode="cool", temperature=24.0)
+     assert DAIKIN312_SECOND.read(second.data)["power"] == 0
+@@ -112,16 +155,6 @@
+         assert isinstance(registry.get_device("daikin", model), Daikin312Device)
+ 
+ 
+-def test_capabilities_match_the_legacy_entity():
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.daikin import Daikin312
+-
+-    for model in DAIKIN312_MODELS:
+-        legacy = LegacyDevice("daikin", model, Daikin312)
+-        assert device().capabilities == legacy.capabilities
+-
+-
+ def test_undeclared_deviation_is_reported():
+     dev = device()
+     record = next(r for r in load_oracle("DAIKIN312") if "hswing" not in r["state"])
+diff -ruN a/tests/test_daikin64_device.py b/tests/test_daikin64_device.py
+--- a/tests/test_daikin64_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_daikin64_device.py	2026-09-29 14:56:58.641942075 +0700
+@@ -132,6 +132,16 @@
+     assert (read(swing)["swing_v"], read(still)["swing_v"]) == ("swing", "off")
+ 
+ 
++@pytest.mark.parametrize("sleep", [False, True])
++def test_sleep_sets_the_documented_bit(sleep):
++    # Daikin64Protocol byte 7 bit 1 (Sleep, setSleep).
++    dev = device()
++    state = dev.normalise(HvacState(True, "cool", 22.0, features={"sleep": sleep}))
++    _, main, _ = dev.frames(None, state, ())
++    assert main.data[7] >> 1 & 1 == sleep
++    assert DAIKIN64_LAYOUT.checksum.check(main.data)
++
++
+ def test_message_shape():
+     dev = device()
+     pulses = dev.encode(None, HvacState(True, "cool", 22.0)).signal.pulses
+@@ -145,16 +155,6 @@
+     assert isinstance(registry.get_device("daikin", model), Daikin64Device)
+ 
+ 
+-@pytest.mark.parametrize("model", DAIKIN64_MODELS)
+-def test_capabilities_match_the_legacy_entity(model):
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.daikin import Daikin64
+-
+-    legacy = LegacyDevice("daikin", model, Daikin64)
+-    assert Daikin64Device("daikin", model).capabilities == legacy.capabilities
+-
+-
+ def test_undeclared_deviation_is_reported():
+     dev = device()
+     record = next(r for r in load_oracle("DAIKIN64") if r["state"]["swing"] == "on")
+diff -ruN a/tests/test_daikin_arc_device.py b/tests/test_daikin_arc_device.py
+--- a/tests/test_daikin_arc_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_daikin_arc_device.py	2026-09-29 14:56:04.306268100 +0700
+@@ -104,19 +104,35 @@
+     assert data[8] & 0x0F == 0xF and data[9] & 0x0F == 0xF
+ 
+ 
+-def test_registry_serves_the_port():
+-    for model in DAIKIN_ARC_MODELS:
+-        assert isinstance(registry.get_device("daikin", model), DaikinArcDevice)
++# IRDaikinESP::setFan: kDaikinFanAuto (0xA), kDaikinFanQuiet (0xB), and
++# kDaikinFanMin (1) .. kDaikinFanMax (5) sent as the speed plus 2.
++@pytest.mark.parametrize(
++    "fan,raw",
++    [("auto", 0xA), ("1", 0xB), ("2", 3), ("3", 4), ("4", 5), ("5", 6), ("6", 7)],
++)
++def test_every_fan_step_uses_its_documented_value(fan, raw):
++    dev = device()
++    state = dev.normalise(HvacState(True, "cool", 24.0, fan=fan))
++    assert state.fan == fan
++    data = dev.frames(None, state, ())[3].data
++    assert DAIKIN_ARC_THIRD.read_raw(data, "fan") == raw
++
++
++def test_old_fan_labels_are_the_speeds_the_c_path_sent():
++    # IRDaikinESP::convertFan: kLow -> kDaikinFanMin, kMedium -> kDaikinFanMed,
++    # kHigh -> kDaikinFanMax - 1; kMin (quiet) is the slowest step.
++    labels = device().capabilities.fan.labels
++    assert (labels["1"], labels["2"], labels["4"], labels["5"]) == (
++        "quiet",
++        "low",
++        "medium",
++        "high",
++    )
+ 
+ 
+-def test_capabilities_match_the_legacy_entity():
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.daikin import Daikin
+-
++def test_registry_serves_the_port():
+     for model in DAIKIN_ARC_MODELS:
+-        legacy = LegacyDevice("daikin", model, Daikin)
+-        assert DaikinArcDevice("daikin", model).capabilities == legacy.capabilities
++        assert isinstance(registry.get_device("daikin", model), DaikinArcDevice)
+ 
+ 
+ def test_undeclared_deviation_is_reported():

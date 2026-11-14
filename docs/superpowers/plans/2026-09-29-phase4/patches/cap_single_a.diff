@@ -1,0 +1,1614 @@
+diff -ruN -x __pycache__ a/pyhvac/plugins/airton.py b/pyhvac/plugins/airton.py
+--- a/pyhvac/plugins/airton.py	2026-09-29 14:46:17.000000000 +0700
++++ b/pyhvac/plugins/airton.py	2026-09-29 14:52:44.441730995 +0700
+@@ -124,8 +124,11 @@
+     - economy is sent in cool only (setEcono);
+     - powerful sets Turbo and forces the fan to kAirtonFanMax (setTurbo);
+     - purifier is the Health bit;
+-    - Sleep stays clear (the entity has no sleep), and quiet sends nothing
+-      ("No Quiet setting available").
++    - sleep is the Sleep bit, cleared in auto and fan (setSleep: "Sleep not
++      available in fan or auto mode"), and so in off messages too.
++
++    The setpoint is kAirtonMinTemp..kAirtonMaxTemp (16-31 °C). Quiet is not
++    offered: the header has no quiet bit ("No Quiet setting available").
+ 
+     The real light captures in ir_Airton_test.cpp clear NotAutoOn and set
+     the unknown bit 5.3 in cool and dry; the port follows the C path there.
+@@ -140,15 +143,15 @@
+     LAYOUTS = (AIRTON_LAYOUT,)
+     capabilities = Capabilities(
+         modes=("auto", "cool", "fan", "dry", "heat"),
+-        temperature=TemperatureRange(16.0, 25.0),
++        temperature=TemperatureRange(16.0, 31.0),  # kAirtonMinTemp..MaxTemp
+         fan=FAN_5,
+         swing_v=SWING,
+         features={
+             "purifier": ON_OFF,
+             "powerful": ON_OFF,
+-            "quiet": ON_OFF,
+             "economy": ON_OFF,
+             "light": ON_OFF,
++            "sleep": ON_OFF,
+         },
+     )
+ 
+@@ -167,6 +170,8 @@
+             ),
+             swing_v=target.swing_v != "off",
+             econo=features["economy"] and mode == "cool",
++            # IRAirtonAc::setSleep: not available in fan or auto mode.
++            sleep=features.get("sleep", False) and mode not in ("auto", "fan"),
+             not_auto_on=mode != "auto" or not power,
+             heat_on=mode == "heat" and power,
+             health=features["purifier"],
+diff -ruN -x __pycache__ a/pyhvac/plugins/airwell.py b/pyhvac/plugins/airwell.py
+--- a/pyhvac/plugins/airwell.py	2026-09-29 14:46:17.000000000 +0700
++++ b/pyhvac/plugins/airwell.py	2026-09-29 14:53:37.778843784 +0700
+@@ -29,7 +29,7 @@
+ from ..device import Device
+ from ..fields import Field, Layout
+ from ..ir.model import Frame, Manchester as ManchesterBits, Protocol, Section
+-from ..choices import FAN_4
++from ..choices import FAN_3
+ from ..state import Capabilities, TemperatureRange
+ 
+ 
+@@ -82,14 +82,13 @@
+ AIRWELL_MIN_TEMP, AIRWELL_MAX_TEMP = 16, 30  # kAirwellMinTemp, kAirwellMaxTemp
+ AIRWELL_MODE = {"cool": 1, "heat": 2, "auto": 3, "dry": 4, "fan": 5}  # kAirwell*
+ AIRWELL_FAN_CODE = {"low": 0, "medium": 1, "high": 2, "auto": 3}  # kAirwellFan*
+-# canonical fan -> kAirwellFan*, as IRAirwellAc::convertFan maps it: the
+-# header has no speed below Low, so lowest (kMin) and low both send Low.
++# canonical fan -> kAirwellFan*: the header has three speeds and auto
++# (IRAirwellAc::convertFan maps both kMin and kLow to kAirwellFanLow).
+ AIRWELL_FAN_BY_LEVEL = {
+     "auto": "auto",
+-    "1": "low",  # kMin
+-    "2": "low",  # kLow
+-    "3": "medium",  # kMedium
+-    "4": "high",  # kHigh
++    "1": "low",  # kAirwellFanLow
++    "2": "medium",  # kAirwellFanMedium
++    "3": "high",  # kAirwellFanHigh
+ }
+ 
+ 
+@@ -160,7 +159,7 @@
+     capabilities = Capabilities(
+         modes=("auto", "cool", "fan", "dry", "heat"),
+         temperature=TemperatureRange(16.0, 30.0),
+-        fan=FAN_4,
++        fan=FAN_3,  # kAirwellFanLow/Medium/High/Auto
+     )
+ 
+     def frames(self, previous, target, actions):
+diff -ruN -x __pycache__ a/pyhvac/plugins/amcor.py b/pyhvac/plugins/amcor.py
+--- a/pyhvac/plugins/amcor.py	2026-09-29 14:46:17.000000000 +0700
++++ b/pyhvac/plugins/amcor.py	2026-09-29 14:54:14.604301890 +0700
+@@ -28,6 +28,7 @@
+ from ..device import Device
+ from ..fields import Field, Layout, NibbleSum
+ from ..ir.model import Frame, Protocol, PulseWidth, Section
++from ..choices import ON_OFF
+ from ..state import Capabilities, Choice, TemperatureRange
+ 
+ 
+@@ -92,6 +93,9 @@
+ AMCOR_POWER_ON, AMCOR_POWER_OFF = 0b0011, 0b1100  # kAmcorPowerOn / Off
+ AMCOR_VENT_ON = 0b11  # kAmcorVentOn: set with mode fan (setMode)
+ AMCOR_MIN_TEMP, AMCOR_MAX_TEMP = 12, 32  # kAmcorMinTemp / MaxTemp
++AMCOR_MAX = 0b11  # kAmcorMax
++# The setpoint IRAmcorAc::setMax writes with Max, in the modes it allows.
++AMCOR_MAX_TEMPS = {"cool": AMCOR_MIN_TEMP, "heat": AMCOR_MAX_TEMP}
+ 
+ # Skeleton: IRAmcorAc::stateReset (byte 0 0x01, every other byte written
+ # as 0, so nothing comes from stale memory) with the named fields cleared.
+@@ -118,8 +122,13 @@
+     carries kAmcorPowerOff and mode auto (IRac passes mode "off", which
+     convertMode maps to kAmcorAuto), with the requested setpoint and fan;
+     the Vent bits are set in mode fan only (setMode); the setpoint is whole
+-    degrees clamped to 12-32; Max stays off (IRac never calls setMax).
+-    Fan lowest and highest are kAmcorFanMin and kAmcorFanMax, as C sends.
++    degrees clamped to 12-32. Fan lowest and highest are kAmcorFanMin and
++    kAmcorFanMax, as C sends.
++
++    powerful is Max ("Maximum Cooling or Heating", i.e. Turbo), which IRac
++    never sets: the port writes it as IRAmcorAc::setMax does, in cool (with
++    the setpoint forced to kAmcorMinTemp) and heat (kAmcorMaxTemp) only;
++    in other modes, and so in off messages, it is not sent.
+     """
+ 
+     PROTOCOL = AMCOR
+@@ -131,17 +140,24 @@
+             ("auto", "1", "2", "3"),
+             {"auto": "auto", "1": "lowest", "2": "medium", "3": "highest"},
+         ),
++        features={"powerful": ON_OFF},
+     )
+ 
+     def frames(self, previous, target, actions):
+         mode = target.mode if target.power else "auto"
++        temp = min(max(int(target.temperature), AMCOR_MIN_TEMP), AMCOR_MAX_TEMP)
++        # IRAmcorAc::setMax: cool at kAmcorMinTemp, heat at kAmcorMaxTemp,
++        # "Not allowed in all other operating modes".
++        boost = target.features.get("powerful", False) and mode in AMCOR_MAX_TEMPS
++        if boost:
++            temp = AMCOR_MAX_TEMPS[mode]
+         data = bytes(
+             AMCOR_LAYOUT.build(
+                 mode=mode,
+                 fan=target.fan,
+-                temp=min(max(int(target.temperature), AMCOR_MIN_TEMP), AMCOR_MAX_TEMP),
++                temp=temp,
+                 power=AMCOR_POWER_ON if target.power else AMCOR_POWER_OFF,
+-                max=0,
++                max=AMCOR_MAX if boost else 0,
+                 vent=AMCOR_VENT_ON if mode == "fan" else 0,
+             )
+         )
+diff -ruN -x __pycache__ a/pyhvac/plugins/carrier.py b/pyhvac/plugins/carrier.py
+--- a/pyhvac/plugins/carrier.py	2026-09-29 14:46:17.000000000 +0700
++++ b/pyhvac/plugins/carrier.py	2026-09-29 14:59:50.576806250 +0700
+@@ -31,7 +31,7 @@
+ from ..device import Device
+ from ..fields import Checksum, Field, Layout
+ from ..ir.model import Frame, Protocol, PulseDistance, Section
+-from ..choices import FAN_3
++from ..choices import FAN_3, ON_OFF, SWING
+ from ..state import Capabilities, TemperatureRange
+ 
+ 
+@@ -99,6 +99,8 @@
+ 
+ 
+ CARRIER_AC64_MIN_TEMP, CARRIER_AC64_MAX_TEMP = 16, 30  # kCarrierAc64Min/MaxTemp
++# The Off timer hours IRCarrierAc64::setSleep sets: setOffTimer(2 * 60).
++CARRIER_AC64_SLEEP_OFF_TIMER = 2
+ 
+ # Skeleton: IRCarrierAc64::stateReset (0x109000002C2A5584) with the fields
+ # IRac::carrier64 always writes and the sum cleared. It sets every bit, so
+@@ -143,8 +145,10 @@
+       mode falls to convertMode's default), with the target's setpoint and
+       fan.
+     - The setpoint is sent in every mode, fan included.
+-    - SwingV and Sleep stay clear: the entity has neither, so IRac gets
+-      swingv kOff and sleep -1. The timers keep their reset values, disabled.
++    - SwingV is set for swing (IRac: setSwingV(swingv != kOff)).
++    - Sleep sets the Sleep bit and, as IRCarrierAc64::setSleep does, an Off
++      timer of 2 hours with both timer enables clear. The timers otherwise
++      keep their reset values, disabled.
+ 
+     Nothing here is a toggle, so ``previous`` is ignored. The C path follows
+     the header throughout: no Defect is declared.
+@@ -158,16 +162,24 @@
+             float(CARRIER_AC64_MIN_TEMP), float(CARRIER_AC64_MAX_TEMP)
+         ),
+         fan=FAN_3,
++        swing_v=SWING,  # SwingV
++        features={"sleep": ON_OFF},  # Sleep
+     )
+ 
+     def frames(self, previous, target, actions):
++        sleep = target.features.get("sleep", False)
++        values = {}
++        if sleep:
++            # setSleep(true): setOffTimer(2 * 60), then both enables cleared.
++            values["off_timer"] = CARRIER_AC64_SLEEP_OFF_TIMER
+         data = CARRIER_AC64_LAYOUT.build(
+             power=target.power,
+             mode=target.mode if target.power else "cool",
+             temperature=int(target.temperature),
+             fan=target.fan,
+-            swing_v=0,
+-            sleep=0,
++            swing_v=target.swing_v != "off",
++            sleep=sleep,
++            **values,
+         )
+         return [Frame("main", bytes(data))]
+ 
+diff -ruN -x __pycache__ a/pyhvac/plugins/delonghi.py b/pyhvac/plugins/delonghi.py
+--- a/pyhvac/plugins/delonghi.py	2026-09-29 14:46:17.000000000 +0700
++++ b/pyhvac/plugins/delonghi.py	2026-09-29 14:56:43.140368856 +0700
+@@ -23,12 +23,14 @@
+ # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
+ #
+ 
++from dataclasses import replace
++
+ from .hvaclib import PulseBased, GenPluginObject
+ from .electra import ELECTRA_AC_DELONGHI_MODELS, Electra, ElectraAcDevice
+ from ..device import Device
+ from ..fields import Field, Layout, Sum8
+ from ..ir.model import Frame, Protocol, PulseDistance, Section
+-from ..choices import ON_OFF
++from ..choices import FAN_3, ON_OFF
+ from ..state import Capabilities, TemperatureRange
+ 
+ 
+@@ -102,23 +104,39 @@
+ # The fan speed IRDelonghiAc::setFan leaves when asked for auto: fan mode
+ # can't have auto (it becomes high), every other mode keeps auto.
+ DELONGHI_AC_FAN = {"fan": "3"}
++# setFan: "Auto & Dry modes only allows auto fan speed".
++DELONGHI_AC_AUTO_FAN_MODES = ("auto", "dry")
++
++
++def delonghi_ac_fan(mode, fan):
++    """The fan IRDelonghiAc::setFan leaves in ``mode`` when asked for ``fan``."""
++    if mode in DELONGHI_AC_AUTO_FAN_MODES:
++        return "auto"
++    if fan == "auto":
++        return DELONGHI_AC_FAN.get(mode, "auto")
++    return fan
+ 
+ 
+ class DelonghiAcDevice(Device):
+-    """DeLonghi PAC A95: power, mode, setpoint and boost are sent in full.
++    """DeLonghi PAC A95: power, mode, setpoint, fan, boost and sleep are
++    sent in full.
+ 
+     As IRac::delonghiac sends it:
+     - an off message carries mode auto (convertMode's default for IRac's
+       "off"), with the setpoint and boost;
+     - the setpoint is sent in every mode: IRac calls setTemp after setMode,
+       which overwrites the special temperatures setMode writes for auto, dry
+-      (kDelonghiAcTempAutoDryMode) and fan (kDelonghiAcTempFanMode). It is
+-      clamped to kDelonghiAcTempMinC..MaxC, so 16 and 17 C send 18 C;
+-    - the entity has no fan, so IRac asks for auto: fan mode sends high
+-      (setFan: "Fan mode can't have auto fan speed"), the others auto;
+-    - "powerful" is the Boost (Turbo) bit; "quiet" has no bit in the header
+-      and IRac::delonghiac takes none, so it changes nothing;
+-    - Celsius, no sleep (the entity has none) and no timers.
++      (kDelonghiAcTempAutoDryMode) and fan (kDelonghiAcTempFanMode). The
++      range is kDelonghiAcTempMinC..MaxC (18-32 C);
++    - the fan follows setFan's mode rules, which ``normalise`` applies to
++      the target: auto and dry allow auto only; fan mode can't have auto
++      and sends high for it (the stateReset fan is auto); an off message
++      (mode auto) sends auto;
++    - "powerful" is the Boost (Turbo) bit, "sleep" the Sleep bit;
++    - Celsius and no timers.
++
++    Quiet is not offered: the header has no quiet bit and IRac::delonghiac
++    takes none.
+ 
+     ``previous`` is ignored: the protocol has no toggle bits.
+     """
+@@ -127,18 +145,26 @@
+     LAYOUTS = (DELONGHI_AC_LAYOUT,)
+     capabilities = Capabilities(
+         modes=("auto", "cool", "fan", "dry"),
+-        temperature=TemperatureRange(16.0, 25.0),
+-        features={"powerful": ON_OFF, "quiet": ON_OFF},
++        # kDelonghiAcTempMinC..kDelonghiAcTempMaxC
++        temperature=TemperatureRange(18.0, 32.0),
++        fan=FAN_3,  # kDelonghiAcFan{Auto,Low,Medium,High}
++        features={"powerful": ON_OFF, "sleep": ON_OFF},  # Boost, Sleep
+     )
+ 
++    def normalise(self, state):
++        state = super().normalise(state)
++        fan = delonghi_ac_fan(state.mode, state.fan)
++        return state if fan == state.fan else replace(state, fan=fan)
++
+     def frames(self, previous, target, actions):
+         mode = target.mode if target.power else "auto"
+         data = DELONGHI_AC_LAYOUT.build(
+             temperature=min(max(int(target.temperature), 18), 32) - 17,
+-            fan=DELONGHI_AC_FAN.get(mode, "auto"),
++            fan=delonghi_ac_fan(mode, target.fan),
+             power=target.power,
+             mode=mode,
+             boost=target.features["powerful"],
++            sleep=target.features.get("sleep", False),
+         )
+         return [Frame("main", bytes(data))]
+ 
+diff -ruN -x __pycache__ a/pyhvac/plugins/ecoclim.py b/pyhvac/plugins/ecoclim.py
+--- a/pyhvac/plugins/ecoclim.py	2026-09-29 14:46:17.000000000 +0700
++++ b/pyhvac/plugins/ecoclim.py	2026-09-29 14:57:02.547473637 +0700
+@@ -27,7 +27,7 @@
+ from ..device import Device
+ from ..fields import Field, Layout
+ from ..ir.model import Frame, Protocol, PulseDistance, Section
+-from ..choices import FAN_3
++from ..choices import FAN_3, ON_OFF
+ from ..state import Capabilities, TemperatureRange
+ 
+ 
+@@ -150,6 +150,11 @@
+     makes of the "off" mode the glue passes; the C output itself is sleep
+     there (the mode defect below).
+ 
++    Sleep is a discrete operation mode (kEcoclimSleep), not a bit: as
++    IRac::ecoclim does for a sleep request, the "sleep" feature sends mode
++    kEcoclimSleep in place of the requested mode, off messages included.
++    The setpoint is kEcoclimTempMin..kEcoclimTempMax (5-36 °C).
++
+     Where the C path contradicts the header, the port sends the documented
+     value (see the Defects in b/tests/test_ecoclim_device.py):
+     - mode: IRac::sendAc passes ``send.iFeel`` (false, i.e. 0) as
+@@ -162,8 +167,10 @@
+     LAYOUTS = (ECOCLIM_LAYOUT, ECOCLIM_LAYOUT, ECOCLIM_LAYOUT)
+     capabilities = Capabilities(
+         modes=("auto", "cool", "fan", "dry", "heat"),
+-        temperature=TemperatureRange(5.0, 31.0),
++        # kEcoclimTempMin..kEcoclimTempMax (kEcoclimTempMin + 31)
++        temperature=TemperatureRange(5.0, 36.0),
+         fan=FAN_3,
++        features={"sleep": ON_OFF},  # mode kEcoclimSleep
+     )
+ 
+     def frames(self, previous, target, actions):
+@@ -172,7 +179,12 @@
+             ECOCLIM_LAYOUT.build(
+                 sensor_temperature=temperature,
+                 temperature=temperature,
+-                mode=target.mode if target.power else "auto",
++                # IRac::ecoclim: sleep overrides the requested mode.
++                mode=(
++                    "sleep"
++                    if target.features.get("sleep", False)
++                    else target.mode if target.power else "auto"
++                ),
+                 fan=target.fan,
+                 power=target.power,
+             )
+diff -ruN -x __pycache__ a/pyhvac/plugins/goodweather.py b/pyhvac/plugins/goodweather.py
+--- a/pyhvac/plugins/goodweather.py	2026-09-29 14:46:17.000000000 +0700
++++ b/pyhvac/plugins/goodweather.py	2026-09-29 14:57:47.512510938 +0700
+@@ -111,6 +111,9 @@
+     "slow": 0b01,
+     "off": 0b10,
+ }
++# canonical swing_v -> kGoodweatherSwing*: the two swing speeds, slowest
++# first. (IRac::goodweather itself sends Slow for any swing but off.)
++GOODWEATHER_SWING_BY_LEVEL = {"off": "off", "1": "slow", "2": "fast"}
+ GOODWEATHER_MIN_TEMP = 16  # kGoodweatherTempMin
+ GOODWEATHER_MAX_TEMP = 31  # kGoodweatherTempMax
+ 
+@@ -156,6 +159,13 @@
+     port. The real remote names the key actually pressed (the issue #697
+     captures carry UpTemp, DownTemp and Swing); the port does not invent
+     that rule.
++
++    Swing is a speed, not a position: swing_v "1" (the legacy "auto low")
++    sends kGoodweatherSwingSlow and "2" ("auto high") kGoodweatherSwingFast.
++    IRac::goodweather sends Slow for any swing but off, so C never sent
++    Fast (a Defect in tests/test_goodweather_device.py). Sleep is the Sleep
++    bit (IRac: setSleep(sleep >= 0)). Quiet is not offered: the header has
++    no quiet bit ("No Quiet setting available").
+     """
+ 
+     PROTOCOL = GOODWEATHER
+@@ -167,7 +177,7 @@
+         swing_v=Choice(
+             ("off", "1", "2"), {"off": "off", "1": "auto low", "2": "auto high"}
+         ),
+-        features={"powerful": ON_OFF, "light": ON_OFF, "quiet": ON_OFF},
++        features={"powerful": ON_OFF, "light": ON_OFF, "sleep": ON_OFF},
+     )
+ 
+     def frames(self, previous, target, actions):
+@@ -183,14 +193,11 @@
+             # IRac::goodweather calls setPower last.
+             command="power",
+             power=target.power,
+-            # IRac::goodweather sends kGoodweatherSwingSlow for any swing
+-            # but off (it does not use convertSwingV).
+-            swing_v="off" if target.swing_v == "off" else "slow",
++            swing_v=GOODWEATHER_SWING_BY_LEVEL[target.swing_v],
+             fan=target.fan,
+             temperature=temperature,
+             mode=mode,
+-            # Quiet: IRac::goodweather has no quiet setting; nothing is sent.
+-            # Sleep: not offered by the entity; IRac gets -1 and clears it.
++            sleep=target.features.get("sleep", False),
+         )
+         return [Frame("main", bytes(data))]
+ 
+diff -ruN -x __pycache__ a/pyhvac/plugins/neoclima.py b/pyhvac/plugins/neoclima.py
+--- a/pyhvac/plugins/neoclima.py	2026-09-29 14:46:17.000000000 +0700
++++ b/pyhvac/plugins/neoclima.py	2026-09-29 14:58:22.336282172 +0700
+@@ -172,7 +172,8 @@
+     - an off message carries mode auto (convertMode's default for IRac's
+       "off"), with the requested setpoint, fan and settings;
+     - mode dry sends fan low whatever fan is asked (IRNeoclimaAc::setFan:
+-      "Dry mode only allows low speed");
++      "Dry mode only allows low speed"); mode fan (kNeoclimaFan) sends the
++      setpoint and fan as asked;
+     - the setpoint is sent in Celsius (UseFah clear), 16-32 C as setTemp
+       clamps it (the entity's range);
+     - hold, eye, fresh, 8C heat and follow me stay clear (IRac never sets
+@@ -190,7 +191,7 @@
+     PROTOCOL = NEOCLIMA
+     LAYOUTS = (NEOCLIMA_LAYOUT,)
+     capabilities = Capabilities(
+-        modes=("auto", "cool", "dry", "heat"),
++        modes=("auto", "cool", "dry", "fan", "heat"),  # kNeoclima{Auto,..,Heat}
+         temperature=TemperatureRange(16.0, 32.0),
+         fan=FAN_3,
+         swing_v=SWING,
+diff -ruN -x __pycache__ a/pyhvac/plugins/transcold.py b/pyhvac/plugins/transcold.py
+--- a/pyhvac/plugins/transcold.py	2026-09-29 14:46:17.000000000 +0700
++++ b/pyhvac/plugins/transcold.py	2026-09-29 14:58:51.827348508 +0700
+@@ -144,8 +144,8 @@
+ 
+     As IRac::transcold sends it:
+     - power off sends kTranscoldOff alone, whatever the other settings;
+-    - the setpoint is clamped to kTranscoldTempMin..Max (18-30 C: the
+-      entity's 17 C sends 18 C);
++    - the setpoint is kTranscoldTempMin..Max (18-30 C; the 0.1.x entity's
++      17 C, which setTemp sent as 18 C, normalises to 18);
+     - fan auto is kTranscoldFanAuto0 in auto and dry modes and
+       kTranscoldFanAuto otherwise (IRTranscoldAc::setFan's mode check).
+ 
+@@ -173,7 +173,7 @@
+     LAYOUTS = (TRANSCOLD_LAYOUT,)
+     capabilities = Capabilities(
+         modes=("auto", "cool", "dry", "fan", "heat"),
+-        temperature=TemperatureRange(17.0, 30.0),
++        temperature=TemperatureRange(18.0, 30.0),  # kTranscoldTempMin..Max
+         fan=FAN_3,
+         swing_v=SWING,
+     )
+diff -ruN -x __pycache__ a/pyhvac/plugins/vestel.py b/pyhvac/plugins/vestel.py
+--- a/pyhvac/plugins/vestel.py	2026-09-29 14:46:17.000000000 +0700
++++ b/pyhvac/plugins/vestel.py	2026-09-29 14:59:20.953861900 +0700
+@@ -23,13 +23,13 @@
+ # IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
+ #
+ 
+-from dataclasses import dataclass
++from dataclasses import dataclass, replace
+ 
+ from .hvaclib import PulseBased, GenPluginObject
+ from ..device import Device
+ from ..fields import Field, Layout
+ from ..ir.model import Frame, Protocol, PulseDistance, Section
+-from ..choices import FAN_3_FIXED, ON_OFF, SWING
++from ..choices import FAN_3, ON_OFF, SWING
+ from ..state import Capabilities, TemperatureRange
+ 
+ 
+@@ -135,7 +135,8 @@
+         "temperature": Field.at(  # degrees - kVestelAcMinTempH
+             4, 4, 4, values={t: t - 16 for t in range(16, 31)}
+         ),
+-        # kVestelAcFan*: the entity has no auto, auto cool or auto heat.
++        # kVestelAcFan*: auto cool and auto heat are IRVestelAc::setAuto's
++        # (not a fan speed), and never sent.
+         "fan": Field.at(
+             5,
+             0,
+@@ -179,8 +180,11 @@
+     - power sets Power (0b11 on, 0b00 off) and UseCmd;
+     - an off message carries mode auto (convertMode's default, which IRac's
+       kOff mode falls to) with the rest of the target state;
+-    - below 18 °C, the setpoint is sent as 18 °C (setTemp clamps to
+-      kVestelAcMinTempC), except in heat (see below);
++    - the setpoint range is 16-30 °C in heat and 18-30 °C in the other
++      modes (setTemp clamps to kVestelAcMinTempC, except in heat, see
++      below); ``normalise`` clamps the target to its mode's range, and an
++      off message (mode auto) is clamped to 18;
++    - fan auto is kVestelAcFanAuto;
+     - sleep wins over powerful (setSleep comes after setTurbo; they share
+       the TurboSleep field);
+     - purifier sets Ion.
+@@ -205,11 +209,17 @@
+     capabilities = Capabilities(
+         modes=("auto", "cool", "dry", "fan", "heat"),
+         temperature=TemperatureRange(16.0, 30.0),
+-        fan=FAN_3_FIXED,
++        fan=FAN_3,  # kVestelAcFan{Auto,Low,Med,High}
+         swing_v=SWING,
+         features={"sleep": ON_OFF, "powerful": ON_OFF, "purifier": ON_OFF},
+     )
+ 
++    def normalise(self, state):
++        state = super().normalise(state)
++        if state.mode != "heat" and state.temperature < VESTEL_AC_MIN:
++            state = replace(state, temperature=float(VESTEL_AC_MIN))
++        return state
++
+     def frames(self, previous, target, actions):
+         mode = target.mode if target.power else "auto"
+         low = VESTEL_AC_MIN_HEAT if mode == "heat" else VESTEL_AC_MIN
+diff -ruN -x __pycache__ a/tests/test_airton_device.py b/tests/test_airton_device.py
+--- a/tests/test_airton_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_airton_device.py	2026-09-29 14:52:57.102944559 +0700
+@@ -15,7 +15,7 @@
+ #   never reached IRac (swingv stayed kOff) and SwingV stayed clear.
+ DEFECTS = (Defect("swing_v", 1, 0, "legacy trans_swing has no 'on' key"),)
+ 
+-FEATURES = ("purifier", "powerful", "quiet", "economy", "light")
++FEATURES = ("purifier", "powerful", "economy", "light", "sleep")
+ MODES = ("auto", "cool", "dry", "fan", "heat")
+ 
+ 
+@@ -210,15 +210,44 @@
+     assert read(state(swing_v="off"))["swing_v"] == 0
+ 
+ 
+-def test_quiet_sends_nothing():
+-    # IRac::airton: "No Quiet setting available".
+-    assert raw(state(features={"quiet": True})) == raw(state())
++def test_quiet_is_not_offered():
++    # ir_Airton.h has no quiet bit (IRac::airton: "No Quiet setting
++    # available"): a control that did nothing is removed.
++    assert "quiet" not in device().capabilities.features
++    assert "quiet" not in state(features={"quiet": True}).features
++
++
++def test_setpoint_range_is_the_headers():
++    # kAirtonMinTemp = 16, kAirtonMaxTemp = 31.
++    rng = device().capabilities.temperature
++    assert (rng.min, rng.max, rng.decimals) == (16.0, 31.0, (0,))
++
++
++@pytest.mark.parametrize("t", [26.0, 28.0, 31.0])
++def test_setpoints_up_to_31_are_sent(t):
++    # IRAirtonAc::setTemp clamps to kAirtonMaxTemp (31).
++    assert read(state(True, "cool", t))["temperature"] == int(t)
++    assert read(state(True, "heat", 32.0))["temperature"] == 31
+ 
+ 
+-def test_sleep_stays_clear():
+-    everything = {k: True for k in FEATURES}
+-    for mode in MODES:
+-        assert read(state(True, mode, features=everything))["sleep"] == 0
++@pytest.mark.parametrize("mode", MODES)
++def test_sleep_sets_its_bit_outside_auto_and_fan(mode):
++    # IRAirtonAc::setSleep: "Sleep not available in fan or auto mode".
++    assert read(state(True, mode, features={"sleep": True}))["sleep"] == (
++        mode not in ("auto", "fan")
++    )
++    assert read(state(True, mode))["sleep"] == 0
++
++
++@pytest.mark.parametrize("mode", MODES)
++def test_off_clears_sleep(mode):
++    # An off message carries mode auto, where setSleep clears it.
++    assert read(state(False, mode, features={"sleep": True}))["sleep"] == 0
++
++
++def test_port_reproduces_the_real_sleep_capture():
++    # ir_Airton_test.cpp Sleep: cool 16C, fan auto, sleep on.
++    assert raw(state(temperature=16.0, features={"sleep": True})) == 0xA00600000911D3
+ 
+ 
+ def test_previous_is_ignored():
+@@ -239,16 +268,6 @@
+     assert isinstance(registry.get_device("airton", model), AirtonDevice)
+ 
+ 
+-@pytest.mark.parametrize("model", AIRTON_MODELS)
+-def test_capabilities_match_the_legacy_entity(model):
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.airton import Airton
+-
+-    legacy = LegacyDevice("airton", model, Airton)
+-    assert AirtonDevice("airton", model).capabilities == legacy.capabilities
+-
+-
+ def test_undeclared_swing_deviation_is_reported():
+     dev = device()
+     record = next(
+diff -ruN -x __pycache__ a/tests/test_airwell_device.py b/tests/test_airwell_device.py
+--- a/tests/test_airwell_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_airwell_device.py	2026-09-29 14:53:37.778975164 +0700
+@@ -66,8 +66,26 @@
+ 
+ 
+ def c_record(record, raw):
+-    """``record`` with the pulses IRsend::sendAirwell sends for ``raw``."""
+-    return {**record, "pulses": list(encode(AIRWELL, c_frames(raw)).pulses)}
++    """``record`` with the pulses IRsend::sendAirwell sends for ``raw``, and
++    its state in today's fan vocabulary (see ``modern``)."""
++    return {
++        **record,
++        "state": modern(record["state"]),
++        "pulses": list(encode(AIRWELL, c_frames(raw)).pulses),
++    }
++
++
++def modern(old):
++    """An old-vocabulary state with the 0.1.x fan "lowest" read as "low".
++
++    The legacy entity offered four speeds; the header has three
++    (kAirwellFanLow/Medium/High). IRAirwellAc::convertFan sends kMin
++    ("lowest") and kLow ("low") both as kAirwellFanLow, so a record's
++    "lowest" is the port's "1" (low) and C's word is unchanged.
++    """
++    if old.get("fan") == "lowest":
++        return {**old, "fan": "low"}
++    return old
+ 
+ 
+ def fixture():
+@@ -184,7 +202,7 @@
+     for old, raw in zip(states, raws):
+         rec = c_record({**record, "state": old}, raw)
+         assert_matches_oracle(dev, rec, dev.LAYOUTS, previous=previous)
+-        previous = state_from_record(dev, old)
++        previous = state_from_record(dev, modern(old))
+ 
+ 
+ @pytest.mark.parametrize("record, states", sequence_params("AIRWELL"))
+@@ -210,7 +228,7 @@
+         assert [f"{r:#x}" for r in raws] == data["sequences"][record["class"]]
+ 
+ 
+-LABEL = {"auto": "auto", "1": "lowest", "2": "low", "3": "medium", "4": "high"}
++LABEL = {"auto": "auto", "1": "low", "2": "medium", "3": "high"}
+ 
+ 
+ def _old(state):
+@@ -242,7 +260,7 @@
+ def test_layout_round_trips_every_oracle_state():
+     dev = device()
+     for record in load_oracle("AIRWELL"):
+-        state = state_from_record(dev, record["state"])
++        state = state_from_record(dev, modern(record["state"]))
+         main = dev.frames(None, state, ())[0]
+         values = AIRWELL_LAYOUT.read(main.data)
+         assert AIRWELL_LAYOUT.build(**values) == bytearray(main.data)
+@@ -267,7 +285,7 @@
+     dev = device()
+     for mode in dev.capabilities.modes:
+         for t in (16.0, 30.0):
+-            values = read(HvacState(False, mode, t, fan="3"))
++            values = read(HvacState(False, mode, t, fan="2"))
+             assert (values["mode"], values["temperature"], values["fan"]) == (
+                 "auto",
+                 int(t),
+@@ -280,11 +298,10 @@
+         assert read(HvacState(True, "dry", 22.0, fan=fan))["fan"] == "low"
+ 
+ 
+-@pytest.mark.parametrize(
+-    "fan, code", [("auto", 3), ("1", 0), ("2", 0), ("3", 1), ("4", 2)]
+-)
++@pytest.mark.parametrize("fan, code", [("auto", 3), ("1", 0), ("2", 1), ("3", 2)])
+ def test_every_fan_level_uses_its_documented_code(fan, code):
+-    # kAirwellFan*: convertFan maps kMin and kLow to kAirwellFanLow.
++    # kAirwellFanAuto = 3, kAirwellFanLow = 0, kAirwellFanMedium = 1,
++    # kAirwellFanHigh = 2.
+     data = main_word(HvacState(True, "cool", 22.0, fan=fan))
+     assert AIRWELL_LAYOUT.read_raw(data, "fan") == code
+ 
+@@ -395,7 +412,7 @@
+ 
+ def test_port_reproduces_the_real_cool_capture():
+     dev = device()
+-    on = dev.normalise(HvacState(True, "cool", 16.0, fan="4"))
++    on = dev.normalise(HvacState(True, "cool", 16.0, fan="3"))
+     ours = dev.frames(on, on, ())  # no power change: no toggle
+     theirs = decode(AIRWELL, REAL_COOL_16_HIGH, expected=[f.section for f in ours])
+     assert ours == theirs
+@@ -404,7 +421,7 @@
+ 
+ def test_port_reproduces_the_reconstructed_known_state():
+     # ReconstructKnownState: toggle on, cool, 22C, fan low -> 0x240380002.
+-    assert main_word(HvacState(True, "cool", 22.0, fan="2")) == airwell_word(
++    assert main_word(HvacState(True, "cool", 22.0, fan="1")) == airwell_word(
+         0x240380002
+     )
+ 
+@@ -450,14 +467,21 @@
+     assert isinstance(registry.get_device("airwell", model), AirwellDevice)
+ 
+ 
+-@pytest.mark.parametrize("model", AIRWELL_MODELS)
+-def test_capabilities_match_the_legacy_entity(model):
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.airwell import Airwell
++def test_fan_offers_the_headers_three_speeds_and_auto():
++    # kAirwellFanLow/Medium/High/Auto: the legacy entity's fourth speed
++    # (lowest, the same kAirwellFanLow as low) is gone.
++    fan = device().capabilities.fan
++    assert fan.values == ("auto", "1", "2", "3")
++    assert [fan.label(v) for v in fan.values] == ["auto", "low", "medium", "high"]
++    assert device().normalise(HvacState(True, "cool", 22.0, fan="4")).fan == "auto"
+ 
+-    legacy = LegacyDevice("airwell", model, Airwell)
+-    assert AirwellDevice("airwell", model).capabilities == legacy.capabilities
++
++def test_a_lowest_record_sends_what_a_low_record_sends():
++    # convertFan: kMin and kLow are both kAirwellFanLow.
++    for record in load_oracle("AIRWELL"):
++        if record["state"]["fan"] == "lowest":
++            low = {**record["state"], "fan": "low"}
++            assert fixture_raw(record["state"]) == fixture_raw(low)
+ 
+ 
+ def test_layouts_must_cover_every_frame():
+diff -ruN -x __pycache__ a/tests/test_amcor_device.py b/tests/test_amcor_device.py
+--- a/tests/test_amcor_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_amcor_device.py	2026-09-29 14:54:22.097278006 +0700
+@@ -142,11 +142,40 @@
+ 
+ @pytest.mark.parametrize("mode", ["cool", "heat"])
+ @pytest.mark.parametrize("t", [12.0, 32.0])
+-def test_max_is_never_set(mode, t):
++def test_max_is_clear_without_powerful(mode, t):
+     # IRac::amcor never calls setMax, even at Max's own setpoints.
+     assert read(HvacState(True, mode, t))["max"] == 0
+ 
+ 
++def test_powerful_is_offered():
++    assert device().capabilities.features["powerful"].values == (False, True)
++
++
++@pytest.mark.parametrize("mode, sent", [("cool", 12), ("heat", 32)])
++@pytest.mark.parametrize("t", [12.0, 22.0, 32.0])
++def test_powerful_sets_max_and_its_setpoint(mode, t, sent):
++    # IRAmcorAc::setMax: kAmcorMax (0b11), with Temp = kAmcorMinTemp in cool
++    # and kAmcorMaxTemp in heat (TestAmcorAcClass.Max).
++    data = frame(HvacState(True, mode, t, features={"powerful": True}))
++    values = AMCOR_LAYOUT.read(data)
++    assert (values["max"], values["temp"]) == (0b11, sent)
++    assert AMCOR_LAYOUT.checksum.check(data)
++
++
++@pytest.mark.parametrize("mode", ["auto", "fan", "dry"])
++def test_powerful_is_not_sent_outside_cool_and_heat(mode):
++    # setMax: "Not allowed in all other operating modes" (Temp unchanged).
++    on = HvacState(True, mode, 25.0, features={"powerful": True})
++    assert frame(on) == frame(HvacState(True, mode, 25.0))
++
++
++@pytest.mark.parametrize("mode", ["cool", "heat"])
++def test_powerful_is_not_sent_with_power_off(mode):
++    # An off message carries mode auto, where setMax does nothing.
++    off = HvacState(False, mode, 25.0, features={"powerful": True})
++    assert frame(off) == frame(HvacState(False, mode, 25.0))
++
++
+ def test_previous_is_ignored():
+     dev = device()
+     on = HvacState(True, "cool", 22.0, fan="3")
+@@ -162,16 +191,6 @@
+     assert isinstance(dev, AmcorDevice)
+ 
+ 
+-@pytest.mark.parametrize("model", AMCOR_MODELS)
+-def test_capabilities_match_the_legacy_entity(model):
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.amcor import Amcor
+-
+-    legacy = LegacyDevice("amcor", model, Amcor)
+-    assert device(model).capabilities == legacy.capabilities
+-
+-
+ # ir_Amcor_test.cpp DecodeAmcor.RealExample: two real captures, each the
+ # frame sent twice. decodeAmcor matches them with kAmcorTolerance (40 %) and
+ # no mark excess; their marks run as short as 360 µs for 600.
+diff -ruN -x __pycache__ a/tests/test_bosch144_device.py b/tests/test_bosch144_device.py
+--- a/tests/test_bosch144_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_bosch144_device.py	2026-09-29 14:55:08.738320425 +0700
+@@ -234,18 +234,19 @@
+     assert isinstance(registry.get_device("bosch", model), Bosch144Device)
+ 
+ 
+-@pytest.mark.parametrize("model", BOSCH144_MODELS)
+-def test_capabilities_match_the_legacy_entity(model):
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.bosch import Bosch
+-
+-    legacy = LegacyDevice("bosch", model, Bosch)
+-    assert Bosch144Device("bosch", model).capabilities == legacy.capabilities
+-
+-
+ def test_layouts_must_cover_every_frame():
+     dev = device()
+     record = wire(load_oracle("BOSCH144")[-1])
+     with pytest.raises(AssertionError, match="layout"):
+         assert_matches_oracle(dev, record, dev.OFF_LAYOUTS)
++
++
++def test_capabilities_are_the_headers():
++    # ir_Bosch.h: kBosch144CelsiusMin/Max 16-30; kBosch144Fan20..Fan100 and
++    # kBosch144FanAuto; kBosch144{Cool,Dry,Auto,Heat,Fan}; the Quiet bit.
++    caps = device().capabilities
++    assert set(caps.modes) == {"auto", "cool", "fan", "dry", "heat"}
++    assert (caps.temperature.min, caps.temperature.max) == (16.0, 30.0)
++    assert caps.fan.values == ("auto", "1", "2", "3", "4", "5")
++    assert (caps.swing_v, caps.swing_h) == (None, None)
++    assert set(caps.features) == {"quiet"}
+diff -ruN -x __pycache__ a/tests/test_carrier_ac64_device.py b/tests/test_carrier_ac64_device.py
+--- a/tests/test_carrier_ac64_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_carrier_ac64_device.py	2026-09-29 14:55:53.522683625 +0700
+@@ -115,13 +115,50 @@
+     assert CarrierAc64Checksum(3, 8, 2).bits() == {16, 17, 18, 19}
+ 
+ 
+-def test_port_reproduces_the_real_capture_but_swing_and_timers():
+-    # RealExample (heat, 30C, fan low, power on) with what the entity cannot
+-    # express reset: swing off, and the timer hours of stateReset.
++def test_port_reproduces_the_real_capture_but_its_timer_hours():
++    # RealExample (heat, 30C, fan low, swing on, power on). Its disabled
++    # timers hold 4 h, where the port keeps stateReset's hours (9 and 1).
+     capture = CARRIER_AC64_LAYOUT.read((0x404000102E5E5584).to_bytes(8, "little"))
+-    capture.update(swing_v=0, on_timer=9, off_timer=1)
++    capture.update(on_timer=9, off_timer=1)
+     expected = CARRIER_AC64_LAYOUT.build(**capture)
+-    assert raw(state(True, "heat", 30.0, fan="1")) == int.from_bytes(expected, "little")
++    target = state(True, "heat", 30.0, fan="1", swing_v="swing")
++    assert raw(target) == int.from_bytes(expected, "little")
++
++
++def test_swing_and_sleep_are_offered():
++    # The header's SwingV and Sleep bits.
++    caps = device().capabilities
++    assert caps.swing_v.values == ("off", "swing")
++    assert set(caps.features) == {"sleep"}
++
++
++@pytest.mark.parametrize("power", [True, False])
++def test_swing_sets_swing_v(power):
++    # IRac::carrier64: setSwingV(swingv != kOff).
++    assert read(state(power, swing_v="swing"))["swing_v"] == 1
++    assert read(state(power, swing_v="off"))["swing_v"] == 0
++
++
++@pytest.mark.parametrize("power", [True, False])
++def test_sleep_sets_sleep_and_a_disabled_2h_off_timer(power):
++    # IRCarrierAc64::setSleep(true): setOffTimer(2 * 60), then
++    # _cancelOnTimer and _cancelOffTimer; Sleep set.
++    values = read(state(power, features={"sleep": True}))
++    assert (values["sleep"], values["off_timer"], values["on_timer"]) == (1, 2, 9)
++    assert (values["on_timer_enable"], values["off_timer_enable"]) == (0, 0)
++
++
++def test_port_reproduces_the_reconstructed_sleep_state_but_its_on_timer():
++    # ReconstructKnownState: heat 16C low, swing, sleep -> 0x2030009020555584.
++    # Its OnTimer hours (3) come from a setOnTimer the port never sends; the
++    # port keeps stateReset's 9.
++    known = CARRIER_AC64_LAYOUT.read((0x2030009020555584).to_bytes(8, "little"))
++    known.update(on_timer=9)
++    expected = CARRIER_AC64_LAYOUT.build(**known)
++    target = state(
++        True, "heat", 16.0, fan="1", swing_v="swing", features={"sleep": True}
++    )
++    assert raw(target) == int.from_bytes(expected, "little")
+ 
+ 
+ @pytest.mark.parametrize("mode, code", [("heat", 1), ("cool", 2), ("fan", 3)])
+@@ -158,6 +195,7 @@
+ 
+ 
+ def test_unset_fields_keep_their_reset_values():
++    # Swing off and sleep off: nothing but the requested state changes.
+     for target in (state(True, "heat", 30.0, fan="3"), state(False, "fan", 16.0)):
+         values = read(target)
+         assert (values["swing_v"], values["sleep"]) == (0, 0)
+@@ -193,16 +231,6 @@
+     assert isinstance(registry.get_device("carrier", model), CarrierAc64Device)
+ 
+ 
+-@pytest.mark.parametrize("model", CARRIER_AC64_MODELS)
+-def test_capabilities_match_the_legacy_entity(model):
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.carrier import Carrier
+-
+-    legacy = LegacyDevice("carrier", model, Carrier)
+-    assert device(model).capabilities == legacy.capabilities
+-
+-
+ @pytest.mark.parametrize("mode", ["cool", "fan", "heat"])
+ @pytest.mark.parametrize("t", [16.0, 30.0])
+ @pytest.mark.parametrize("fan", ["auto", "1", "2", "3"])
+diff -ruN -x __pycache__ a/tests/test_corona_ac_device.py b/tests/test_corona_ac_device.py
+--- a/tests/test_corona_ac_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_corona_ac_device.py	2026-09-29 14:55:08.738403513 +0700
+@@ -290,16 +290,6 @@
+     assert isinstance(registry.get_device("corona", model), CoronaAcDevice)
+ 
+ 
+-@pytest.mark.parametrize("model", CORONA_AC_MODELS)
+-def test_capabilities_match_the_legacy_entity(model):
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.corona import Corona
+-
+-    legacy = LegacyDevice("corona", model, Corona)
+-    assert CoronaAcDevice("corona", model).capabilities == legacy.capabilities
+-
+-
+ @pytest.mark.parametrize("mode", ["heat", "dry", "cool", "fan"])
+ @pytest.mark.parametrize("economy", [False, True])
+ def test_off_with_economy_matches_the_c_path(mode, economy):
+@@ -366,3 +356,15 @@
+ # kMarkExcess.
+ def test_decode_tolerance_is_the_c_decoders():
+     assert (CORONA_AC.tolerance, CORONA_AC.mark_excess) == (0.30, 50)
++
++
++def test_capabilities_are_the_headers():
++    # ir_Corona.h: kCoronaAcMinTemp/MaxTemp 17-30; kCoronaAcFan{Auto,Low,
++    # Medium,High}; kCoronaAcMode{Heat,Dry,Cool,Fan}; SwingVToggle; Econo.
++    caps = device().capabilities
++    assert set(caps.modes) == {"heat", "dry", "cool", "fan"}
++    assert (caps.temperature.min, caps.temperature.max) == (17.0, 30.0)
++    assert caps.fan.values == ("auto", "1", "2", "3")
++    assert caps.swing_v.values == ("off", "swing")
++    assert caps.swing_h is None
++    assert set(caps.features) == {"economy"}
+diff -ruN -x __pycache__ a/tests/test_delonghi_ac_device.py b/tests/test_delonghi_ac_device.py
+--- a/tests/test_delonghi_ac_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_delonghi_ac_device.py	2026-09-29 14:56:36.124798062 +0700
+@@ -95,8 +95,11 @@
+ 
+ 
+ @pytest.mark.parametrize("mode", ["auto", "cool", "dry", "fan"])
+-@pytest.mark.parametrize("t, sent", [(16.0, 18), (17.0, 18), (20.0, 20), (25.0, 25)])
+-def test_setpoint_is_sent_in_every_mode_clamped_to_18(mode, t, sent):
++@pytest.mark.parametrize(
++    "t, sent",
++    [(16.0, 18), (17.0, 18), (20.0, 20), (25.0, 25), (26.0, 26), (32.0, 32), (33, 32)],
++)
++def test_setpoint_is_sent_in_every_mode_clamped_to_18_32(mode, t, sent):
+     # IRac calls setTemp after setMode, so the setpoint replaces the special
+     # auto/dry/fan temperatures (oracle records at 16, 20 and 25 C).
+     # Temp is degrees - kDelonghiAcTempMinC + 1.
+@@ -125,18 +128,73 @@
+     assert (read(on)["boost"], read(off)["boost"]) == (1, 0)
+ 
+ 
+-def test_quiet_changes_nothing():
+-    # No quiet bit in the header; the oracle's quiet record equals plain auto.
++def test_quiet_is_not_offered():
++    # No quiet bit in ir_Delonghi.h: the control that did nothing is removed.
++    assert "quiet" not in device().capabilities.features
+     base = state(True, "auto", 20.0)
+     quiet = state(True, "auto", 20.0, features={"quiet": True})
++    assert "quiet" not in quiet.features
+     assert raw(quiet) == raw(base)
+ 
+ 
++def test_setpoint_range_is_the_headers():
++    # kDelonghiAcTempMinC = 18, kDelonghiAcTempMaxC = 32.
++    rng = device().capabilities.temperature
++    assert (rng.min, rng.max, rng.decimals) == (18.0, 32.0, (0,))
++    assert state(True, "cool", 16.0).temperature == 18.0
++
++
++def test_fan_offers_the_headers_speeds_and_auto():
++    # kDelonghiAcFanAuto/Low/Medium/High.
++    fan = device().capabilities.fan
++    assert fan.values == ("auto", "1", "2", "3")
++    assert [fan.label(v) for v in fan.values] == ["auto", "low", "medium", "high"]
++
++
++@pytest.mark.parametrize("fan, code", [("1", 3), ("2", 2), ("3", 1)])
++@pytest.mark.parametrize("mode", ["cool", "fan"])
++def test_every_fan_speed_uses_its_documented_code(mode, fan, code):
++    # kDelonghiAcFanLow = 0b11, kDelonghiAcFanMedium = 0b10,
++    # kDelonghiAcFanHigh = 0b01.
++    target = state(True, mode, fan=fan)
++    assert target.fan == fan
++    (main,) = device().frames(None, target, ())
++    assert DELONGHI_AC_LAYOUT.read_raw(main.data, "fan") == code
++
++
++@pytest.mark.parametrize("mode", ["auto", "dry"])
++@pytest.mark.parametrize("fan", ["1", "2", "3"])
++def test_auto_and_dry_allow_fan_auto_only(mode, fan):
++    # setFan: "Auto & Dry modes only allows auto fan speed".
++    target = state(True, mode, fan=fan)
++    assert target.fan == "auto"
++    assert read(target)["fan"] == "auto"
++
++
++def test_fan_mode_turns_auto_into_high():
++    # setFan: "Fan mode can't have auto fan speed" (stateReset's auto -> high).
++    assert state(True, "fan", fan="auto").fan == "3"
++    assert read(state(True, "fan", fan="auto"))["fan"] == "3"
++
++
++@pytest.mark.parametrize("fan", ["1", "3"])
++def test_off_sends_fan_auto(fan):
++    # An off message is mode auto, where setFan forces auto.
++    assert read(state(False, "cool", fan=fan))["fan"] == "auto"
++
++
++@pytest.mark.parametrize("power", [True, False])
++@pytest.mark.parametrize("mode", ["auto", "cool", "dry", "fan"])
++def test_sleep_sets_the_sleep_bit(power, mode):
++    # IRDelonghiAc::setSleep: the Sleep bit, in every mode.
++    assert read(state(power, mode, features={"sleep": True}))["sleep"] == 1
++    assert read(state(power, mode))["sleep"] == 0
++
++
+ def test_unset_fields_stay_clear():
+     values = read(state(True, "fan", 25.0, features={"powerful": True}))
+     for name in (
+         "fahrenheit",
+-        "sleep",
+         "on_timer",
+         "on_hours",
+         "on_mins",
+@@ -166,16 +224,6 @@
+     assert isinstance(registry.get_device("delonghi", model), DelonghiAcDevice)
+ 
+ 
+-@pytest.mark.parametrize("model", DELONGHI_AC_MODELS)
+-def test_capabilities_match_the_legacy_entity(model):
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.delonghi import Delonghi
+-
+-    legacy = LegacyDevice("delonghi", model, Delonghi)
+-    assert DelonghiAcDevice("delonghi", model).capabilities == legacy.capabilities
+-
+-
+ @pytest.mark.parametrize(
+     "power, mode, t, powerful",
+     [
+diff -ruN -x __pycache__ a/tests/test_ecoclim_device.py b/tests/test_ecoclim_device.py
+--- a/tests/test_ecoclim_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_ecoclim_device.py	2026-09-29 14:57:02.563641655 +0700
+@@ -158,7 +158,7 @@
+ 
+ @pytest.mark.parametrize("power", [True, False])
+ @pytest.mark.parametrize("mode", ["auto", "cool", "dry", "fan", "heat"])
+-@pytest.mark.parametrize("t", [float(x) for x in range(5, 32)])
++@pytest.mark.parametrize("t", [float(x) for x in range(5, 37)])
+ def test_setpoint_and_sensor_temperature_are_the_target(power, mode, t):
+     # IRac::ecoclim sets SensorTemp to the setpoint without a sensor reading
+     # (the oracle records show it at 5, 18 and 31C in every mode, on and off).
+@@ -181,6 +181,29 @@
+     assert (values["power"], values["mode"]) == (0, "auto")
+ 
+ 
++def test_setpoint_range_is_the_headers():
++    # kEcoclimTempMin = 5, kEcoclimTempMax = kEcoclimTempMin + 31 = 36.
++    rng = device().capabilities.temperature
++    assert (rng.min, rng.max, rng.decimals) == (5.0, 36.0, (0,))
++    assert state(True, "cool", 40.0).temperature == 36.0
++
++
++def test_sleep_is_offered():
++    assert device().capabilities.features["sleep"].values == (False, True)
++
++
++@pytest.mark.parametrize("power", [True, False])
++@pytest.mark.parametrize("mode", ["auto", "cool", "dry", "fan", "heat"])
++def test_sleep_sends_mode_sleep(power, mode):
++    # kEcoclimSleep = 0b111; IRac::ecoclim: "EcoClim has a descrete Sleep
++    # operation mode, not a setting" and overrides the requested mode.
++    target = state(power, mode, 24.0, fan="2", features={"sleep": True})
++    first, _, _ = frames(target)
++    assert ECOCLIM_LAYOUT.read_raw(first.data, "mode") == 0b111
++    values = ECOCLIM_LAYOUT.read(first.data)
++    assert (values["power"], values["temperature"], values["fan"]) == (power, 24, "2")
++
++
+ def test_on_sets_the_power_bit():
+     assert read(state(True, "cool"))["power"] == 1
+ 
+@@ -225,16 +248,6 @@
+     assert isinstance(registry.get_device("ecoclim", model), EcoclimDevice)
+ 
+ 
+-@pytest.mark.parametrize("model", ECOCLIM_MODELS)
+-def test_capabilities_match_the_legacy_entity(model):
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.ecoclim import Ecoclim
+-
+-    legacy = LegacyDevice("ecoclim", model, Ecoclim)
+-    assert EcoclimDevice("ecoclim", model).capabilities == legacy.capabilities
+-
+-
+ @pytest.mark.parametrize("mode", ["off", "auto", "cool", "dry", "fan", "heat"])
+ def test_undeclared_mode_deviation_is_reported(mode):
+     dev = device()
+diff -ruN -x __pycache__ a/tests/test_electra_ac_device.py b/tests/test_electra_ac_device.py
+--- a/tests/test_electra_ac_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_electra_ac_device.py	2026-09-29 14:55:08.738444771 +0700
+@@ -299,16 +299,6 @@
+     assert isinstance(registry.get_device(plugin, model), ElectraAcDevice)
+ 
+ 
+-@pytest.mark.parametrize("plugin, model", SERVED)
+-def test_capabilities_match_the_legacy_entity(plugin, model):
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.electra import Electra
+-
+-    legacy = LegacyDevice(plugin, model, Electra)
+-    assert ElectraAcDevice(plugin, model).capabilities == legacy.capabilities
+-
+-
+ @pytest.mark.parametrize("field, key", [("swing_v", "swing"), ("swing_h", "hswing")])
+ def test_undeclared_swing_deviation_is_reported(field, key):
+     dev = device()
+@@ -338,3 +328,15 @@
+ # decodeElectraAC matches with _tolerance (25 %) and no mark excess.
+ def test_decode_tolerance_is_the_c_decoders():
+     assert (ELECTRA_AC.tolerance, ELECTRA_AC.mark_excess) == (0.25, 0)
++
++
++def test_capabilities_are_the_headers():
++    # ir_Electra.h: kElectraAcMinTemp/MaxTemp 16-32; kElectraAcFan{Auto,Low,
++    # Med,High}; kElectraAcSwingOn/Off for SwingV and SwingH; LightToggle,
++    # Clean, Turbo and Quiet (IFeel and SensorTemp are sensor readings).
++    caps = device().capabilities
++    assert set(caps.modes) == {"auto", "cool", "fan", "dry", "heat"}
++    assert (caps.temperature.min, caps.temperature.max) == (16.0, 32.0)
++    assert caps.fan.values == ("auto", "1", "2", "3")
++    assert caps.swing_v.values == caps.swing_h.values == ("off", "swing")
++    assert set(caps.features) == {"light", "cleaning", "powerful", "quiet"}
+diff -ruN -x __pycache__ a/tests/test_eurom_device.py b/tests/test_eurom_device.py
+--- a/tests/test_eurom_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_eurom_device.py	2026-09-29 14:55:08.738483985 +0700
+@@ -215,16 +215,6 @@
+     assert isinstance(registry.get_device("eurom", model), EuromDevice)
+ 
+ 
+-@pytest.mark.parametrize("model", EUROM_MODELS)
+-def test_capabilities_match_the_legacy_entity(model):
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.eurom import Eurom
+-
+-    legacy = LegacyDevice("eurom", model, Eurom)
+-    assert device(model).capabilities == legacy.capabilities
+-
+-
+ @pytest.mark.parametrize("sleep, bit", [(-1, 1), (0, 0), (30, 1)])
+ def test_c_path_turns_irac_sleep_into_a_bool(sleep, bit):
+     # IRac::eurom's bool sleep: IRac's "off" (-1) sends kEuromSleepEnabled,
+@@ -268,3 +258,15 @@
+     record = load_oracle("EUROM")[0]
+     with pytest.raises(AssertionError, match="layout"):
+         assert_matches_oracle(dev, record, (), DEFECTS)
++
++
++def test_capabilities_are_the_headers():
++    # ir_Eurom.h: kEuromMinTempC/MaxTempC 16-32; kEuromFan{Low,Med,High} (no
++    # auto); kEuromCool/Heat/Dehumidify/Ventilate; kEuromSwingOn;
++    # kEuromSleepEnabled.
++    caps = device().capabilities
++    assert set(caps.modes) == {"cool", "heat", "fan", "dry"}
++    assert (caps.temperature.min, caps.temperature.max) == (16.0, 32.0)
++    assert caps.fan.values == ("1", "2", "3")
++    assert caps.swing_v.values == ("off", "swing")
++    assert set(caps.features) == {"sleep"}
+diff -ruN -x __pycache__ a/tests/test_goodweather_device.py b/tests/test_goodweather_device.py
+--- a/tests/test_goodweather_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_goodweather_device.py	2026-09-29 14:57:56.210753215 +0700
+@@ -2,6 +2,7 @@
+ 
+ from oracle import load_oracle
+ from port_oracle import (
++    Defect,
+     assert_matches_oracle,
+     assert_sequence_matches_c,
+     oracle_params,
+@@ -18,10 +19,13 @@
+ )
+ from pyhvac.state import HvacState
+ 
+-# Every entity value reaches C through the legacy glue (swing "auto low"/
+-# "auto high" are in trans_swing; powerful and light are in the key map; the
+-# entity has no sleep), so nothing is declared.
+-DEFECTS = ()
++# The C path deviates from the documented values here:
++# - IRac::goodweather sends kGoodweatherSwingSlow for any swing but off (it
++#   does not use convertSwingV), so swing "auto high" (the port's "2") never
++#   reached C as kGoodweatherSwingFast.
++DEFECTS = (
++    Defect("swing_v", "fast", "slow", "IRac::goodweather sends Slow for any swing"),
++)
+ 
+ 
+ def wire(raw):
+@@ -120,9 +124,9 @@
+     ],
+ )
+ def test_real_captures_read_back(capture, expected):
+-    # These carry the key actually pressed, swing fast, or an off message in
+-    # cool, which the C path (and so the port) never sends; they read back
+-    # through the layout.
++    # These carry the key actually pressed or an off message in cool, which
++    # the C path (and so the port) never sends; they read back through the
++    # layout. (The port does send swing fast: see the capture test below.)
+     values = GOODWEATHER_LAYOUT.read(capture)
+     assert GOODWEATHER_LAYOUT.checksum.check(capture)
+     assert {k: values[k] for k in expected} == expected
+@@ -180,10 +184,10 @@
+     assert raw_read == raw
+ 
+ 
+-@pytest.mark.parametrize("swing, raw", [("off", 0b10), ("1", 0b01), ("2", 0b01)])
++@pytest.mark.parametrize("swing, raw", [("off", 0b10), ("1", 0b01), ("2", 0b00)])
+ def test_every_swing_value(swing, raw):
+-    # IRac::goodweather sends kGoodweatherSwingSlow for any swing but off,
+-    # so "auto low" and "auto high" send the same code.
++    # kGoodweatherSwingOff = 0b10, kGoodweatherSwingSlow = 0b01,
++    # kGoodweatherSwingFast = 0b00.
+     raw_read = GOODWEATHER_LAYOUT.read_raw(
+         data(HvacState(True, "cool", 22.0, swing_v=swing)), "swing_v"
+     )
+@@ -198,20 +202,52 @@
+     assert (plain["turbo"], plain["light"]) == (0, 0)
+ 
+ 
+-def test_quiet_sends_nothing():
+-    # IRac::goodweather has no quiet setting.
++def test_quiet_is_not_offered():
++    # ir_Goodweather.h has no quiet bit (IRac: "No Quiet setting available").
++    assert "quiet" not in device().capabilities.features
+     assert data(HvacState(True, "cool", 22.0, features={"quiet": True})) == data(
+         HvacState(True, "cool", 22.0)
+     )
+ 
+ 
+-def test_sleep_and_air_flow_are_never_set():
+-    # The entity has no sleep (IRac gets -1: setSleep(false)), and IRac has
+-    # no air flow setting.
++def test_swing_offers_the_two_speeds_and_off():
++    # kGoodweatherSwingSlow / kGoodweatherSwingFast / kGoodweatherSwingOff.
++    assert device().capabilities.swing_v.values == ("off", "1", "2")
++
++
++def test_the_port_reproduces_the_swing_fast_capture():
++    # ir_Goodweather_test.cpp (issue #697): "Power: On, Mode: 1 (Cool),
++    # Temp: 20C, Fan: 3 (Low), Swing: 0 (Fast), Command: 0 (Power)".
++    target = HvacState(True, "cool", 20.0, fan="1", swing_v="2")
++    assert data(target) == ON_COOL_20_SWING_FAST
++
++
++@pytest.mark.parametrize("power", [True, False])
++def test_sleep_sets_the_sleep_bit(power):
++    # IRGoodweatherAc::setSleep; IRac::goodweather: setSleep(sleep >= 0). Its
++    # command is overwritten by setPower, as for light and turbo.
++    values = read(HvacState(power, "cool", 22.0, features={"sleep": True}))
++    assert (values["sleep"], values["command"]) == (1, "power")
++    assert read(HvacState(power, "cool", 22.0))["sleep"] == 0
++
++
++def test_undeclared_swing_fast_deviation_is_reported():
++    dev = device()
++    record = next(
++        r
++        for r in load_oracle("GOODWEATHER")
++        if r["state"].get("swing") == "auto high" and r["state"]["mode"] != "off"
++    )
++    with pytest.raises(AssertionError, match="swing_v"):
++        assert_matches_oracle(dev, record, dev.LAYOUTS, defects=())
++
++
++def test_air_flow_is_never_set():
++    # IRac has no air flow setting.
+     values = read(
+         HvacState(True, "heat", 18.0, fan="2", swing_v="1", features={"light": True})
+     )
+-    assert (values["sleep"], values["air_flow"]) == (0, 0)
++    assert values["air_flow"] == 0
+ 
+ 
+ @pytest.mark.parametrize(
+@@ -246,16 +282,6 @@
+     assert isinstance(registry.get_device("goodweather", model), GoodweatherDevice)
+ 
+ 
+-@pytest.mark.parametrize("model", GOODWEATHER_MODELS)
+-def test_capabilities_match_the_legacy_entity(model):
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.goodweather import Goodweather
+-
+-    legacy = LegacyDevice("goodweather", model, Goodweather)
+-    assert device(model).capabilities == legacy.capabilities
+-
+-
+ def test_layouts_must_cover_every_frame():
+     dev = device()
+     record = load_oracle("GOODWEATHER")[0]
+diff -ruN -x __pycache__ a/tests/test_neoclima_device.py b/tests/test_neoclima_device.py
+--- a/tests/test_neoclima_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_neoclima_device.py	2026-09-29 14:58:22.352973834 +0700
+@@ -205,7 +205,7 @@
+     assert bytes(rebuilt) == frame
+ 
+ 
+-@pytest.mark.parametrize("mode", ["auto", "cool", "dry", "heat"])
++@pytest.mark.parametrize("mode", ["auto", "cool", "dry", "fan", "heat"])
+ @pytest.mark.parametrize("fan", ["auto", "1", "2", "3"])
+ @pytest.mark.parametrize("t", [16.0, 24.0, 32.0])
+ def test_off_carries_mode_auto(mode, fan, t):
+@@ -217,15 +217,17 @@
+     assert values["button"] == "power"
+ 
+ 
+-@pytest.mark.parametrize("mode", ["auto", "cool", "dry", "heat"])
++@pytest.mark.parametrize("mode", ["auto", "cool", "dry", "fan", "heat"])
+ def test_every_mode_uses_its_documented_code(mode):
+-    codes = {"auto": 0, "cool": 1, "dry": 2, "heat": 4}
++    # kNeoclimaAuto = 0, kNeoclimaCool = 1, kNeoclimaDry = 2, kNeoclimaFan = 3,
++    # kNeoclimaHeat = 4.
++    codes = {"auto": 0, "cool": 1, "dry": 2, "fan": 3, "heat": 4}
+     assert NEOCLIMA_LAYOUT.read_raw(data(state(True, mode)), "mode") == codes[mode]
+     assert read(state(True, mode))["power"] == 1
+ 
+ 
+ @pytest.mark.parametrize("t", range(16, 33))
+-@pytest.mark.parametrize("mode", ["auto", "cool", "dry", "heat"])
++@pytest.mark.parametrize("mode", ["auto", "cool", "dry", "fan", "heat"])
+ def test_every_setpoint_in_every_mode(t, mode):
+     # setTemp: Temp = degrees - kNeoclimaMinTempC, in Celsius.
+     values = read(state(True, mode, float(t)))
+@@ -245,13 +247,19 @@
+         assert NEOCLIMA_LAYOUT.read(frame.data)["temp"] == sent
+ 
+ 
+-@pytest.mark.parametrize("mode", ["auto", "cool", "heat"])
++@pytest.mark.parametrize("mode", ["auto", "cool", "fan", "heat"])
+ @pytest.mark.parametrize("fan, raw", [("auto", 0), ("1", 3), ("2", 2), ("3", 1)])
+ def test_every_fan_level_uses_its_documented_code(mode, fan, raw):
+     # kNeoclimaFanAuto/Low/Med/High.
+     assert NEOCLIMA_LAYOUT.read_raw(data(state(True, mode, fan=fan)), "fan") == raw
+ 
+ 
++def test_fan_mode_is_offered():
++    # kNeoclimaFan (0b011), which setMode accepts; the legacy entity lacked it.
++    assert "fan" in device().capabilities.modes
++    assert state(True, "fan").mode == "fan"
++
++
+ @pytest.mark.parametrize("fan", ["auto", "1", "2", "3"])
+ def test_dry_forces_fan_low(fan):
+     # IRNeoclimaAc::setFan: "Dry mode only allows low speed".
+@@ -324,16 +332,6 @@
+     assert isinstance(registry.get_device(brand, model), NeoclimaDevice)
+ 
+ 
+-@pytest.mark.parametrize("brand, model", ALL_MODELS)
+-def test_capabilities_match_the_legacy_entity(brand, model):
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.neoclima import Neoclima
+-
+-    legacy = LegacyDevice(brand, model, Neoclima)
+-    assert NeoclimaDevice(brand, model).capabilities == legacy.capabilities
+-
+-
+ @pytest.mark.parametrize(
+     "key, value, field",
+     [("swing", "on", "swing_v"), ("hswing", "on", "swing_h"), ("sleep", "on", "sleep")],
+diff -ruN -x __pycache__ a/tests/test_rhoss_device.py b/tests/test_rhoss_device.py
+--- a/tests/test_rhoss_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_rhoss_device.py	2026-09-29 14:55:08.738519483 +0700
+@@ -170,16 +170,6 @@
+     assert isinstance(registry.get_device("rhoss", model), RhossDevice)
+ 
+ 
+-@pytest.mark.parametrize("model", RHOSS_MODELS)
+-def test_capabilities_match_the_legacy_entity(model):
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.rhoss import Rhoss
+-
+-    legacy = LegacyDevice("rhoss", model, Rhoss)
+-    assert RhossDevice("rhoss", model).capabilities == legacy.capabilities
+-
+-
+ def test_undeclared_swing_deviation_is_reported():
+     dev = device()
+     record = next(
+@@ -203,3 +193,14 @@
+     record = load_oracle("RHOSS")[0]
+     with pytest.raises(AssertionError, match="layout"):
+         assert_matches_oracle(dev, record, (), DEFECTS)
++
++
++def test_capabilities_are_the_headers():
++    # ir_Rhoss.h: kRhossTempMin/Max 16-30; kRhossFan{Auto,Min,Med,Max};
++    # kRhossMode{Heat,Cool,Dry,Fan,Auto}; kRhossSwingOn. No feature bits.
++    caps = device().capabilities
++    assert set(caps.modes) == {"auto", "cool", "dry", "heat", "fan"}
++    assert (caps.temperature.min, caps.temperature.max) == (16.0, 30.0)
++    assert caps.fan.values == ("auto", "1", "2", "3")
++    assert caps.swing_v.values == ("off", "swing")
++    assert dict(caps.features) == {}
+diff -ruN -x __pycache__ a/tests/test_transcold_device.py b/tests/test_transcold_device.py
+--- a/tests/test_transcold_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_transcold_device.py	2026-09-29 14:58:45.045144145 +0700
+@@ -237,9 +237,18 @@
+     assert read(state(True, mode, float(t)))["temp"] == t
+ 
+ 
++def test_setpoint_range_is_the_headers():
++    # kTranscoldTempMin = 18, kTranscoldTempMax = 30 (the legacy entity
++    # offered 17, which setTemp sent as 18).
++    rng = device().capabilities.temperature
++    assert (rng.min, rng.max, rng.decimals) == (18.0, 30.0, (0,))
++
++
+ @pytest.mark.parametrize("mode", ["auto", "cool", "dry", "heat"])
+ def test_setpoint_17_is_clamped_to_kTranscoldTempMin(mode):
+-    # The entity offers 17 C; setTemp clamps to kTranscoldTempMin (18 C).
++    # A 17 C request (the oracle's) normalises to kTranscoldTempMin (18 C),
++    # what setTemp sent for it.
++    assert state(True, mode, 17.0).temperature == 18.0
+     assert words(state(True, mode, 17.0)) == words(state(True, mode, 18.0))
+ 
+ 
+@@ -344,16 +353,6 @@
+     assert isinstance(registry.get_device("transcold", model), TranscoldDevice)
+ 
+ 
+-@pytest.mark.parametrize("model", TRANSCOLD_MODELS)
+-def test_capabilities_match_the_legacy_entity(model):
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.transcold import Transcold
+-
+-    legacy = LegacyDevice("transcold", model, Transcold)
+-    assert TranscoldDevice("transcold", model).capabilities == legacy.capabilities
+-
+-
+ # ------------------------------------------------------ the C swing toggle
+ 
+ 
+diff -ruN -x __pycache__ a/tests/test_truma_device.py b/tests/test_truma_device.py
+--- a/tests/test_truma_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_truma_device.py	2026-09-29 14:55:08.738555291 +0700
+@@ -235,11 +235,12 @@
+     assert isinstance(registry.get_device("truma", model), TrumaDevice)
+ 
+ 
+-@pytest.mark.parametrize("model", TRUMA_MODELS)
+-def test_capabilities_match_the_legacy_entity(model):
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.truma import Truma
+-
+-    legacy = LegacyDevice("truma", model, Truma)
+-    assert TrumaDevice("truma", model).capabilities == legacy.capabilities
++def test_capabilities_are_the_headers():
++    # ir_Truma.h: kTrumaMinTemp/MaxTemp 16-31; kTrumaFan{Low,Med,High} (no
++    # auto) and kTrumaFanQuiet; kTruma{Auto,Cool,Fan}.
++    caps = device().capabilities
++    assert set(caps.modes) == {"auto", "cool", "fan"}
++    assert (caps.temperature.min, caps.temperature.max) == (16.0, 31.0)
++    assert caps.fan.values == ("1", "2", "3")
++    assert (caps.swing_v, caps.swing_h) == (None, None)
++    assert set(caps.features) == {"quiet"}
+diff -ruN -x __pycache__ a/tests/test_vestel_ac_device.py b/tests/test_vestel_ac_device.py
+--- a/tests/test_vestel_ac_device.py	2026-09-29 14:46:17.000000000 +0700
++++ b/tests/test_vestel_ac_device.py	2026-09-29 14:59:27.414390339 +0700
+@@ -36,10 +36,8 @@
+ HEAT_17 = Defect("temperature", 17, 18, "setTemp clamps to kVestelAcMinTempC")
+ DEFECTS = (SWING, SLEEP, TURBO, HEAT_16, HEAT_17)
+ 
+-# Not a C defect: a record without "fan" leaves IRac's fanspeed at its
+-# default, kAuto (kVestelAcFanAuto). The entity has no fan auto (the legacy
+-# entity has none), so the port reads the record as its first fan, low.
+-NO_FAN = Defect("fan", "1", "auto", "record has no fan: IRac's default kAuto")
++# A record without "fan" leaves IRac's fanspeed at its default, kAuto
++# (kVestelAcFanAuto): the port's fan auto, so no declaration is needed.
+ 
+ # ir_Vestel_test.cpp, as 7 logical bytes (the uint64 sent LSB first).
+ DEFAULT_STATE = (0x0F00D9001FEF201).to_bytes(7, "little")  # kVestelAcStateDefault
+@@ -52,10 +50,6 @@
+     return VestelAcDevice("vestel", model)
+ 
+ 
+-def defects_for(record):
+-    return DEFECTS + (() if "fan" in record["state"] else (NO_FAN,))
+-
+-
+ def state(power=True, mode="cool", temperature=22.0, **kw):
+     return device().normalise(HvacState(power, mode, temperature, **kw))
+ 
+@@ -72,7 +66,7 @@
+ @pytest.mark.parametrize("record", oracle_params("VESTEL_AC"))
+ def test_matches_c_library(record):
+     dev = device()
+-    assert_matches_oracle(dev, record, dev.LAYOUTS, defects_for(record))
++    assert_matches_oracle(dev, record, dev.LAYOUTS, DEFECTS)
+ 
+ 
+ def test_layout_round_trips_every_oracle_state():
+@@ -179,15 +173,41 @@
+     assert VESTEL_AC_LAYOUT.build(**values) == bytearray(data)
+ 
+ 
+-def test_port_reproduces_the_real_heat_capture_but_its_fan():
+-    # RealNormalExample: heat, 16C, ion on, fan auto. The entity has no fan
+-    # auto; with the capture's fan code, the port's frame is the capture.
+-    ours = bytearray(frame(state(True, "heat", 16.0, features={"purifier": True})))
+-    VESTEL_AC_LAYOUT.write_raw(
+-        ours, "fan", VESTEL_AC_LAYOUT.fields["fan"].values["auto"]
+-    )
+-    VESTEL_AC_LAYOUT.checksum.apply(ours)
+-    assert bytes(ours) == REAL_NORMAL
++def test_port_reproduces_the_real_heat_capture():
++    # RealNormalExample: heat, 16C, ion on, fan auto (kVestelAcFanAuto).
++    target = state(True, "heat", 16.0, fan="auto", features={"purifier": True})
++    assert frame(target) == REAL_NORMAL
++
++
++def test_fan_offers_auto_and_the_three_speeds():
++    # kVestelAcFanAuto/Low/Med/High (the legacy entity had no auto).
++    fan = device().capabilities.fan
++    assert fan.values == ("auto", "1", "2", "3")
++    assert [fan.label(v) for v in fan.values] == ["auto", "low", "medium", "high"]
++
++
++def test_fan_auto_uses_its_documented_code():
++    # kVestelAcFanAuto = 1.
++    assert VESTEL_AC_LAYOUT.read_raw(frame(state(fan="auto")), "fan") == 1
++
++
++def test_fanless_records_are_fan_auto():
++    # IRac's default fanspeed kAuto is the port's fan auto.
++    dev = device()
++    for record in load_oracle("VESTEL_AC"):
++        if "fan" not in record["state"]:
++            assert state_from_record(dev, record["state"]).fan == "auto"
++            assert_matches_oracle(dev, record, dev.LAYOUTS, DEFECTS)
++
++
++@pytest.mark.parametrize("mode", ["auto", "cool", "dry", "fan"])
++@pytest.mark.parametrize("t, kept", [(16.0, 18.0), (17.0, 18.0), (18.0, 18.0)])
++def test_normalise_clamps_to_18_outside_heat(mode, t, kept):
++    # kVestelAcMinTempC outside heat; capabilities give the union 16-30.
++    assert state(True, mode, t).temperature == kept
++    assert state(True, "heat", t).temperature == t
++    rng = device().capabilities.temperature
++    assert (rng.min, rng.max) == (16.0, 30.0)
+ 
+ 
+ @pytest.mark.parametrize("mode", MODES)
+@@ -288,16 +308,6 @@
+     assert isinstance(registry.get_device("vestel", model), VestelAcDevice)
+ 
+ 
+-@pytest.mark.parametrize("model", VESTEL_AC_MODELS)
+-def test_capabilities_match_the_legacy_entity(model):
+-    pytest.importorskip("pyhvac.irhvac")
+-    from pyhvac.legacy import LegacyDevice
+-    from pyhvac.plugins.vestel import Vestel
+-
+-    legacy = LegacyDevice("vestel", model, Vestel)
+-    assert device(model).capabilities == legacy.capabilities
+-
+-
+ def _record(**match):
+     return next(
+         r
+@@ -318,7 +328,7 @@
+ def test_undeclared_deviation_is_reported(defect, match):
+     dev = device()
+     record = _record(**match)
+-    defects = [d for d in defects_for(record) if d != defect]
++    defects = [d for d in DEFECTS if d != defect]
+     with pytest.raises(AssertionError, match=defect.field):
+         assert_matches_oracle(dev, record, dev.LAYOUTS, defects)
+ 
+@@ -334,13 +344,6 @@
+         assert_matches_oracle(dev, rec, dev.LAYOUTS, defects)
+ 
+ 
+-def test_fanless_record_needs_its_declaration():
+-    dev = device()
+-    record = _record(purifier="on")
+-    with pytest.raises(AssertionError, match="fan"):
+-        assert_matches_oracle(dev, record, dev.LAYOUTS, DEFECTS)
+-
+-
+ def test_layouts_must_cover_every_frame():
+     dev = device()
+     record = _record(mode="heat", swing="on")

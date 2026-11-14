@@ -1,0 +1,1274 @@
+diff -ruN -x __pycache__ a/pyhvac/plugins/lg.py b/pyhvac/plugins/lg.py
+--- a/pyhvac/plugins/lg.py	2026-09-29 14:46:17.000000000 +0700
++++ b/pyhvac/plugins/lg.py	2026-09-29 14:58:16.600060706 +0700
+@@ -27,13 +27,14 @@
+ ##
+ 
+ import struct
++from dataclasses import replace
+ 
+ from .hvaclib import HVAC, PulseBased, GenPluginObject
+ from ..device import Device
+ from ..fields import Field, HighNibbleSum, Layout
+ from ..ir.model import Frame, Protocol, PulseDistance, Section
+ from ..choices import FAN_4, FAN_5, ON_OFF, SWING, SWING_V_ANGLES
+-from ..state import Capabilities, TemperatureRange
++from ..state import Capabilities, Choice, TemperatureRange
+ 
+ try:
+     from ..irhvac import (
+@@ -1043,6 +1044,294 @@
+ DEVICES.update({m: Lg2Device for m in LG2_MODELS})
+ 
+ 
++# ------------------------------------------------------------- LG native
++# The 0.1.x pure-Python LG classes (LG, InverterV, DualInverter) on
++# LG_NATIVE. Their code is the spec: every frame is 3 bytes plus the
++# checksum byte LG.crc appends (the nibble sum of the 3 bytes, mod 16, in
++# its high nibble), sent MSB first as 32 bits. The first 28 bits are
++# IRremoteESP8266's LGProtocol word (the off frame is kLgAcOffCommand):
++#   byte 0: 0x88 (LG.FBODY)
++#   byte 1: power (bits 6-7, 3 = off: code_mode's 0xc0), "change" (bit 3:
++#           code_mode's addit, set when the unit was already on), mode
++#           (bits 0-2)
++#   byte 2: temperature - 15 (bits 4-7), fan (bits 0-3)
++# Settings the state frame cannot carry are "special" frames of their own:
++# 0x88 and a 16-bit command (code_swing, code_hswing, code_powerful,
++# code_purifier, code_cleaning, code_economy, code_diagnostic).
++
++LG_NATIVE_MODE = {"cool": 0, "dry": 1, "fan": 2, "auto": 3}  # LG.code_mode
++LG_NATIVE_FAN = {  # LG.code_fan's rank
++    "lowest": 0x0,
++    "low": 0x09,
++    "medium": 0x02,
++    "high": 0x0A,
++    "highest": 0x04,
++    "auto": 0x05,
++}
++LG_NATIVE_CHECKSUM = HighNibbleSum(0, 3, 3)  # LG.crc
++
++LG_NATIVE_LAYOUT = Layout(
++    b"\x88\x00\x00\x00",
++    {
++        "power": Field.at(1, 6, 2, values={True: 0, False: 3}),
++        "change": Field.at(1, 3, 1),
++        "mode": Field.at(1, 0, 3, values=LG_NATIVE_MODE),
++        "temp": Field.at(2, 4, 4),  # celsius - 15
++        "fan": Field.at(2, 0, 4, values=LG_NATIVE_FAN),
++    },
++    checksum=LG_NATIVE_CHECKSUM,
++)
++
++
++def _lg_native_commands(prefix, byte1, codes):
++    return {f"{prefix}{name}": byte1 | code << 8 for name, code in codes.items()}
++
++
++LG_NATIVE_COMMANDS = {  # command -> bytes 1-2 (byte 1 low, byte 2 high)
++    # LG.code_swing: 0x88 0x13 xx
++    **_lg_native_commands(
++        "swing_v ",
++        0x13,
++        {
++            "swing": 0x14,
++            "off": 0x15,
++            "0°": 0x04,
++            "30°": 0x05,
++            "45°": 0x06,
++            "60°": 0x07,
++            "90°": 0x08,
++            "ceiling": 0x09,
++        },
++    ),
++    # LG.code_hswing: 0x88 0x13 xx
++    **_lg_native_commands(
++        "swing_h ",
++        0x13,
++        {
++            "swing": 0x16,
++            "off": 0x17,
++            "left": 0x0B,
++            "centre left": 0x0C,
++            "centre": 0x0D,
++            "centre right": 0x0E,
++            "right": 0x0F,
++            "swing left": 0x10,
++            "swing right": 0x11,
++        },
++    ),
++    "powerful on": 0x10 | 0x08 << 8,  # LG.code_powerful: 0x88 0x10 0x08
++    # LG.code_purifier, code_cleaning, code_economy, code_diagnostic: 0x88 0xc0 xx
++    **_lg_native_commands("purifier ", 0xC0, {"on": 0x00, "off": 0x08}),
++    **_lg_native_commands("cleaning ", 0xC0, {"off": 0x0B, "on": 0x0C}),
++    **_lg_native_commands(
++        "economy ", 0xC0, {"off": 0x7F, "80": 0x7D, "60": 0x7E, "40": 0x80}
++    ),
++    "diagnostic": 0xC0 | 0xCE << 8,
++}
++LG_NATIVE_COMMAND_LAYOUT = Layout(
++    b"\x88\x00\x00\x00",
++    {"command": Field.at(1, 0, 16, values=LG_NATIVE_COMMANDS)},
++    checksum=LG_NATIVE_CHECKSUM,
++)
++
++# canonical fan -> the legacy name LG.code_fan ranks
++LG_NATIVE_FAN_NAME = dict(FAN_5.labels)
++# The auto_bias ladder: code_temperature sends 15 + its index in auto mode.
++LG_NATIVE_AUTO_BIAS_LADDER = ("-2", "-1", "default", "+1", "+2")
++# The same values, default first (a feature's first value is its default).
++LG_NATIVE_AUTO_BIAS = Choice(("default", "-2", "-1", "+1", "+2"))
++LG_NATIVE_ECONOMY = Choice(("off", "80", "60", "40"))
++
++
++def _lg_native_positions(*labels):
++    """A swing Choice: off, swing, then "1".."n" labelled with the legacy
++    positions, top (or left) first."""
++    levels = {str(n): label for n, label in enumerate(labels, 1)}
++    return Choice(("off", "swing") + tuple(levels), {"swing": "swing", **levels})
++
++
++LG_NATIVE_VARIANTS = {
++    # LG: modes off/cool/fan/dry, 18-29 °C, nothing else (LG.__init__).
++    "generic": Capabilities(
++        modes=("cool", "fan", "dry"),
++        temperature=TemperatureRange(18.0, 29.0),
++    ),
++    # InverterV.__init__
++    "inverter v": Capabilities(
++        modes=("auto", "cool", "fan", "dry"),
++        temperature=TemperatureRange(16.0, 29.0),
++        fan=FAN_5,  # auto, lowest..highest
++        swing_v=_lg_native_positions("90°", "0°"),
++        features={
++            "auto_bias": LG_NATIVE_AUTO_BIAS,
++            "powerful": ON_OFF,
++            "cleaning": ON_OFF,
++            "economy": LG_NATIVE_ECONOMY,
++        },
++    ),
++    # DualInverter.__init__
++    "dual inverter": Capabilities(
++        modes=("auto", "cool", "fan", "dry"),
++        temperature=TemperatureRange(16.0, 29.0),
++        fan=FAN_5,  # auto, lowest..highest
++        swing_v=_lg_native_positions("ceiling", "90°", "60°", "45°", "30°", "0°"),
++        swing_h=_lg_native_positions(
++            "left",
++            "centre left",
++            "centre",
++            "centre right",
++            "right",
++            "swing left",
++            "swing right",
++        ),
++        features={
++            "auto_bias": LG_NATIVE_AUTO_BIAS,
++            "powerful": ON_OFF,
++            "purifier": ON_OFF,
++            "cleaning": ON_OFF,
++            "economy": LG_NATIVE_ECONOMY,
++        },
++        actions={"diagnostic": "diagnostic"},
++    ),
++}
++LG_NATIVE_MODELS = {  # model -> variant, as PluginObject.MODELS
++    "generic": "generic",
++    "inverter v": "inverter v",
++    "dual inverter": "dual inverter",
++}
++
++
++class LgNativeDevice(Device):
++    """The 0.1.x pure-Python LG classes: LG ("generic"), InverterV
++    ("inverter v") and DualInverter ("dual inverter"). They share LG's code
++    and differ only by their tables (the variant's capabilities).
++
++    A message is a state frame and/or special frames, as LG.build_code:
++    - Power off: the off frame (kLgAcOffCommand) alone.
++    - Power on: the state frame, then one special frame per setting that
++      changed, in LG's order (swing_v, swing_h, powerful, purifier,
++      cleaning, economy), then the diagnostic request when asked.
++
++    The state frame carries the mode, the fan (auto in auto mode,
++    code_fan) and a temperature that depends on the mode (code_temperature):
++    the setpoint in cool, 18 in fan, 24 in dry, and 15 plus the auto_bias
++    index (17 by default) in auto.
++
++    ``previous``, as the legacy object's status (what it sent last):
++    - The "change" bit (code_mode's addit) is set when the unit was on.
++      Without ``previous`` it is clear: a power-on frame, as a fresh object.
++    - The state frame goes when power, mode, setpoint, fan or auto_bias
++      changed, when powerful was switched off (code_powerful resends the
++      normal code to leave jet mode), and whenever nothing else would be
++      sent. LG.build_code tests mode, temperature and fan only, so an
++      auto_bias change alone sent nothing (an evident omission: auto_bias
++      only lives in that frame); the port sends it.
++    - A special frame goes when its setting differs from ``previous``.
++      Without ``previous`` every offered setting's frame goes (each is an
++      absolute code, not a toggle), powerful only when on.
++    """
++
++    PROTOCOL = LG_NATIVE
++    # The state frame, then any number of special frames.
++    LAYOUTS = (LG_NATIVE_LAYOUT, LG_NATIVE_COMMAND_LAYOUT)
++    capabilities = LG_NATIVE_VARIANTS["generic"]
++
++    def __init__(self, brand, model, variant=None):
++        super().__init__(brand, model)
++        self.variant = variant or LG_NATIVE_MODELS.get(model, "generic")
++        if self.variant not in LG_NATIVE_VARIANTS:
++            raise ValueError(f"unknown LG native variant {self.variant!r}")
++        self.capabilities = LG_NATIVE_VARIANTS[self.variant]
++
++    def normalise(self, state):
++        state = super().normalise(state)
++        if state.mode == "auto" and state.fan != "auto":
++            state = replace(state, fan="auto")  # code_fan: auto mode, auto fan
++        return state
++
++    @staticmethod
++    def _frame(data):
++        return Frame("main", bytes(data))
++
++    def _command(self, name):
++        return self._frame(LG_NATIVE_COMMAND_LAYOUT.build(command=name))
++
++    def _temperature(self, target):
++        """LG.code_temperature."""
++        if target.mode == "fan":
++            return 18
++        if target.mode == "dry":
++            return 24
++        if target.mode == "auto":
++            bias = target.features.get("auto_bias")
++            if bias is None:  # no auto_bias capability
++                return 17
++            return 15 + LG_NATIVE_AUTO_BIAS_LADDER.index(bias)
++        return int(target.temperature)
++
++    def _state_frame(self, previous, target):
++        if not target.power:
++            return LG_NATIVE_LAYOUT.build(
++                power=False, change=0, mode="cool", temp=0, fan="auto"
++            )
++        return LG_NATIVE_LAYOUT.build(
++            power=True,
++            change=int(previous is not None and previous.power),
++            mode=target.mode,
++            temp=self._temperature(target) - 15,
++            fan=LG_NATIVE_FAN_NAME[target.fan],
++        )
++
++    def _specials(self, previous, target):
++        caps = self.capabilities
++
++        def changed(get):
++            return previous is None or get(previous) != get(target)
++
++        names = []
++        if caps.swing_v is not None and changed(lambda s: s.swing_v):
++            names.append(f"swing_v {caps.swing_v.label(target.swing_v)}")
++        if caps.swing_h is not None and changed(lambda s: s.swing_h):
++            names.append(f"swing_h {caps.swing_h.label(target.swing_h)}")
++        for feature in ("powerful", "purifier", "cleaning", "economy"):
++            if feature not in caps.features:
++                continue
++            value = target.features[feature]
++            if not changed(lambda s: s.features[feature]):
++                continue
++            if feature == "powerful" and not value:
++                continue  # leaving jet mode is the state frame (see frames)
++            if isinstance(value, bool):
++                value = caps.features[feature].label(value)
++            names.append(f"{feature} {value}")
++        return names
++
++    def frames(self, previous, target, actions):
++        if not target.power:
++            return [self._frame(self._state_frame(previous, target))]
++        names = self._specials(previous, target)
++        if "diagnostic" in actions:
++            names.append("diagnostic")
++        keys = ("power", "mode", "temperature", "fan")
++        send_state = (
++            previous is None
++            or not names
++            or any(getattr(previous, k) != getattr(target, k) for k in keys)
++            or previous.features.get("auto_bias") != target.features.get("auto_bias")
++            or (
++                previous.features.get("powerful")
++                and not target.features.get("powerful")
++            )
++        )
++        frames = (
++            [self._frame(self._state_frame(previous, target))] if send_state else []
++        )
++        return frames + [self._command(name) for name in names]
++
++
++DEVICES.update({m: LgNativeDevice for m in LG_NATIVE_MODELS})
++
++
+ class PluginObject(GenPluginObject):
+ 
+     MODELS = {
+diff -ruN -x __pycache__ a/pyhvac/plugins/panasonic.py b/pyhvac/plugins/panasonic.py
+--- a/pyhvac/plugins/panasonic.py	2026-09-29 14:46:17.000000000 +0700
++++ b/pyhvac/plugins/panasonic.py	2026-09-29 14:54:52.413120560 +0700
+@@ -30,13 +30,14 @@
+ ##
+ 
+ import struct
++from dataclasses import dataclass
+ 
+ from .hvaclib import HVAC, PulseBased, GenPluginObject, bit_reverse
+ from ..device import Device
+ from ..fields import Checksums, Copy, Field, Layout, Sum8
+ from ..ir.model import Frame, Protocol, PulseDistance, Section
+ from ..choices import FAN_5, ON_OFF, SWING, SWING_H_5, SWING_V_AUTO_ANGLES
+-from ..state import Capabilities, TemperatureRange
++from ..state import Capabilities, Choice, TemperatureRange
+ 
+ try:
+     from ..irhvac import (
+@@ -888,6 +889,226 @@
+ DEVICES.update({m: PanasonicAc32Device for m in PANASONIC_AC32_MODELS})
+ 
+ 
++# ------------------------------------------------------- Panasonic native
++# The 0.1.x pure-Python Panasonic classes (Panasonic, PanaCassette) on
++# PANASONIC_NATIVE. Their code is the spec. Bytes are as sent, MSB first,
++# so each value is bit-reversed against the LSB-first convention: the
++# classes store the reversed codes. Every frame ends with Panasonic.crc: the
++# byte sum of the bit-reversed bytes, bit-reversed.
++#
++# A message is two frames (Panasonic.build_code):
++# - the first frame: FHEADER + F1BODY, a constant;
++# - the main frame: FHEADER, mode (code_mode; the power bit is the first
++#   sent), temperature (code_temperature), FILLER, fan + swing
++#   (code_fan + code_swing), F2COMMON1, profile (code_profile),
++#   F2COMMON2, purifier (code_purifier).
++# Economy and cleaning are toggles ("This is a toggling value AFAIK"): each
++# change is the first frame plus a special frame (FECON, FODOUR), sent
++# before the message (Panasonic._build_ircode: cleaning, economy, then the
++# message).
++
++
++@dataclass(frozen=True)
++class _ReversedSum8(Sum8):
++    """Panasonic.crc: Sum8 over the bit-reversed bytes, bit-reversed."""
++
++    def compute(self, data):
++        return bit_reverse(super().compute(data))
++
++
++PANASONIC_NATIVE_SHORT = Layout(  # the 8-byte frames: FHEADER + 2 bytes + crc
++    Panasonic.FHEADER + b"\x00\x00\x00",
++    {
++        # Bytes 4-6 (byte 4 lowest): F1BODY after FHEADER's zero, or the
++        # tail of FECON / FODOUR.
++        "frame": Field.at(
++            4,
++            0,
++            24,
++            values={
++                "first": 0,  # FHEADER + F1BODY
++                "economy": int.from_bytes(Panasonic.FECON[4:], "little"),
++                "cleaning": int.from_bytes(Panasonic.FODOUR[4:], "little"),
++            },
++        ),
++    },
++    checksum=_ReversedSum8(0, 7, 7, reverse=True),
++)
++PANASONIC_NATIVE_MODE = {  # code_mode without its power bit (0x80)
++    "auto": 0x10,
++    "heat": 0x12,  # encoded, but no legacy class offers heat
++    "dry": 0x14,
++    "fan": 0x16,
++    "cool": 0x1C,
++}
++PANASONIC_NATIVE_FAN = {  # code_fan (0: no fan capability)
++    None: 0x0,
++    "auto": 0x5,
++    "highest": 0xE,
++    "high": 0x6,
++    "medium": 0xA,
++    "low": 0x2,
++    "lowest": 0xC,
++}
++PANASONIC_NATIVE_SWING = {  # code_swing, high nibble (0: no swing capability)
++    None: 0x0,
++    "auto": 0xF,
++    "auto high": 0x7,
++    "auto low": 0xB,
++    "ceiling": 0x8,
++    "90°": 0x4,
++    "60°": 0xC,
++    "45°": 0x2,
++    "30°": 0xA,
++}
++PANASONIC_NATIVE_PROFILE = {  # code_profile; no legacy class offers profile
++    None: 0x00,
++    "normal": 0x08,
++    "boost": 0x88,
++    "quiet": 0x0C,
++}
++PANASONIC_NATIVE_MIN_TEMP = 16  # Panasonic.base_temp
++PANASONIC_NATIVE_FAN_TEMP = 27  # set_mode/build_code: fan mode sends 27 °C
++PANASONIC_NATIVE_MAIN = Layout(
++    Panasonic.FHEADER
++    + b"\x00\x00"
++    + Panasonic.FILLER
++    + b"\x00"
++    + Panasonic.F2COMMON1
++    + b"\x00"
++    + Panasonic.F2COMMON2
++    + b"\x00\x00",
++    {
++        "power": Field.at(5, 7, 1),
++        "mode": Field.at(5, 0, 7, values=PANASONIC_NATIVE_MODE),
++        # code_temperature: bit_reverse(0x20 + (celsius - base_temp) * 2),
++        # for any value set_temperature can hold (16-31 °C)
++        "temperature": Field.at(
++            6,
++            0,
++            8,
++            values={
++                t: bit_reverse(0x20 + ((t - PANASONIC_NATIVE_MIN_TEMP) << 1))
++                for t in range(PANASONIC_NATIVE_MIN_TEMP, 32)
++            },
++        ),
++        "fan": Field.at(8, 0, 4, values=PANASONIC_NATIVE_FAN),
++        "swing": Field.at(8, 4, 4, values=PANASONIC_NATIVE_SWING),
++        "profile": Field.at(13, 0, 8, values=PANASONIC_NATIVE_PROFILE),
++        "purifier": Field.at(17, 5, 1),  # code_purifier: 0x20
++    },
++    checksum=_ReversedSum8(0, 18, 18, reverse=True),
++)
++
++PANASONIC_NATIVE_VARIANTS = {
++    # Panasonic.__init__: modes off/auto/cool/fan/dry, 16-31 °C, nothing else.
++    "generic": Capabilities(
++        modes=("auto", "cool", "fan", "dry"),
++        temperature=TemperatureRange(16.0, 31.0),
++    ),
++    # PanaCassette.__init__
++    "4 way cassette": Capabilities(
++        modes=("auto", "cool", "fan", "dry"),
++        temperature=TemperatureRange(16.0, 31.0),
++        fan=Choice(
++            ("auto", "1", "2", "3"),
++            {"auto": "auto", "1": "lowest", "2": "medium", "3": "highest"},
++        ),
++        swing_v=Choice(
++            ("auto", "1", "2", "3", "4", "5", "6"),
++            {
++                "auto": "auto",
++                "1": "90°",
++                "2": "60°",
++                "3": "45°",
++                "4": "30°",
++                "5": "auto high",
++                "6": "auto low",
++            },
++        ),
++        features={"purifier": ON_OFF, "economy": ON_OFF, "cleaning": ON_OFF},
++    ),
++}
++PANASONIC_NATIVE_MODELS = {  # model -> variant, as PluginObject.MODELS
++    "generic": "generic",
++    "4 way cassette": "4 way cassette",
++}
++PANASONIC_NATIVE_TOGGLES = ("cleaning", "economy")  # _build_ircode's order
++
++
++class PanasonicNativeDevice(Device):
++    """The 0.1.x pure-Python Panasonic classes: Panasonic ("generic") and
++    PanaCassette ("4 way cassette"). They share Panasonic's code and differ
++    only by their tables (the variant's capabilities).
++
++    The message is the full state (see PANASONIC_NATIVE_MAIN); a variant
++    without fan or swing sends 0 there, as code_fan / code_swing. Fan mode
++    sends 27 °C (set_mode), whatever the setpoint.
++
++    Power off: the power bit clear and mode auto (code_mode's 0x10). The
++    other settings are those the unit had, not the target's: set_mode("off")
++    drops every pending change, so the legacy object sent its status. The
++    port sends ``previous``'s settings (the target's without it).
++
++    Economy and cleaning are toggles: their special frames go, with power
++    on, when the setting differs from ``previous``. Without ``previous``
++    the unit is taken to have them off, as a fresh legacy object. With power
++    off no toggle goes (set_mode("off") dropped them).
++    """
++
++    PROTOCOL = PANASONIC_NATIVE
++    # The message; each toggle adds two PANASONIC_NATIVE_SHORT frames before it.
++    LAYOUTS = (PANASONIC_NATIVE_SHORT, PANASONIC_NATIVE_MAIN)
++    capabilities = PANASONIC_NATIVE_VARIANTS["generic"]
++
++    def __init__(self, brand, model, variant=None):
++        super().__init__(brand, model)
++        self.variant = variant or PANASONIC_NATIVE_MODELS.get(model, "generic")
++        if self.variant not in PANASONIC_NATIVE_VARIANTS:
++            raise ValueError(f"unknown Panasonic native variant {self.variant!r}")
++        self.capabilities = PANASONIC_NATIVE_VARIANTS[self.variant]
++
++    @staticmethod
++    def _short(name):
++        return Frame("main", bytes(PANASONIC_NATIVE_SHORT.build(frame=name)))
++
++    def _main(self, state, power):
++        caps = self.capabilities
++        fan = None if caps.fan is None else caps.fan.label(state.fan)
++        swing = None if caps.swing_v is None else caps.swing_v.label(state.swing_v)
++        if state.mode == "fan":
++            temperature = PANASONIC_NATIVE_FAN_TEMP
++        else:
++            temperature = int(state.temperature)
++        data = PANASONIC_NATIVE_MAIN.build(
++            power=int(power),
++            mode=state.mode if power else "auto",
++            temperature=temperature,
++            fan=fan,
++            swing=swing,
++            profile=None,
++            purifier=int(state.features.get("purifier", False)),
++        )
++        return Frame("main", bytes(data))
++
++    def frames(self, previous, target, actions):
++        frames = []
++        if target.power:
++            for name in PANASONIC_NATIVE_TOGGLES:
++                if name not in self.capabilities.features:
++                    continue
++                was = previous is not None and previous.features[name]
++                if target.features[name] != was:
++                    frames += [self._short("first"), self._short(name)]
++            main = self._main(target, True)
++        else:
++            main = self._main(previous or target, False)
++        return frames + [self._short("first"), main]
++
++
++DEVICES.update({m: PanasonicNativeDevice for m in PANASONIC_NATIVE_MODELS})
++
++
+ class PluginObject(GenPluginObject):
+     MODELS = {
+         "generic": Panasonic,
+diff -ruN -x __pycache__ a/tests/test_lg_native_device.py b/tests/test_lg_native_device.py
+--- a/tests/test_lg_native_device.py	1970-01-01 07:00:00.000000000 +0700
++++ b/tests/test_lg_native_device.py	2026-09-29 14:56:53.873412202 +0700
+@@ -0,0 +1,420 @@
++import gzip
++import json
++from pathlib import Path
++
++import pytest
++
++from pyhvac import registry
++from pyhvac.ir.codec import decode
++from pyhvac.plugins.lg import (
++    LG,
++    LG_NATIVE,
++    LG_NATIVE_COMMAND_LAYOUT,
++    LG_NATIVE_LAYOUT,
++    LG_NATIVE_VARIANTS,
++    DualInverter,
++    InverterV,
++    LgNativeDevice,
++)
++from pyhvac.state import HvacState
++from port_oracle import assert_matches_golden
++
++GOLDEN = Path(__file__).parent / "fixtures" / "golden" / "lg.json.gz"
++LEGACY = {"LG": LG, "InverterV": InverterV, "DualInverter": DualInverter}
++VARIANT = {"LG": "generic", "InverterV": "inverter v", "DualInverter": "dual inverter"}
++
++FAN = {"auto": "auto", "lowest": "1", "low": "2", "medium": "3"}
++FAN.update({"high": "4", "highest": "5"})
++
++
++def _canonical(choice, old):
++    """Old-vocabulary value -> canonical value, through the choice's labels."""
++    if choice is None:
++        return None
++    for value in choice.values:
++        if choice.label(value) == old:
++            return value
++    raise ValueError(old)
++
++
++def from_old(cls_name, old):
++    """The HvacState and actions an old-vocabulary state stands for, on a
++    fresh object of the legacy class ``cls_name``."""
++    legacy = LEGACY[cls_name]()
++    old = {**legacy.status, **old}
++    caps = LG_NATIVE_VARIANTS[VARIANT[cls_name]]
++    features = {}
++    for name, choice in caps.features.items():
++        value = old.get(name, choice.values[0])
++        features[name] = value == "on" if choice.values == (False, True) else value
++    kwargs = {}
++    if caps.fan is not None:
++        kwargs["fan"] = FAN[old["fan"]]
++    if caps.swing_v is not None:
++        kwargs["swing_v"] = _canonical(caps.swing_v, old["swing"])
++    if caps.swing_h is not None:
++        kwargs["swing_h"] = _canonical(caps.swing_h, old.get("hswing", "off"))
++    state = HvacState(
++        power=old["mode"] != "off",
++        mode=caps.modes[0] if old["mode"] == "off" else old["mode"],
++        temperature=old["temperature"],
++        features=features,
++        **kwargs,
++    )
++    actions = ("diagnostic",) if old.get("diagnostic") == "on" else ()
++    return state, actions
++
++
++def device(variant):
++    return LgNativeDevice("lg", variant)
++
++
++def _records():
++    records = json.loads(gzip.decompress(GOLDEN.read_bytes()))
++    for n, rec in enumerate(records):
++        state = rec["state"]
++        reason = None
++        if rec["class"] == "DualInverter" and state.get("hswing", "off") != "off":
++            reason = (
++                "DualInverter.status has no 'hswing' key: set_hswing raised a "
++                "KeyError that set_value swallowed, so hswing was never sent; "
++                "the port sends the swing_h frame code_hswing encodes"
++            )
++        marks = [pytest.mark.skip(reason=reason)] if reason else []
++        yield pytest.param(rec, id=f"{rec['class']}-{n}", marks=marks)
++
++
++RECORDS = list(_records())
++
++
++@pytest.mark.parametrize("record", RECORDS)
++def test_reproduces_golden(record):
++    cls_name = record["class"]
++    dev = device(VARIANT[cls_name])
++    # The records were built from a fresh legacy object: that is "previous".
++    previous, _ = from_old(cls_name, {})
++    state, actions = from_old(cls_name, record["state"])
++    if actions:
++        # assert_matches_golden encodes without actions: check them here.
++        cmd = dev.encode(previous, state, actions)
++        assert list(cmd.signal.pulses) == record["pulses"]
++        return
++    assert_matches_golden(dev, record, state, previous)
++
++
++# ------------------------------------------------------------------ helpers
++
++ON = HvacState(True, "cool", 24.0)
++OFF = HvacState(False, "cool", 24.0)
++
++
++def words(variant, previous, target, actions=()):
++    """The frames' data as hex, through the full encode and a decode."""
++    cmd = device(variant).encode(previous, target, actions)
++    n = len(cmd.signal.pulses) // 68  # header 2, 32 bits * 2, footer and gap 2
++    frames = decode(LG_NATIVE, cmd.signal.pulses, expected=["main"] * n)
++    return [f.data.hex() for f in frames]
++
++
++def state(**kw):
++    base = dict(power=True, mode="cool", temperature=24.0)
++    base.update(kw)
++    return HvacState(**base)
++
++
++# ------------------------------------------------------------------- layout
++
++
++def test_state_layout_round_trip():
++    data = LG_NATIVE_LAYOUT.build(
++        power=True, change=1, mode="dry", temp=24 - 15, fan="high"
++    )
++    assert data.hex() == "88099ac0"
++    assert LG_NATIVE_LAYOUT.read(data) == {
++        "power": True,
++        "change": 1,
++        "mode": "dry",
++        "temp": 9,
++        "fan": "high",
++    }
++
++
++def test_off_frame_is_kLgAcOffCommand():
++    data = LG_NATIVE_LAYOUT.build(
++        power=False, change=0, mode="cool", temp=0, fan="auto"
++    )
++    assert data.hex() == "88c00510"  # 0x88C0051, plus the unsent nibble
++
++
++@pytest.mark.parametrize(
++    "name", list(LG_NATIVE_COMMAND_LAYOUT.fields["command"].values)
++)
++def test_command_layout_round_trip(name):
++    data = LG_NATIVE_COMMAND_LAYOUT.build(command=name)
++    assert LG_NATIVE_COMMAND_LAYOUT.read(data) == {"command": name}
++    assert LG_NATIVE_COMMAND_LAYOUT.checksum.check(data)
++
++
++def test_frames_decode_with_the_layouts():
++    dev = device("dual inverter")
++    target = dev.normalise(state(swing_v="3", features={"economy": "60"}))
++    frames = dev.frames(None, target, ())
++    assert LG_NATIVE_LAYOUT.read(frames[0].data)["mode"] == "cool"
++    commands = [LG_NATIVE_COMMAND_LAYOUT.read(f.data)["command"] for f in frames[1:]]
++    assert commands == [
++        "swing_v 60°",
++        "swing_h off",
++        "purifier off",
++        "cleaning off",
++        "economy 60",
++    ]
++
++
++# -------------------------------------------------------------------- rules
++
++
++@pytest.mark.parametrize("previous", [None, ON, OFF])
++@pytest.mark.parametrize("variant", list(LG_NATIVE_VARIANTS))
++def test_power_off_is_the_off_frame_alone(variant, previous):
++    target = HvacState(False, "dry", 20.0, features={"cleaning": True})
++    assert words(variant, previous, target) == ["88c00510"]
++
++
++@pytest.mark.parametrize(
++    "previous, change", [(None, 0), (OFF, 0), (ON, 1)], ids=["none", "off", "on"]
++)
++def test_change_bit_follows_previous_power(previous, change):
++    dev = device("generic")
++    frame = dev.frames(previous and dev.normalise(previous), dev.normalise(ON), ())[0]
++    assert LG_NATIVE_LAYOUT.read(frame.data)["change"] == change
++
++
++@pytest.mark.parametrize(
++    "mode, bias, celsius",
++    [
++        ("cool", "default", 21),
++        ("fan", "default", 18),
++        ("dry", "default", 24),
++        ("auto", "default", 17),
++        ("auto", "-2", 15),
++        ("auto", "-1", 16),
++        ("auto", "+1", 18),
++        ("auto", "+2", 19),
++    ],
++)
++def test_temperature_depends_on_the_mode(mode, bias, celsius):
++    dev = device("inverter v")
++    target = dev.normalise(
++        state(mode=mode, temperature=21.0, features={"auto_bias": bias})
++    )
++    frame = dev.frames(None, target, ())[0]
++    assert LG_NATIVE_LAYOUT.read(frame.data)["temp"] == celsius - 15
++
++
++def test_generic_auto_temperature_without_bias():
++    # LG (generic) offers no auto mode; code_temperature's 17 without bias
++    dev = device("generic")
++    assert dev._temperature(state(mode="auto")) == 17
++
++
++def test_fan_forced_auto_in_auto_mode():
++    dev = device("inverter v")
++    assert dev.normalise(state(mode="auto", fan="3")).fan == "auto"
++    assert dev.normalise(state(mode="cool", fan="3")).fan == "3"
++
++
++def test_generic_sends_fan_auto():
++    dev = device("generic")
++    frame = dev.frames(None, dev.normalise(state(fan="3")), ())[0]
++    assert LG_NATIVE_LAYOUT.read(frame.data)["fan"] == "auto"
++
++
++def test_unknown_previous_sends_every_setting():
++    frames = words("inverter v", None, state())
++    # state, swing off, cleaning off, economy off; powerful off sends nothing
++    assert frames == ["880095e0", "881315a0", "88c00b70", "88c07f20"]
++
++
++def test_unknown_previous_sends_powerful_on():
++    frames = words("inverter v", None, state(features={"powerful": True}))
++    assert "88100890" in frames
++
++
++def test_only_changed_settings_are_sent():
++    prev = state(swing_v="1")
++    assert words("inverter v", prev, state(swing_v="2")) == ["88130480"]
++
++
++def test_unchanged_state_resends_the_state_frame():
++    assert words("inverter v", ON, ON) == ["88089560"]
++
++
++def test_state_change_with_specials():
++    frames = words("inverter v", ON, state(temperature=25.0, swing_v="swing"))
++    assert frames == ["8808a570", "88131490"]
++
++
++def test_powerful_off_resends_the_state_frame():
++    prev = state(features={"powerful": True})
++    assert words("inverter v", prev, ON) == ["88089560"]
++
++
++def test_powerful_off_with_a_special_still_sends_the_state_frame():
++    prev = state(features={"powerful": True})
++    frames = words("inverter v", prev, state(swing_v="1"))
++    assert frames == ["88089560", "881308c0"]
++
++
++def test_auto_bias_change_alone_sends_the_state_frame():
++    # LG.build_code sent nothing here (it tests mode, temperature, fan only)
++    prev = state(mode="auto")
++    target = state(mode="auto", features={"auto_bias": "+1"})
++    expected = LG_NATIVE_LAYOUT.build(
++        power=True, change=1, mode="auto", temp=18 - 15, fan="auto"
++    )
++    assert words("inverter v", prev, target) == [expected.hex()]
++
++
++def test_hswing_is_sent():
++    # The golden records skipped for the hswing bug: from a fresh object,
++    # the port sends the state frame and the code_hswing frame.
++    prev, _ = from_old("DualInverter", {})
++    for old, code in [("swing", "16"), ("left", "0b"), ("swing right", "11")]:
++        target, _ = from_old(
++            "DualInverter", {"mode": "auto", "temperature": 23, "hswing": old}
++        )
++        frames = words("dual inverter", prev, target)
++        assert frames[0] == "880325a0"
++        assert frames[1][:6] == "8813" + code
++        assert len(frames) == 2
++
++
++def test_diagnostic_is_an_action_sent_last():
++    frames = words("dual inverter", ON, ON, ["diagnostic"])
++    assert frames == ["88c0ce60"]
++    frames = words("dual inverter", ON, state(temperature=25.0), ["diagnostic"])
++    assert frames[-1] == "88c0ce60" and len(frames) == 2
++
++
++def test_diagnostic_only_on_dual_inverter():
++    with pytest.raises(ValueError):
++        device("inverter v").encode(None, ON, ["diagnostic"])
++
++
++def test_diagnostic_is_not_sent_with_power_off():
++    assert words("dual inverter", ON, OFF, ["diagnostic"]) == ["88c00510"]
++
++
++# ------------------------------------------------------------- capabilities
++
++
++def test_generic_capabilities():
++    caps = LG_NATIVE_VARIANTS["generic"]
++    assert caps.modes == ("cool", "fan", "dry")
++    assert (caps.temperature.min, caps.temperature.max) == (18.0, 29.0)
++    assert caps.fan is caps.swing_v is caps.swing_h is None
++    assert dict(caps.features) == {} and dict(caps.actions) == {}
++
++
++def test_inverter_v_capabilities():
++    caps = LG_NATIVE_VARIANTS["inverter v"]
++    assert caps.modes == ("auto", "cool", "fan", "dry")
++    assert (caps.temperature.min, caps.temperature.max) == (16.0, 29.0)
++    assert caps.swing_v.values == ("off", "swing", "1", "2")
++    assert caps.swing_h is None
++    assert set(caps.features) == {"auto_bias", "powerful", "cleaning", "economy"}
++    assert dict(caps.actions) == {}
++
++
++def test_dual_inverter_capabilities():
++    caps = LG_NATIVE_VARIANTS["dual inverter"]
++    assert caps.swing_v.values == ("off", "swing", "1", "2", "3", "4", "5", "6")
++    assert caps.swing_h.values == ("off", "swing") + tuple("1234567")
++    assert set(caps.features) == {
++        "auto_bias",
++        "powerful",
++        "purifier",
++        "cleaning",
++        "economy",
++    }
++    assert set(caps.actions) == {"diagnostic"}
++
++
++def _offered(variant):
++    """(target, expected fragment) for every value each capability offers."""
++    caps = LG_NATIVE_VARIANTS[variant]
++    for mode in caps.modes:
++        yield state(mode=mode)
++    t = caps.temperature
++    for celsius in range(int(t.min), int(t.max) + 1):
++        yield state(temperature=float(celsius))
++    for fan in caps.fan.values if caps.fan else ():
++        yield state(fan=fan)
++    for swing in caps.swing_v.values if caps.swing_v else ():
++        yield state(swing_v=swing)
++    for swing in caps.swing_h.values if caps.swing_h else ():
++        yield state(swing_h=swing)
++    for name, choice in caps.features.items():
++        for value in choice.values:
++            yield state(features={name: value})
++
++
++@pytest.mark.parametrize("variant", list(LG_NATIVE_VARIANTS))
++def test_every_offered_value_encodes_as_itself(variant):
++    dev = device(variant)
++    caps = dev.capabilities
++    for target in _offered(variant):
++        norm = dev.normalise(target)
++        frames = dev.frames(None, norm, ())
++        head = LG_NATIVE_LAYOUT.read(frames[0].data)
++        assert head["mode"] == norm.mode
++        if norm.mode == "cool":
++            assert head["temp"] == int(norm.temperature) - 15
++        if caps.fan is not None and norm.mode != "auto":
++            assert head["fan"] == caps.fan.label(norm.fan)
++        commands = {
++            LG_NATIVE_COMMAND_LAYOUT.read(f.data)["command"] for f in frames[1:]
++        }
++        if caps.swing_v is not None:
++            assert f"swing_v {caps.swing_v.label(norm.swing_v)}" in commands
++        if caps.swing_h is not None:
++            assert f"swing_h {caps.swing_h.label(norm.swing_h)}" in commands
++        for name, value in norm.features.items():
++            if name == "auto_bias" or (name == "powerful" and not value):
++                continue
++            label = caps.features[name].label(value)
++            assert f"{name} {label}" in commands
++
++
++def test_temperatures_clamp_to_the_variant_range():
++    assert device("generic").normalise(state(temperature=16.0)).temperature == 18.0
++    assert device("inverter v").normalise(state(temperature=16.0)).temperature == 16
++    assert device("inverter v").normalise(state(temperature=30.0)).temperature == 29
++
++
++def test_heat_is_not_offered():
++    for caps in LG_NATIVE_VARIANTS.values():
++        assert "heat" not in caps.modes
++
++
++# ----------------------------------------------------------------- registry
++
++
++@pytest.fixture
++def fresh_registry():
++    registry._factories.cache_clear()
++    yield
++    registry._factories.cache_clear()
++
++
++@pytest.mark.parametrize("model", ["generic", "inverter v", "dual inverter"])
++def test_registry_serves_the_native_models(fresh_registry, model):
++    dev = registry.get_device("lg", model)
++    assert isinstance(dev, LgNativeDevice)
++    assert dev.variant == model
++    assert dev.capabilities is LG_NATIVE_VARIANTS[model]
++
++
++def test_unknown_variant():
++    with pytest.raises(ValueError):
++        LgNativeDevice("lg", "generic", variant="nope")
+diff -ruN -x __pycache__ a/tests/test_panasonic_native_device.py b/tests/test_panasonic_native_device.py
+--- a/tests/test_panasonic_native_device.py	1970-01-01 07:00:00.000000000 +0700
++++ b/tests/test_panasonic_native_device.py	2026-09-29 14:57:11.161814929 +0700
+@@ -0,0 +1,286 @@
++import gzip
++import json
++from pathlib import Path
++
++import pytest
++
++from pyhvac import registry
++from pyhvac.ir.codec import decode
++from pyhvac.plugins.panasonic import (
++    PANASONIC_NATIVE,
++    PANASONIC_NATIVE_MAIN,
++    PANASONIC_NATIVE_SHORT,
++    PANASONIC_NATIVE_VARIANTS,
++    PanaCassette,
++    Panasonic,
++    PanasonicNativeDevice,
++)
++from pyhvac.state import HvacState
++from port_oracle import assert_matches_golden
++
++GOLDEN = Path(__file__).parent / "fixtures" / "golden" / "panasonic.json.gz"
++LEGACY = {"Panasonic": Panasonic, "PanaCassette": PanaCassette}
++VARIANT = {"Panasonic": "generic", "PanaCassette": "4 way cassette"}
++
++
++def _canonical(choice, old):
++    for value in choice.values:
++        if choice.label(value) == old:
++            return value
++    raise ValueError(old)
++
++
++def from_old(cls_name, old):
++    """The HvacState an old-vocabulary state stands for, on a fresh object
++    of the legacy class ``cls_name``."""
++    old = {**LEGACY[cls_name]().status, **old}
++    caps = PANASONIC_NATIVE_VARIANTS[VARIANT[cls_name]]
++    kwargs = {}
++    if caps.fan is not None:
++        kwargs["fan"] = _canonical(caps.fan, old["fan"])
++    if caps.swing_v is not None:
++        kwargs["swing_v"] = _canonical(caps.swing_v, old["swing"])
++    return HvacState(
++        power=old["mode"] != "off",
++        mode=caps.modes[0] if old["mode"] == "off" else old["mode"],
++        temperature=old["temperature"],
++        features={name: old[name] == "on" for name in caps.features},
++        **kwargs,
++    )
++
++
++RECORDS = json.loads(gzip.decompress(GOLDEN.read_bytes()))
++
++
++@pytest.mark.parametrize(
++    "record", RECORDS, ids=[f"{r['class']}-{n}" for n, r in enumerate(RECORDS)]
++)
++def test_reproduces_golden(record):
++    cls_name = record["class"]
++    dev = PanasonicNativeDevice("panasonic", VARIANT[cls_name])
++    # The records were built from a fresh legacy object: that is "previous".
++    previous = from_old(cls_name, {})
++    assert_matches_golden(dev, record, from_old(cls_name, record["state"]), previous)
++
++
++# ------------------------------------------------------------------ helpers
++
++ON = HvacState(True, "cool", 24.0)
++OFF = HvacState(False, "cool", 24.0)
++
++
++def device(variant="4 way cassette"):
++    return PanasonicNativeDevice("panasonic", variant)
++
++
++def state(**kw):
++    base = dict(power=True, mode="cool", temperature=24.0)
++    base.update(kw)
++    return HvacState(**base)
++
++
++def frames(previous, target, variant="4 way cassette"):
++    """The frames' data, through the full encode and a decode."""
++    dev = device(variant)
++    cmd = dev.encode(previous, target)
++    prev = None if previous is None else dev.normalise(previous)
++    count = len(dev.frames(prev, cmd.state, ()))
++    decoded = decode(PANASONIC_NATIVE, cmd.signal.pulses, expected=["main"] * count)
++    return [f.data for f in decoded]
++
++
++def main_frame(previous, target, variant="4 way cassette"):
++    return PANASONIC_NATIVE_MAIN.read(frames(previous, target, variant)[-1])
++
++
++def shorts(previous, target):
++    return [
++        PANASONIC_NATIVE_SHORT.read(f)["frame"] for f in frames(previous, target)[:-1]
++    ]
++
++
++# ------------------------------------------------------------------- layout
++
++
++def test_main_layout_round_trip():
++    values = dict(
++        power=1,
++        mode="dry",
++        temperature=22,
++        fan="medium",
++        swing="45°",
++        profile=None,
++        purifier=1,
++    )
++    data = PANASONIC_NATIVE_MAIN.build(**values)
++    assert PANASONIC_NATIVE_MAIN.read(data) == values
++    assert PANASONIC_NATIVE_MAIN.checksum.check(data)
++
++
++def test_main_layout_matches_the_legacy_bytes():
++    # Panasonic.build_code for cool 24 on a fresh object (golden record 7)
++    data = PANASONIC_NATIVE_MAIN.build(
++        power=1, mode="cool", temperature=24, fan=None, swing=None, profile=None
++    )
++    assert data.hex() == "40040720009c0c010000007007000091000066"
++
++
++@pytest.mark.parametrize("name", ["first", "economy", "cleaning"])
++def test_short_layout_round_trip(name):
++    data = PANASONIC_NATIVE_SHORT.build(frame=name)
++    assert PANASONIC_NATIVE_SHORT.read(data) == {"frame": name}
++    legacy = {
++        "first": Panasonic.FHEADER + Panasonic.F1BODY,
++        "economy": Panasonic.FECON,
++        "cleaning": Panasonic.FODOUR,
++    }[name]
++    assert bytes(data) == legacy + Panasonic().crc(legacy)
++
++
++def test_every_legacy_temperature_code():
++    for celsius in range(16, 32):
++        data = PANASONIC_NATIVE_MAIN.build(
++            power=1, mode="cool", temperature=celsius, fan=None, swing=None
++        )
++        legacy = Panasonic()
++        legacy.to_set = {"temperature": celsius}
++        assert data[6:7] == legacy.code_temperature()
++
++
++# -------------------------------------------------------------------- rules
++
++
++def test_message_is_the_first_frame_then_the_main_frame():
++    data = frames(ON, ON)
++    assert len(data) == 2
++    assert PANASONIC_NATIVE_SHORT.read(data[0]) == {"frame": "first"}
++
++
++@pytest.mark.parametrize("celsius", [16.0, 24.0, 31.0])
++def test_fan_mode_sends_27(celsius):
++    assert main_frame(None, state(mode="fan", temperature=celsius))["temperature"] == 27
++
++
++def test_off_sends_the_previous_settings():
++    prev = state(temperature=20.0, fan="3", swing_v="2", features={"purifier": True})
++    target = HvacState(False, "dry", 30.0, fan="1", swing_v="4")
++    read = main_frame(prev, target)
++    assert read["power"] == 0 and read["mode"] == "auto"
++    assert (read["temperature"], read["fan"], read["swing"]) == (20, "highest", "60°")
++    assert read["purifier"] == 1
++
++
++def test_off_after_fan_mode_sends_27():
++    prev = state(mode="fan", temperature=20.0)
++    assert main_frame(prev, OFF)["temperature"] == 27
++
++
++def test_off_without_previous_sends_the_target_settings():
++    target = HvacState(False, "dry", 30.0, fan="1", swing_v="4")
++    read = main_frame(None, target)
++    assert read["power"] == 0 and read["mode"] == "auto"
++    assert (read["temperature"], read["fan"], read["swing"]) == (30, "lowest", "30°")
++
++
++def test_generic_sends_no_fan_and_no_swing():
++    read = main_frame(None, state(fan="3", swing_v="2"), variant="generic")
++    assert read["fan"] is None and read["swing"] is None
++    assert read["profile"] is None and read["purifier"] == 0
++
++
++def test_main_frame_ignores_previous_when_on():
++    target = state(temperature=22.0, fan="2", swing_v="5")
++    ours = {bytes(f) for f in frames(None, target)}
++    for prev in (ON, OFF, state(mode="dry", fan="1")):
++        assert frames(prev, target)[-1] in ours
++
++
++@pytest.mark.parametrize("name", ["economy", "cleaning"])
++def test_toggle_only_on_change(name):
++    on = state(features={name: True})
++    assert shorts(None, on) == ["first", name, "first"]
++    assert shorts(ON, on) == ["first", name, "first"]
++    assert shorts(on, on) == ["first"]
++    assert shorts(on, ON) == ["first", name, "first"]
++    assert shorts(ON, ON) == ["first"]
++    assert shorts(None, ON) == ["first"]  # a fresh unit has them off
++
++
++def test_toggles_in_legacy_order():
++    both = state(features={"economy": True, "cleaning": True})
++    assert shorts(ON, both) == ["first", "cleaning", "first", "economy", "first"]
++
++
++def test_no_toggle_with_power_off():
++    target = HvacState(False, "cool", 24.0, features={"economy": True})
++    assert shorts(ON, target) == ["first"]
++
++
++# ------------------------------------------------------------- capabilities
++
++
++def test_generic_capabilities():
++    caps = PANASONIC_NATIVE_VARIANTS["generic"]
++    assert caps.modes == ("auto", "cool", "fan", "dry")
++    assert (caps.temperature.min, caps.temperature.max) == (16.0, 31.0)
++    assert caps.fan is caps.swing_v is caps.swing_h is None
++    assert dict(caps.features) == {} and dict(caps.actions) == {}
++
++
++def test_cassette_capabilities():
++    caps = PANASONIC_NATIVE_VARIANTS["4 way cassette"]
++    assert caps.modes == ("auto", "cool", "fan", "dry")
++    assert (caps.temperature.min, caps.temperature.max) == (16.0, 31.0)
++    assert caps.fan.values == ("auto", "1", "2", "3")
++    assert caps.swing_v.values == ("auto",) + tuple("123456")
++    assert caps.swing_h is None
++    assert set(caps.features) == {"purifier", "economy", "cleaning"}
++
++
++@pytest.mark.parametrize("variant", list(PANASONIC_NATIVE_VARIANTS))
++def test_every_offered_value_encodes_as_itself(variant):
++    caps = PANASONIC_NATIVE_VARIANTS[variant]
++    for mode in caps.modes:
++        assert main_frame(None, state(mode=mode), variant)["mode"] == mode
++    for celsius in range(int(caps.temperature.min), int(caps.temperature.max) + 1):
++        read = main_frame(None, state(temperature=float(celsius)), variant)
++        assert read["temperature"] == celsius
++    for fan in caps.fan.values if caps.fan else ():
++        read = main_frame(None, state(fan=fan), variant)
++        assert read["fan"] == caps.fan.label(fan)
++    for swing in caps.swing_v.values if caps.swing_v else ():
++        read = main_frame(None, state(swing_v=swing), variant)
++        assert read["swing"] == caps.swing_v.label(swing)
++    if "purifier" in caps.features:
++        for value in (False, True):
++            read = main_frame(None, state(features={"purifier": value}), variant)
++            assert read["purifier"] == int(value)
++
++
++def test_heat_and_profile_are_not_offered():
++    for caps in PANASONIC_NATIVE_VARIANTS.values():
++        assert "heat" not in caps.modes
++        assert not {"powerful", "quiet"} & set(caps.features)
++
++
++# ----------------------------------------------------------------- registry
++
++
++@pytest.fixture
++def fresh_registry():
++    registry._factories.cache_clear()
++    yield
++    registry._factories.cache_clear()
++
++
++@pytest.mark.parametrize("model", ["generic", "4 way cassette"])
++def test_registry_serves_the_native_models(fresh_registry, model):
++    dev = registry.get_device("panasonic", model)
++    assert isinstance(dev, PanasonicNativeDevice)
++    assert dev.variant == model
++    assert dev.capabilities is PANASONIC_NATIVE_VARIANTS[model]
++
++
++def test_unknown_variant():
++    with pytest.raises(ValueError):
++        PanasonicNativeDevice("panasonic", "generic", variant="nope")

@@ -267,7 +267,9 @@ def test_unreproduced_feature_makes_a_variant(tmp_path):
     )
     verdict = match(captures, some_candidates())
     assert verdict.path == "variant"
-    assert any("ionizer" in r for r in verdict.reasons)
+    (reason,) = [r for r in verdict.reasons if "ionizer" in r]
+    # what the code really carries, against the capture's core setting
+    assert "differs from its core setting only in: temperature" in reason
 
 
 def test_records_round_trip(tmp_path):

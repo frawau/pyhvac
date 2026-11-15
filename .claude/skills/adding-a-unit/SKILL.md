@@ -100,11 +100,17 @@ Never edit a note to make it fit its code.
 | `variant` | a pyhvac protocol decodes everything, some settings differ | step 4b |
 | `new` | no pyhvac protocol decodes the codes | step 4c |
 
-Read every `reason`. "the note or the model is wrong" and "feature ...: no
-pyhvac feature sends it" first mean: compare that capture's bytes with the
-baseline's (`records` + `python tools/portkit.py diff`). If it differs only
-where its note does not say (setpoint, checksum), the capture is wrong:
-re-record, back to step 2.
+Read every `reason`. A reason ending "it differs from its core setting only
+in: <core fields>" or "it sends its core setting unchanged" means that
+capture is wrong (the remote sent another setting than the note says):
+re-record it, back to step 2. "the note or the model is wrong": check those
+captures' notes with the contributor, re-record the doubtful ones.
+
+One wrong capture holds up the whole change, even when every other capture
+is `supported`: commit nothing, tell the contributor which capture to
+record again and how (from the baseline, the note typed first, only that
+button), and stop until the new log is in. Never drop a capture from the
+log to get a cleaner verdict.
 
 ## 4a. Supported
 

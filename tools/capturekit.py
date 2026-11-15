@@ -263,6 +263,25 @@ def _feature_value(word: str, choice):
     return [v for v in choice.values if str(v) == word] or list(choice.values)
 
 
+def _unlike(device, base, capture, cand) -> str:
+    """What the capture's code differs in from its core setting alone:
+    a feature capture that differs only in core fields was mislabelled."""
+    from hvactest.compare import compare
+
+    if base is None:
+        return ""
+    try:
+        seen = compare(device, base, capture.packet, name=cand.name)
+    except ValueError:
+        return ""
+    if seen.verdict == "same":
+        return "; it sends its core setting unchanged (re-record it)"
+    if seen.verdict != "differs" or not seen.fields:
+        return ""
+    names = ", ".join(sorted(n.split("#")[0] for n in seen.fields))
+    return f"; it differs from its core setting only in: {names}"
+
+
 def _map_features(captures, cand, found, fahrenheit) -> Tuple[Dict, List[str]]:
     from hvactest.compare import compare
 
@@ -302,7 +321,7 @@ def _map_features(captures, cand, found, fahrenheit) -> Tuple[Dict, List[str]]:
             else:
                 reasons.append(
                     f"capture {c.index}: feature {word}={value}:"
-                    " no pyhvac feature sends it"
+                    f" no pyhvac feature sends it{_unlike(device, base, c, cand)}"
                 )
     return mapped, reasons
 

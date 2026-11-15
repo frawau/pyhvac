@@ -58,6 +58,12 @@ packet = to_broadlink(command.signal)  # send it with a Broadlink RM
   "swing", "light") only when the value changes. `previous=None` means "not
   known", as after a restart.
 
+**Units: metric only.** Every temperature pyhvac takes or returns
+(`HvacState.temperature`, `caps.temperature`, `command.state`) is in °C.
+Units whose remote shows °F are driven in °C too: the device converts the
+setpoint to the remote's °F value when it encodes. Showing °F to a user is
+up to your application, at display time.
+
 ## Capabilities
 
 `device.capabilities` says what a device can do:

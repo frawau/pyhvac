@@ -315,3 +315,46 @@ def test_a_broadlink_shows_the_interface_that_found_it(tmp_path):
         assert "wlp5s0" in str(app.query_one("#remote", Select)._options)
 
     run(case, link=FakeLink(), names_path=tmp_path / "rc")
+
+
+def test_learn_logs_the_note(tmp_path):
+    log_path = tmp_path / "session.jsonl"
+    dev = registry.get_device("Electra", "AXW12DCS")
+    learned = to_broadlink(dev.encode(None, HvacState(True, "cool", 24.0)).signal)
+
+    async def case(app, pilot):
+        await app.use("Electra", "AXW12DCS")
+        app.query_one("#note").value = " power=on mode=cool temperature=24 "
+        await pilot.click("#learn")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        records = [json.loads(x) for x in log_path.read_text().splitlines()]
+        (record,) = [r for r in records if r["event"] == "learn"]
+        assert record["note"] == "power=on mode=cool temperature=24"
+
+    run(
+        case,
+        link=FakeLink(learned),
+        log=SessionLog(log_path),
+        names_path=tmp_path / "rc",
+    )
+
+
+def test_a_learn_timeout_logs_the_note(tmp_path):
+    log_path = tmp_path / "session.jsonl"
+
+    async def case(app, pilot):
+        await app.use("Electra", "AXW12DCS")
+        app.query_one("#note").value = "power=off"
+        await pilot.click("#learn")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        (record,) = [json.loads(x) for x in log_path.read_text().splitlines()]
+        assert record["code"] is None and record["note"] == "power=off"
+
+    run(
+        case,
+        link=FakeLink(learned=None),
+        log=SessionLog(log_path),
+        names_path=tmp_path / "rc",
+    )

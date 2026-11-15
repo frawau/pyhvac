@@ -393,14 +393,15 @@ class HvacTestApp(App):
             self.busy = None
 
     async def _learn(self):
+        note = self.query_one("#note", Input).value.strip()
         self.say("press the button on the real remote (10 s)…")
         packet = await self.link.learn(self.remote())
         if packet is None:
             self.say("[yellow]nothing learned within 10 s[/]")
-            self.record("learn", model=list(self.model), code=None)
+            self.record("learn", model=list(self.model), code=None, note=note)
             return
         self.learned = packet
-        self.record("learn", model=list(self.model), code=b64(packet))
+        self.record("learn", model=list(self.model), code=b64(packet), note=note)
         self.show_compare()
 
     @on(Input.Submitted, "#paste")

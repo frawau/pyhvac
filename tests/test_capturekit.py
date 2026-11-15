@@ -4,7 +4,10 @@ import base64
 
 import pytest
 
-from capturekit import Capture, check, load, main, parse_note
+import gzip
+import json
+
+from capturekit import Capture, check, load, main, match, parse_note, records
 from hvactest.log import SessionLog
 from pyhvac import registry
 from pyhvac.ir.formats import to_broadlink
@@ -145,3 +148,150 @@ def test_empty_log(tmp_path, capsys):  # Review Focus 5
     errors, _ = check(captures)
     assert errors == ["no usable capture: every Learn timed out or the log is empty"]
     assert main(["check", str(log)]) == 1
+
+
+# --------------------------------------------------------------------- match
+
+
+def some_candidates():
+    """A few protocol families: matching against all of them takes ~20 s."""
+    from hvacir import match as M
+
+    return [
+        c
+        for c in M.candidates()
+        if c.name.startswith(("Daikin", "Airspool", "Electra", "Gree", "Kelon"))
+    ]
+
+
+def daikin_session(tmp_path, extra=()):
+    entries = [
+        (BASE, packet()),
+        ("temperature=20", packet(temperature=20.0)),
+        ("temperature=28", packet(temperature=28.0)),
+        ("mode=heat", packet(mode="heat")),
+        ("mode=dry", packet(mode="dry")),
+        ("mode=auto", packet(mode="auto")),
+        ("fan=low", packet(fan="1")),
+        ("fan=mid", packet(fan="3")),
+        ("fan=high", packet(fan="5")),
+        ("power=off", packet(power=False)),
+        *extra,
+    ]
+    return load(write_log(tmp_path / "c.jsonl", entries))[0]
+
+
+def test_known_model_is_supported(tmp_path):
+    verdict = match(daikin_session(tmp_path))
+    assert verdict.path == "supported", verdict.reasons
+    assert verdict.candidate.startswith("Daikin")
+    assert verdict.fans["low"] == "1" and verdict.fans["high"] == "5"
+
+
+def test_fahrenheit_notes_match(tmp_path):  # Review Focus 3
+    dev = registry.get_device("Airspool", "Mini-split")
+    entries = []
+    for i, c in enumerate((20.0, 22.0, 24.0, 26.0, 28.0)):
+        f = round(c * 9 / 5 + 32)
+        note = (
+            f"power=on mode=cool temperature={f}F fan=auto"
+            if i == 0
+            else (f"temperature={f}F")
+        )
+        entries.append((note, packet(dev, temperature=c)))
+    entries.append(("mode=heat", packet(dev, mode="heat", temperature=20.0)))
+    captures = load(write_log(tmp_path / "c.jsonl", entries))[0]
+    verdict = match(captures, some_candidates())
+    assert verdict.path == "supported", verdict.reasons
+    assert verdict.candidate.startswith("Airspool")
+
+
+def test_labels_not_one_to_one_are_not_supported(tmp_path):  # Review Focus 2
+    captures = daikin_session(tmp_path, extra=[("fan=quiet", packet(fan="1"))])
+    verdict = match(captures, some_candidates())
+    assert verdict.path != "supported"
+    assert any("low" in r and "quiet" in r for r in verdict.reasons)
+
+
+def test_missing_variant_is_variant(tmp_path):
+    from hvacir import match as M
+
+    dev = registry.get_device("Beko", "BEVCA 120")
+    entries = [("power=on mode=cool temperature=24 fan=auto", packet(dev))]
+    entries += [
+        (f"temperature={t}", packet(dev, temperature=float(t))) for t in (18, 22, 30)
+    ]
+    entries += [(f"mode={m}", packet(dev, mode=m)) for m in ("heat", "dry", "fan")]
+    entries += [(f"fan={f}", packet(dev, fan=f)) for f in ("1", "2", "3")]
+    entries.append(("power=off", packet(dev, power=False)))
+    captures = load(write_log(tmp_path / "c.jsonl", entries))[0]
+    cands = [c for c in M.candidates() if c.name != "ElectraAcDevice/aux"]
+    verdict = match(captures, cands)
+    assert verdict.path == "variant", verdict
+    assert verdict.candidate == "ElectraAcDevice"
+    assert verdict.gaps
+
+
+def test_unknown_code_is_new(tmp_path):
+    from pyhvac.ir.formats import broadlink_packet
+
+    def nec(byte):
+        pulses = [9000, 4500]
+        for i in range(32):
+            bit = (byte >> (i % 8)) & 1
+            pulses += [560, 1690 if bit else 560]
+        return broadlink_packet(pulses + [560])
+
+    entries = [("power=on mode=cool temperature=24 fan=auto", nec(0x12))]
+    entries += [(f"temperature={t}", nec(t)) for t in (20, 26)]
+    captures = load(write_log(tmp_path / "c.jsonl", entries))[0]
+    verdict = match(captures)
+    assert verdict.path == "new"
+    assert verdict.candidate is None
+
+
+def test_feature_capture_is_mapped(tmp_path):
+    captures = daikin_session(
+        tmp_path,
+        extra=[("turbo=on", packet(features={"powerful": True}))],
+    )
+    verdict = match(captures, some_candidates())
+    assert verdict.path == "supported", verdict.reasons
+    assert verdict.features == {"turbo=on": "powerful=True"}
+
+
+def test_unreproduced_feature_makes_a_variant(tmp_path):
+    captures = daikin_session(
+        tmp_path,
+        extra=[("ionizer=on", packet(temperature=21.0))],  # not what pyhvac sends
+    )
+    verdict = match(captures, some_candidates())
+    assert verdict.path == "variant"
+    assert any("ionizer" in r for r in verdict.reasons)
+
+
+def test_records_round_trip(tmp_path):
+    from portkit import decode_all, load_protocol, load_records
+
+    captures = daikin_session(tmp_path)
+    out = records(captures, tmp_path / "rec", "MYREMOTE")
+    assert out == tmp_path / "rec" / "MYREMOTE.json.gz"
+    recs = load_records("MYREMOTE", fixtures=tmp_path / "rec")
+    assert len(recs) == len(captures)
+    assert recs[0]["state"] == captures[0].setting
+    proto = load_protocol("pyhvac.protocols.daikin:DAIKIN312")
+    decoded = decode_all(recs, proto, ["leader", "main", "main"])
+    assert all(not isinstance(m, Exception) for _, m in decoded)
+
+
+def test_match_cli_json(tmp_path, capsys):
+    daikin_session(tmp_path)
+    assert main(["match", str(tmp_path / "c.jsonl"), "--json"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["path"] == "supported"
+
+
+def test_commands_refuse_an_empty_log(tmp_path):  # Review Focus 5
+    log = write_log(tmp_path / "c.jsonl", [(BASE, None)])
+    assert main(["match", str(log)]) == 1
+    assert main(["records", str(log), str(tmp_path / "r"), "X"]) == 1

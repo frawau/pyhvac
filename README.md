@@ -90,12 +90,28 @@ decodes a captured signal into frames of the device's `PROTOCOL`.
     python -m pyhvac Daikin "ARC433**" --mode cool --temperature 24
     python -m pyhvac LG "AKB74955603" --mode heat --fan 2 --format pronto
 
+## Getting a unit supported
+
+[Capturing IR codes to add a unit](https://github.com/frawau/pyhvac/blob/main/docs/capturing-codes.md) explains the
+tools in `tools/` (hvactest, portkit, hvacir), how to install them, how to
+check whether a pyhvac model already drives your unit, and how to record
+your remote with a Broadlink RM so its protocol can be added.
+
+With [Claude Code](https://claude.com/claude-code), the `adding-a-unit`
+skill shipped in this repository (`.claude/skills/adding-a-unit/`) takes
+you from those captures to a pull request: a new model name, a variant of
+a pyhvac protocol, or a new protocol, with its tests. **A pull request is
+only for a change you have tested successfully on your own unit**: you
+send pyhvac's codes to it with hvactest, every setting works, then the pull
+request is opened.
+
 ## Adding a protocol
 
 Protocol code lives in `pyhvac/protocols/`: a `Protocol` (timings, sections)
 and a `Device` subclass whose `frames()` builds the frames with a `Layout`
-(`pyhvac.fields`). `tools/portkit.py` helps derive timings, fields and
-checksums from captures. Register the models in `pyhvac/brands.py`.
+(`pyhvac.fields`). `tools/portkit.py` derives timings, fields and checksums
+from captures (see [the protocol authors' section](https://github.com/frawau/pyhvac/blob/main/docs/capturing-codes.md#for-protocol-authors-from-captures-to-a-protocol)).
+Register the models in `pyhvac/brands.py`.
 
 ## Migrating from 0.1.x
 

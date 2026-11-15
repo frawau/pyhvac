@@ -69,7 +69,8 @@ on the remote (the code it sends carries the whole new setting), then put
 the remote back to the baseline.
 
 Note format, one capture per note; keys left out take the first capture's
-(the baseline's) value:
+(the baseline's) value, so the first capture is the unit **on**, with a
+mode and a temperature (`check` refuses anything else):
 
     power=on mode=cool temperature=24 fan=auto swing_v=off   # baseline
     temperature=25
@@ -127,7 +128,9 @@ even when it looks like a general fix (say so in the PR; the maintainer
 decides).
 
 1. **Before editing**, snapshot what every existing model of that class
-   sends (the guard against changing them):
+   sends: off; every mode at the lowest, middle and highest setpoint; each
+   fan, swing and feature value on its own (the guard against changing
+   them, so it covers every field a variant could move):
 
    ```python
    # python - > tests/fixtures/<class>_before_<variant>.json
@@ -135,6 +138,7 @@ decides).
    from pyhvac import brands, registry
    from pyhvac.ir.formats import to_raw
    from pyhvac.state import HvacState
+
    CLS = "Daikin312Device"  # the class match named
    out = {}
    for brand, model, _kind, cls, _variant in brands.MODELS:
@@ -142,16 +146,27 @@ decides).
            continue
        dev = registry.get_device(brand, model)
        caps = dev.capabilities
-       for mode in caps.modes:
-           for t in (caps.temperature.min, caps.temperature.max):
-               s = HvacState(True, mode, t)
-               out[f"{brand}|{model}|{mode}|{t}"] = to_raw(dev.encode(None, s).signal)
+       t = caps.temperature
+       states = {"off": HvacState(False, caps.modes[0], t.min)}
+       for mode in caps.modes:  # every mode at min, mid, max
+           for temp in (t.min, round((t.min + t.max) / 2), t.max):
+               states[f"{mode}|{temp}"] = HvacState(True, mode, temp)
+       mode, mid = caps.modes[0], round((t.min + t.max) / 2)
+       for name in ("fan", "swing_v", "swing_h"):  # each value, the rest default
+           for v in getattr(caps, name).values if getattr(caps, name) else ():
+               states[f"{name}={v}"] = HvacState(True, mode, mid, **{name: v})
+       for name, choice in caps.features.items():  # each feature value alone
+           for v in choice.values:
+               states[f"{name}={v}"] = HvacState(True, mode, mid, features={name: v})
+       for key, state in states.items():
+           out[f"{brand}|{model}|{key}"] = to_raw(dev.encode(None, state).signal)
    print(json.dumps(out, sort_keys=True))
    ```
 
 2. Add the name to the class's `VARIANTS` and make the difference depend on
    `self.variant == "<name>"` only (layout, capabilities, frames).
-3. Add a test that re-encodes the snapshot's keys and asserts equality.
+3. Add a test that rebuilds every state of the snapshot (same loop) and
+   asserts each code equals the snapshot's.
 4. Rows in `brands.py` with the new variant.
 
 ## 4c. New protocol

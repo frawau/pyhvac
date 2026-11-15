@@ -297,3 +297,93 @@ def test_commands_refuse_an_empty_log(tmp_path):  # Review Focus 5
     log = write_log(tmp_path / "c.jsonl", [(BASE, None)])
     assert main(["match", str(log)]) == 1
     assert main(["records", str(log), str(tmp_path / "r"), "X"]) == 1
+
+
+# ------------------------------------------- final review: real captures
+
+
+def jittered(pkt, seed):
+    """``pkt`` as a real Learn gives it: every pulse off by up to 5 %."""
+    import random
+
+    from hvactest.compare import packet_pulses
+    from pyhvac.ir.formats import broadlink_packet
+
+    rnd = random.Random(seed)
+    return broadlink_packet(
+        [max(1, int(p * rnd.uniform(0.95, 1.05))) for p in packet_pulses(pkt)]
+    )
+
+
+@pytest.mark.parametrize(
+    "first",
+    ["power=off mode=cool temperature=24", "power=on temperature=24", "mode=cool"],
+)
+def test_the_baseline_is_on_with_a_mode_and_a_setpoint(tmp_path, first):
+    log = write_log(
+        tmp_path / "c.jsonl", [(first, packet()), ("fan=low", packet(fan="1"))]
+    )
+    errors, _ = check(load(log)[0])
+    assert any(e.startswith("capture 1: the baseline") for e in errors), errors
+
+
+def test_match_refuses_captures_with_no_setting_on(tmp_path):
+    log = write_log(tmp_path / "c.jsonl", [("power=off", packet(power=False))])
+    with pytest.raises(ValueError, match="no capture of the unit on"):
+        match(load(log)[0], some_candidates())
+    assert main(["match", str(log)]) == 1
+
+
+def test_an_unchanged_capture_maps_to_no_feature(tmp_path):
+    captures = daikin_session(tmp_path, extra=[("light=off", packet())])
+    verdict = match(captures, some_candidates())
+    assert verdict.path == "variant"
+    assert verdict.features == {}
+    (reason,) = [r for r in verdict.reasons if "light" in r]
+    assert "sends its core setting unchanged" in reason
+
+
+def test_a_missed_press_is_caught_in_real_captures(tmp_path):
+    log = write_log(
+        tmp_path / "c.jsonl",
+        [(BASE, jittered(packet(), 1)), ("temperature=25", jittered(packet(), 2))],
+    )
+    errors, _ = check(load(log)[0])
+    assert any("the same code under different settings" in e for e in errors)
+
+
+def test_real_repeats_of_one_code_do_not_warn(tmp_path):
+    log = write_log(
+        tmp_path / "c.jsonl",
+        [(BASE, jittered(packet(), 1)), ("temperature=24", jittered(packet(), 2))],
+    )
+    errors, warnings = check(load(log)[0])
+    assert errors == [] and not any("toggle" in w for w in warnings)
+
+
+@pytest.mark.parametrize(
+    "note, meant",
+    [
+        ("Mode=heat", "mode"),
+        ("Fan=high", "fan"),
+        ("mdoe=heat", "mode"),
+        ("fam=low", "fan"),
+        ("temp=25", "temperature"),
+        ("swing=on", "swing_v"),
+    ],
+)
+def test_case_and_short_typos_are_errors(tmp_path, note, meant):
+    log = write_log(tmp_path / "c.jsonl", [(BASE, packet()), (note, packet())])
+    errors, _ = check(load(log)[0])
+    assert any(f"did you mean {meant}" in e for e in errors), errors
+
+
+def test_label_reasons_name_the_captures():
+    from capturekit import _not_one_to_one
+
+    caps = [
+        Capture(1, "", "", {"fan": "low"}, b""),
+        Capture(2, "", "", {"fan": "quiet"}, b""),
+    ]
+    (reason,) = _not_one_to_one({"low": "1", "quiet": "1"}, "fan", caps)
+    assert "captures 1, 2" in reason

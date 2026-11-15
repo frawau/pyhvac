@@ -103,16 +103,71 @@ def _setting_errors(capture: Capture) -> List[str]:
             " (with F for a °F display)"
         )
     for key in parse_note(capture.note):
-        if key in CORE_KEYS:
-            continue
-        close = [  # a misspelt core key, not a feature such as powerful
-            k
-            for k in difflib.get_close_matches(key, CORE_KEYS, n=1, cutoff=0.8)
-            if abs(len(k) - len(key)) <= 2
-        ]
-        if close:
-            errors.append(f"{where}: {key}: did you mean {close[0]}?")
+        meant = _misspelt(key)
+        if meant:
+            errors.append(f"{where}: {key}: did you mean {meant}?")
     return errors
+
+
+def _one_edit(a: str, b: str) -> bool:
+    """``a`` and ``b`` differ by one letter changed, added or removed."""
+    if abs(len(a) - len(b)) > 1:
+        return False
+    if len(a) == len(b):
+        return sum(x != y for x, y in zip(a, b)) == 1
+    short, long_ = sorted((a, b), key=len)
+    return any(long_[:i] + long_[i + 1 :] == short for i in range(len(long_)))
+
+
+def _misspelt(key: str) -> Optional[str]:
+    """The core key ``key`` was likely meant to be, or None (a feature)."""
+    if key in CORE_KEYS:
+        return None
+    low = key.casefold()
+    for core in CORE_KEYS:
+        if (
+            low == core
+            or (len(low) >= 3 and _one_edit(low, core))
+            or (len(low) >= 3 and sorted(low) == sorted(core))
+            or (len(low) >= 4 and core.startswith(low))  # temp, swing
+        ):
+            return core
+    close = [  # a misspelt core key, not a feature such as powerful
+        k
+        for k in difflib.get_close_matches(low, CORE_KEYS, n=1, cutoff=0.8)
+        if abs(len(k) - len(low)) <= 2
+    ]
+    return close[0] if close else None
+
+
+def _baseline_errors(first: Capture) -> List[str]:
+    s = first.setting
+    if s.get("power", "on") == "on" and "mode" in s and "temperature" in s:
+        return []
+    return [
+        f"capture {first.index}: the baseline (first capture) must be the unit"
+        " on, with a mode and a temperature (other notes inherit its keys):"
+        f" {first.note!r}"
+    ]
+
+
+def _pulses(packet: bytes) -> List[int]:
+    from hvactest.compare import packet_pulses
+
+    return packet_pulses(packet)
+
+
+def same_code(a: bytes, b: bytes, tolerance: float = 0.25) -> bool:
+    """Two learned codes carry the same bits: the same number of pulses,
+    each within ``tolerance`` of the other (a learn jitters every pulse;
+    a changed bit changes a space by far more). The last pulse, the
+    trailing gap, is not compared."""
+    if a == b:
+        return True
+    pa, pb = _pulses(a), _pulses(b)
+    if len(pa) != len(pb):
+        return False
+    return all(abs(x - y) <= tolerance * max(x, y) for x, y in zip(pa[:-1], pb[:-1]))
 
 
 def check(captures: List[Capture]) -> Tuple[List[str], List[str]]:
@@ -120,27 +175,26 @@ def check(captures: List[Capture]) -> Tuple[List[str], List[str]]:
     if not captures:
         return [NO_CAPTURE], []
     errors, warnings = [], []
+    if captures[0].note.split("#", 1)[0].strip():
+        errors += _baseline_errors(captures[0])
     for c in captures:
         errors += _setting_errors(c)
-    by_packet: Dict[bytes, Capture] = {}
-    by_setting: Dict[tuple, Capture] = {}
-    for c in captures:
-        key = tuple(sorted(c.setting.items()))
-        first = by_packet.setdefault(c.packet, c)
-        if first is not c and first.setting != c.setting:
-            errors.append(
-                f"capture {first.index} and capture {c.index}: the same code"
-                " under different settings (a missed press?)"
-            )
-        same = by_setting.setdefault(key, c)
-        if same is not c and same.packet != c.packet:
-            warnings.append(
-                f"capture {same.index} and capture {c.index}: the same setting,"
-                " different codes (a toggle bit or a clock?)"
-            )
+    for i, c in enumerate(captures):
+        for first in captures[:i]:
+            if not same_code(first.packet, c.packet):
+                if first.setting == c.setting:
+                    warnings.append(
+                        f"capture {first.index} and capture {c.index}: the same"
+                        " setting, different codes (a toggle bit or a clock?)"
+                    )
+            elif first.setting != c.setting:
+                errors.append(
+                    f"capture {first.index} and capture {c.index}: the same code"
+                    " under different settings (a missed press?)"
+                )
     features = sorted(
         {k for c in captures for k in c.setting if k not in CORE_KEYS}
-        - {e.split(": ")[1] for e in errors if "did you mean" in e}
+        - {k for k in {k for c in captures for k in c.setting} if _misspelt(k)}
     )
     if features:
         warnings.append(f"features (not core settings): {', '.join(features)}")
@@ -223,13 +277,25 @@ def to_smartir(captures: List[Capture]):
     )
 
 
-def _not_one_to_one(mapping: Dict[str, object], what: str) -> List[str]:
+def _indices(captures: List[Capture], test) -> str:
+    found = [str(c.index) for c in captures if test(c)]
+    return f" (captures {', '.join(found)})" if found else ""
+
+
+def _not_one_to_one(
+    mapping: Dict[str, object], what: str, captures: List[Capture] = ()
+) -> List[str]:
     words: Dict[object, List[str]] = {}
     for word, value in mapping.items():
         words.setdefault(value, []).append(word)
+
+    def label(c):
+        return _swing_label(c.setting) if what == "swing" else c.setting.get(what)
+
     return [
-        f"{what} words {', '.join(sorted(ws))} all send pyhvac {what} {v!r}:"
-        " the note or the model is wrong"
+        f"{what} words {', '.join(sorted(ws))} all send pyhvac {what} {v!r}"
+        + _indices(captures, lambda c, ws=ws: _is_core(c) and label(c) in ws)
+        + ": the note or the model is wrong"
         for v, ws in words.items()
         if len(ws) > 1
     ]
@@ -307,6 +373,8 @@ def _map_features(captures, cand, found, fahrenheit) -> Tuple[Dict, List[str]]:
                             swing_h=base.swing_h,
                             features={**base.features, name: v},
                         )
+                        if device.normalise(state) == device.normalise(base):
+                            continue  # changes nothing: not this feature
                         try:
                             same = compare(device, state, c.packet, name=cand.name)
                         except ValueError:
@@ -332,6 +400,11 @@ def match(captures: List[Capture], cands=None) -> Verdict:
 
     if not captures:
         raise ValueError(NO_CAPTURE)
+    if not any(_is_core(c) and _key(c.setting).mode != "off" for c in captures):
+        raise ValueError(
+            "no capture of the unit on with only core settings: record the"
+            " baseline (power=on, a mode, a temperature) first"
+        )
     cands = M.candidates() if cands is None else cands
     found = M.match(to_smartir(captures), cands)
     if found.verdict not in ("covered", "near"):
@@ -348,13 +421,17 @@ def match(captures: List[Capture], cands=None) -> Verdict:
     if found.decoded < found.usable:
         reasons.append(f"{found.usable - found.decoded} captures do not decode")
     if found.relabelled:
-        shown = "; ".join(f"{k} looks like {st}" for k, st in found.relabels)
+        shown = "; ".join(
+            f"{k} looks like {st}"
+            + _indices(captures, lambda c, k=k: _is_core(c) and _key(c.setting) == k)
+            for k, st in found.relabels
+        )
         reasons.append(
             f"{found.relabelled} captures are what pyhvac sends for another"
             f" setting ({shown}): the note or the model is wrong"
         )
-    reasons += _not_one_to_one(found.fans, "fan")
-    reasons += _not_one_to_one(found.swings, "swing")
+    reasons += _not_one_to_one(found.fans, "fan", captures)
+    reasons += _not_one_to_one(found.swings, "swing", captures)
     features, feature_reasons = _map_features(
         captures, cand, found, _fahrenheit(captures)
     )
@@ -414,7 +491,11 @@ def _cmd_match(args) -> int:
     captures = _usable(args.log)
     if captures is None:
         return 1
-    verdict = match(captures)
+    try:
+        verdict = match(captures)
+    except ValueError as exc:
+        print(f"error: {exc}")
+        return 1
     if args.json:
         print(json.dumps(asdict(verdict), indent=1))
         return 0

@@ -125,7 +125,8 @@ from a baseline, each carrying a note saying what the remote shows.
    note with the learned code.
 
 Notes are `key=value` pairs separated by spaces; anything after `#` is a
-comment. The first capture's note is the baseline and gives every key;
+comment. The first capture's note is the baseline (the unit on, with a
+mode and a temperature) and gives every key;
 later notes give only what changed (keys left out keep the baseline's
 value):
 

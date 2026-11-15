@@ -99,9 +99,11 @@ Many units use a protocol pyhvac already has, under another brand's name.
    settings shown on your remote, press **Send** and see whether the unit
    follows. Check a few modes, setpoints and fan speeds.
 
-If one works, open an issue with the brand and model of your unit and
-remote and the pyhvac model that works: adding a name for it is quick. If
-none works, or Match lists nothing, go on to step 2.
+If your own model is listed and works, tick its row in
+[VERIFIED.md](../VERIFIED.md) in a pull request. If another model works,
+open an issue with the brand and model of your unit and remote and the
+pyhvac model that works: adding a name for it is quick. If none works, or
+Match lists nothing, go on to step 2.
 
 ## Step 2: record the remote
 

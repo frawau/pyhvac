@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- `VERIFIED.md`: every model, with a ✅ for those someone has checked on a
+  real unit; pull requests welcome (`tools/verified.py` keeps the rows).
+- `tools/capturekit.py`: checks hvactest captures, matches them against
+  pyhvac, writes portkit's input. hvactest saves the Note with each learned
+  code.
+- The `adding-a-unit` Claude Code skill: from captures to a pull request
+  tested on the contributor's own unit.
+
 ## 0.2.0
 
 Breaking: new API, pure Python.

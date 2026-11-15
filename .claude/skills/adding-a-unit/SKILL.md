@@ -117,6 +117,8 @@ log to get a cleaner verdict.
 Add the row(s) to `pyhvac/brands.py`, next to the device's other rows:
 `(brand as the maker writes it, unit model, "unit", DeviceClass, variant)`,
 plus the remote as `"remote"` kind if the contributor knows its model.
+If the unit's own model is already listed, there is no row to add: the
+change is the tick in `VERIFIED.md` (step 8), after the on-unit test.
 
 ## 4b. Variant
 
@@ -196,6 +198,7 @@ it is either wrong (re-record) or the change is incomplete; never drop it.
 
 ## 6. Checks
 
+    python tools/verified.py    # a VERIFIED.md row for each new model
     pytest
     black <every Python file you changed>
 
@@ -216,7 +219,10 @@ Continue only when they report every setting worked.
 
 ## 8. Pull request
 
-Only now: push the branch to the fork and open the PR against
+Only now: put ✅ in the unit's row of `VERIFIED.md` (and its remote's,
+if added) with Notes giving what was checked and the pyhvac version, e.g.
+`modes, 18-32 °C, fan, off/on; 0.2.0 + this PR`. Then push the branch to
+the fork and open the PR against
 `frawau/pyhvac` main (`gh pr create`). Do not commit PR text or the
 on-unit log to the repository.
 
@@ -230,7 +236,7 @@ Adds <brand> <model> (remote <remote model>): <supported model row | variant <na
 - [x] swing: <list or "none">
 - [x] features: <list or "none">
 - [x] off and on
-Every setting above worked.
+Every setting above worked; VERIFIED.md row ticked.
 
 ## Evidence
 - captures: tests/fixtures/captures/<brand>_<model>.jsonl, checked by <test file>

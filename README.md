@@ -90,6 +90,16 @@ decodes a captured signal into frames of the device's `PROTOCOL`.
     python -m pyhvac Daikin "ARC433**" --mode cool --temperature 24
     python -m pyhvac LG "AKB74955603" --mode heat --fan 2 --format pronto
 
+## Verified units
+
+Most models are listed because pyhvac generates the codes their remote
+sends, not because someone saw the unit follow them.
+[VERIFIED.md](https://github.com/frawau/pyhvac/blob/main/VERIFIED.md) lists
+every model, with a ✅ for those checked on a real unit. **Please help:** if
+pyhvac drives your unit, open a pull request that ticks its row and says
+what you checked (modes, setpoints, fan, swing, off/on) and with which
+pyhvac version. A row that does not work for you is worth an issue.
+
 ## Getting a unit supported
 
 [Capturing IR codes to add a unit](https://github.com/frawau/pyhvac/blob/main/docs/capturing-codes.md) explains the
